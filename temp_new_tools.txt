@@ -1,0 +1,68 @@
+
+@mcp.tool()
+def move_clip(ctx: Context, track_index: int, new_track_index: int, new_clip_index: int) -> str:
+    """
+    Move a clip to another track.
+
+    Parameters:
+    - track_index: The index of the current track
+    - new_track_index: The index of the target track
+    - new_clip_index: The index of the clip slot in the target track
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "move_clip",
+            {
+                "track_index": track_index,
+                "new_track_index": new_track_index,
+                "new_clip_index": new_clip_index,
+            },
+        )
+        track_name = result.get("track_name", f"Track {track_index}")
+        target_track_name = result.get("target_track_name", f"Track {new_track_index}")
+        return f"Moved clip from track {track_index} to track {new_track_index}, slot {new_clip_index}"
+    except Exception as e:
+        logger.error(f"Error moving clip: {str(e)}")
+        return f"Error moving clip: {str(e)}"
+
+
+@mcp.tool()
+def resize_clip(ctx: Context, track_index: int, clip_index: int, length: float) -> str:
+    """
+    Resize clip to new length in beats.
+
+    Parameters:
+    - track_index: The index of the track containing the clip
+    - clip_index: The index of the clip slot
+    - length: The new length in beats
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "resize_clip", {"track_index": track_index, "clip_index": clip_index, "length": length}
+        )
+        return f"Resized clip at track {track_index}, slot {clip_index} to {length} beats"
+    except Exception as e:
+        logger.error(f"Error resizing clip: {str(e)}")
+        return f"Error resizing clip: {str(e)}"
+
+
+@mcp.tool()
+def crop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
+    """
+    Crop clip to its content, removing empty space at start and end.
+
+    Parameters:
+    - track_index: The index of the track containing the clip
+    - clip_index: The index of the clip slot
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "crop_clip", {"track_index": track_index, "clip_index": clip_index}
+        )
+        return f"Cropped clip at track {track_index}, slot {clip_index}"
+    except Exception as e:
+        logger.error(f"Error cropping clip: {str(e)}")
+        return f"Error cropping clip: {str(e)}"
