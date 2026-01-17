@@ -398,12 +398,16 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             device_index = params.get("device_index", 0)
                             preset_name = params.get("preset_name", "")
-                            result = self._load_instrument_preset(track_index, device_index, preset_name)
+                            result = self._load_instrument_preset(
+                                track_index, device_index, preset_name
+                            )
                         elif command_type == "toggle_device_bypass":
                             track_index = params.get("track_index", 0)
                             device_index = params.get("device_index", 0)
                             enabled = params.get("enabled", True)
-                            result = self._toggle_device_bypass(track_index, device_index, enabled)
+                            result = self._toggle_device_bypass(
+                                track_index, device_index, enabled
+                            )
                         elif command_type == "undo":
                             result = self._undo()
                         elif command_type == "redo":
@@ -432,7 +436,18 @@ class AbletonMCP(ControlSurface):
                         elif command_type == "get_clip_notes":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
-                            result = self._get_clip_notes(track_index, clip_index)
+                            from_time = params.get("from_time", 0.0)
+                            from_pitch = params.get("from_pitch", 0)
+                            time_span = params.get("time_span", 999999.0)
+                            pitch_span = params.get("pitch_span", 128)
+                            result = self._get_clip_notes(
+                                track_index,
+                                clip_index,
+                                from_time,
+                                from_pitch,
+                                time_span,
+                                pitch_span,
+                            )
                         elif command_type == "set_clip_follow_action":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -440,11 +455,20 @@ class AbletonMCP(ControlSurface):
                             action_type = params.get("action_type", 0)
                             trigger_time = params.get("trigger_time", 0)
                             clip_index_target = params.get("clip_index_target", 0)
-                            result = self._set_clip_follow_action(track_index, clip_index, action_slot, action_type, trigger_time, clip_index_target)
+                            result = self._set_clip_follow_action(
+                                track_index,
+                                clip_index,
+                                action_slot,
+                                action_type,
+                                trigger_time,
+                                clip_index_target,
+                            )
                         elif command_type == "get_clip_follow_actions":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
-                            result = self._get_clip_follow_actions(track_index, clip_index)
+                            result = self._get_clip_follow_actions(
+                                track_index, clip_index
+                            )
                         elif command_type == "set_master_volume":
                             volume = params.get("volume", 0.75)
                             result = self._set_master_volume(volume)
@@ -456,6 +480,8 @@ class AbletonMCP(ControlSurface):
                             result = self._get_all_tracks()
                         elif command_type == "get_all_scenes":
                             result = self._get_all_scenes()
+                        elif command_type == "get_session_overview":
+                            result = self._get_session_overview()
                         elif command_type == "get_all_clips_in_track":
                             track_index = params.get("track_index", 0)
                             result = self._get_all_clips_in_track(track_index)
@@ -464,19 +490,25 @@ class AbletonMCP(ControlSurface):
                             clip_index = params.get("clip_index", 0)
                             note_indices = params.get("note_indices", [])
                             velocity = params.get("velocity", 100)
-                            result = self._set_note_velocity(track_index, clip_index, note_indices, velocity)
+                            result = self._set_note_velocity(
+                                track_index, clip_index, note_indices, velocity
+                            )
                         elif command_type == "set_note_duration":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             note_indices = params.get("note_indices", [])
                             duration = params.get("duration", 0.25)
-                            result = self._set_note_duration(track_index, clip_index, note_indices, duration)
+                            result = self._set_note_duration(
+                                track_index, clip_index, note_indices, duration
+                            )
                         elif command_type == "set_note_pitch":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             note_indices = params.get("note_indices", [])
                             pitch = params.get("pitch", 60)
-                            result = self._set_note_pitch(track_index, clip_index, note_indices, pitch)
+                            result = self._set_note_pitch(
+                                track_index, clip_index, note_indices, pitch
+                            )
                         elif command_type == "get_clip_envelopes":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -485,7 +517,9 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             source_track_index = params.get("source_track_index", 0)
-                            result = self._mix_clip(track_index, clip_index, source_track_index)
+                            result = self._mix_clip(
+                                track_index, clip_index, source_track_index
+                            )
                         elif command_type == "stretch_clip":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -500,7 +534,12 @@ class AbletonMCP(ControlSurface):
                             clip_index = params.get("clip_index", 0)
                             target_track_index = params.get("target_track_index", 0)
                             target_clip_index = params.get("target_clip_index", 0)
-                            result = self._duplicate_clip_to(track_index, clip_index, target_track_index, target_clip_index)
+                            result = self._duplicate_clip_to(
+                                track_index,
+                                clip_index,
+                                target_track_index,
+                                target_clip_index,
+                            )
                         elif command_type == "group_tracks":
                             track_indices = params.get("track_indices", [])
                             result = self._group_tracks(track_indices)
@@ -511,21 +550,29 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             warp_mode = params.get("warp_mode", 0)
-                            result = self._set_clip_warp_mode(track_index, clip_index, warp_mode)
+                            result = self._set_clip_warp_mode(
+                                track_index, clip_index, warp_mode
+                            )
                         elif command_type == "get_clip_warp_markers":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
-                            result = self._get_clip_warp_markers(track_index, clip_index)
+                            result = self._get_clip_warp_markers(
+                                track_index, clip_index
+                            )
                         elif command_type == "add_warp_marker":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             position = params.get("position", 0.0)
-                            result = self._add_warp_marker(track_index, clip_index, position)
+                            result = self._add_warp_marker(
+                                track_index, clip_index, position
+                            )
                         elif command_type == "delete_warp_marker":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             marker_index = params.get("marker_index", 0)
-                            result = self._delete_warp_marker(track_index, clip_index, marker_index)
+                            result = self._delete_warp_marker(
+                                track_index, clip_index, marker_index
+                            )
 
                         # Put result in queue
                         response_queue.put({"status": "success", "result": result})
@@ -872,9 +919,9 @@ class AbletonMCP(ControlSurface):
 
             result = {"playing": self._song.is_playing}
             return result
-            except Exception as e:
-                self.log_message("Error stopping playback: " + str(e))
-                raise
+        except Exception as e:
+            self.log_message("Error stopping playback: " + str(e))
+            raise
 
     # New device and track control methods
     def _get_device_parameters(self, track_index, device_index):
@@ -892,25 +939,58 @@ class AbletonMCP(ControlSurface):
 
             # Get all parameters from the device
             parameters = []
-            if hasattr(device, "parameters"):
+
+            # Check for alternative Ableton Live 11+ API
+            if hasattr(device, "get_notes"):
+                # Use get_notes() method for Live 11+ compatibility
+                try:
+                    notes_list = device.get_notes()
+                    if notes_list:
+                        for i, note in enumerate(notes_list):
+                            notes.append(
+                                {
+                                    "pitch": note.pitch,
+                                    "start_time": note.start_time,
+                                    "duration": note.duration,
+                                    "velocity": note.velocity,
+                                    "mute": note.mute
+                                    if hasattr(note, "mute")
+                                    else False,
+                                }
+                            )
+                except Exception as e:
+                    self.log_message(
+                        "Error reading notes from device: {}".format(str(e))
+                    )
+            elif hasattr(device, "parameters"):
                 for i, param in enumerate(device.parameters):
                     if param.is_enabled:
                         try:
                             param_info = {
                                 "index": i,
-                                "name": param.name if hasattr(param, "name") else "Parameter {}".format(i),
+                                "name": param.name
+                                if hasattr(param, "name")
+                                else "Parameter {}".format(i),
                                 "value": param.value,
                                 "min": param.min if hasattr(param, "min") else 0.0,
                                 "max": param.max if hasattr(param, "max") else 1.0,
-                                "is_quantized": hasattr(param, "is_quantized") and param.is_quantized,
+                                "is_quantized": hasattr(param, "is_quantized")
+                                and param.is_quantized,
                             }
                             parameters.append(param_info)
                         except Exception as e:
-                            self.log_message("Error reading parameter {}: {}".format(i, str(e)))
+                            self.log_message(
+                                "Error reading parameter {}: {}".format(i, str(e))
+                            )
                             continue
+            elif hasattr(device, "parameters") and not parameters:
+                # Device has parameters attribute but it's empty or inaccessible
+                self.log_message("Device has no accessible parameters")
 
             result = {
-                "device_name": device.name if hasattr(device, "name") else "Device {}".format(device_index),
+                "device_name": device.name
+                if hasattr(device, "name")
+                else "Device {}".format(device_index),
                 "device_index": device_index,
                 "parameters": parameters,
             }
@@ -942,9 +1022,13 @@ class AbletonMCP(ControlSurface):
                 parameter.value = value
 
                 result = {
-                    "device_name": device.name if hasattr(device, "name") else "Device {}".format(device_index),
+                    "device_name": device.name
+                    if hasattr(device, "name")
+                    else "Device {}".format(device_index),
                     "parameter_index": parameter_index,
-                    "parameter_name": parameter.name if hasattr(parameter, "name") else "Parameter {}".format(parameter_index),
+                    "parameter_name": parameter.name
+                    if hasattr(parameter, "name")
+                    else "Parameter {}".format(parameter_index),
                     "value": value,
                 }
                 return result
@@ -964,7 +1048,9 @@ class AbletonMCP(ControlSurface):
             track.mixer_device.volume.value = volume
 
             result = {
-                "track_name": track.name if hasattr(track, "name") else "Track {}".format(track_index),
+                "track_name": track.name
+                if hasattr(track, "name")
+                else "Track {}".format(track_index),
                 "volume": volume,
                 "db": "TODO: convert to dB",
             }
@@ -983,7 +1069,9 @@ class AbletonMCP(ControlSurface):
             track.mute = mute
 
             result = {
-                "track_name": track.name if hasattr(track, "name") else "Track {}".format(track_index),
+                "track_name": track.name
+                if hasattr(track, "name")
+                else "Track {}".format(track_index),
                 "mute": mute,
             }
             return result
@@ -1001,7 +1089,9 @@ class AbletonMCP(ControlSurface):
             track.solo = solo
 
             result = {
-                "track_name": track.name if hasattr(track, "name") else "Track {}".format(track_index),
+                "track_name": track.name
+                if hasattr(track, "name")
+                else "Track {}".format(track_index),
                 "solo": solo,
             }
             return result
@@ -1019,7 +1109,9 @@ class AbletonMCP(ControlSurface):
             track.arm = arm
 
             result = {
-                "track_name": track.name if hasattr(track, "name") else "Track {}".format(track_index),
+                "track_name": track.name
+                if hasattr(track, "name")
+                else "Track {}".format(track_index),
                 "arm": arm,
             }
             return result
@@ -1046,28 +1138,43 @@ class AbletonMCP(ControlSurface):
             # Search through presets to find matching name
             found_preset = None
             for preset in device.presets:
-                if hasattr(preset, "name") and preset.name.lower() == preset_name.lower():
+                if (
+                    hasattr(preset, "name")
+                    and preset.name.lower() == preset_name.lower()
+                ):
                     found_preset = preset
                     break
 
             if found_preset:
                 # Found preset, load it
                 device.presets = found_preset
-                self.log_message("Loaded preset '{}' for device '{}' on track '{}'".format(
-                    preset_name, device.name if hasattr(device, "name") else str(device_index), track.name
-                ))
+                self.log_message(
+                    "Loaded preset '{}' for device '{}' on track '{}'".format(
+                        preset_name,
+                        device.name if hasattr(device, "name") else str(device_index),
+                        track.name,
+                    )
+                )
 
                 result = {
-                    "track_name": track.name if hasattr(track, "name") else "Track {}".format(track_index),
-                    "device_name": device.name if hasattr(device, "name") else "Device {}".format(device_index),
+                    "track_name": track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index),
+                    "device_name": device.name
+                    if hasattr(device, "name")
+                    else "Device {}".format(device_index),
                     "preset_name": preset_name,
                     "loaded": True,
                 }
             else:
                 # Preset not found
-                self.log_message("Preset '{}' not found for device '{}' on track '{}'. Available presets:".format(
-                    preset_name, device.name if hasattr(device, "name") else str(device_index), track.name
-                ))
+                self.log_message(
+                    "Preset '{}' not found for device '{}' on track '{}'. Available presets:".format(
+                        preset_name,
+                        device.name if hasattr(device, "name") else str(device_index),
+                        track.name,
+                    )
+                )
 
                 # List available presets
                 available_presets = []
@@ -1076,8 +1183,12 @@ class AbletonMCP(ControlSurface):
                         available_presets.append(preset.name)
 
                 result = {
-                    "track_name": track.name if hasattr(track, "name") else "Track {}".format(track_index),
-                    "device_name": device.name if hasattr(device, "name") else "Device {}".format(device_index),
+                    "track_name": track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index),
+                    "device_name": device.name
+                    if hasattr(device, "name")
+                    else "Device {}".format(device_index),
                     "preset_name": preset_name,
                     "loaded": False,
                     "error": "Preset not found",
@@ -1167,7 +1278,11 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip_slot.delete_clip()
-            result = {"deleted": True, "track_index": track_index, "clip_index": clip_index}
+            result = {
+                "deleted": True,
+                "track_index": track_index,
+                "clip_index": clip_index,
+            }
             return result
         except Exception as e:
             self.log_message("Error deleting clip: " + str(e))
@@ -1185,7 +1300,11 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip_slot.duplicate_clip()
-            result = {"duplicated": True, "track_index": track_index, "original_clip_index": clip_index}
+            result = {
+                "duplicated": True,
+                "track_index": track_index,
+                "original_clip_index": clip_index,
+            }
             return result
         except Exception as e:
             self.log_message("Error duplicating clip: " + str(e))
@@ -1198,25 +1317,29 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Track index out of range")
             if new_track_index < 0 or new_track_index >= len(self._song.tracks):
                 raise IndexError("New track index out of range")
-            
+
             track = self._song.tracks[track_index]
             new_track = self._song.tracks[new_track_index]
-            
+
             if clip_index < 0 or clip_index >= len(track.clip_slots):
                 raise IndexError("Clip index out of range")
             if new_clip_index < 0 or new_clip_index >= len(new_track.clip_slots):
                 raise IndexError("New clip index out of range")
-            
+
             clip_slot = track.clip_slots[clip_index]
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
-            
+
             new_slot = new_track.clip_slots[new_clip_index]
             if new_slot.has_clip:
                 raise Exception("Target slot already has a clip")
-            
+
             clip_slot.move_to(new_slot)
-            result = {"moved": True, "from": [track_index, clip_index], "to": [new_track_index, new_clip_index]}
+            result = {
+                "moved": True,
+                "from": [track_index, clip_index],
+                "to": [new_track_index, new_clip_index],
+            }
             return result
         except Exception as e:
             self.log_message("Error moving clip: " + str(e))
@@ -1234,16 +1357,19 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             all_notes = list(clip.get_selected_notes() or clip.notes)
             deleted_indices = []
             for idx in sorted(note_indices, reverse=True):
                 if 0 <= idx < len(all_notes):
                     del all_notes[idx]
                     deleted_indices.append(idx)
-            
+
             clip.notes = all_notes
-            result = {"deleted_count": len(deleted_indices), "deleted_indices": deleted_indices}
+            result = {
+                "deleted_count": len(deleted_indices),
+                "deleted_indices": deleted_indices,
+            }
             return result
         except Exception as e:
             self.log_message("Error deleting notes: " + str(e))
@@ -1262,7 +1388,12 @@ class AbletonMCP(ControlSurface):
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
             clip.quantize(amount, True)
-            result = {"quantized": True, "track_index": track_index, "clip_index": clip_index, "amount": amount}
+            result = {
+                "quantized": True,
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "amount": amount,
+            }
             return result
         except Exception as e:
             self.log_message("Error quantizing clip: " + str(e))
@@ -1283,9 +1414,16 @@ class AbletonMCP(ControlSurface):
             notes = list(clip.notes)
             transposed_notes = []
             for note in notes:
-                transposed_notes.append((note[0] + semitones, note[1], note[2], note[3], note[4]))
+                transposed_notes.append(
+                    (note[0] + semitones, note[1], note[2], note[3], note[4])
+                )
             clip.notes = tuple(transposed_notes)
-            result = {"transposed": True, "track_index": track_index, "clip_index": clip_index, "semitones": semitones}
+            result = {
+                "transposed": True,
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "semitones": semitones,
+            }
             return result
         except Exception as e:
             self.log_message("Error transposing clip: " + str(e))
@@ -1361,7 +1499,10 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Scene index out of range")
             self._song.duplicate_scene(scene_index)
             new_scene_index = len(self._song.scenes) - 1
-            result = {"original_scene_index": scene_index, "new_scene_index": new_scene_index}
+            result = {
+                "original_scene_index": scene_index,
+                "new_scene_index": new_scene_index,
+            }
             return result
         except Exception as e:
             self.log_message("Error duplicating scene: " + str(e))
@@ -1450,7 +1591,9 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting monitoring state: " + str(e))
             raise
 
-    def _add_automation_point(self, track_index, clip_index, device_index, parameter_index, time_val, value):
+    def _add_automation_point(
+        self, track_index, clip_index, device_index, parameter_index, time_val, value
+    ):
         """Add an automation point to a clip"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1462,15 +1605,15 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             if device_index < 0 or device_index >= len(track.devices):
                 raise IndexError("Device index out of range")
             device = track.devices[device_index]
-            
+
             if parameter_index < 0 or parameter_index >= len(device.parameters):
                 raise IndexError("Parameter index out of range")
             parameter = device.parameters[parameter_index]
-            
+
             clip.create_automation_event(parameter, time_val, value)
             result = {"added": True, "time": time_val, "value": value}
             return result
@@ -1490,15 +1633,15 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             if device_index < 0 or device_index >= len(track.devices):
                 raise IndexError("Device index out of range")
             device = track.devices[device_index]
-            
+
             if parameter_index < 0 or parameter_index >= len(device.parameters):
                 raise IndexError("Parameter index out of range")
             parameter = device.parameters[parameter_index]
-            
+
             clip.clear_automation_envelope(parameter)
             result = {"cleared": True}
             return result
@@ -1547,16 +1690,20 @@ class AbletonMCP(ControlSurface):
             track = self._song.tracks[track_index]
             if device_index < 0 or device_index >= len(track.devices):
                 raise IndexError("Device index out of range")
-            
+
             if new_position < 0 or new_position >= len(track.devices):
                 raise IndexError("New device position out of range")
-            
+
             device = track.devices[device_index]
             devices_list = list(track.devices)
             devices_list.pop(device_index)
             devices_list.insert(new_position, device)
-            
-            result = {"moved": True, "from_index": device_index, "to_index": new_position}
+
+            result = {
+                "moved": True,
+                "from_index": device_index,
+                "to_index": new_position,
+            }
             return result
         except Exception as e:
             self.log_message("Error moving device: " + str(e))
@@ -1589,7 +1736,11 @@ class AbletonMCP(ControlSurface):
             send = self._song.return_tracks[send_index]
             send.amount = amount
 
-            result = {"track_index": track_index, "send_index": send_index, "amount": amount}
+            result = {
+                "track_index": track_index,
+                "send_index": send_index,
+                "amount": amount,
+            }
             return result
         except Exception as e:
             self.log_message("Error setting send amount: " + str(e))
@@ -1612,7 +1763,11 @@ class AbletonMCP(ControlSurface):
             bypass_param = None
             if hasattr(device, "parameters"):
                 for param in device.parameters:
-                    if param.is_enabled and hasattr(param, "name") and "bypass" in param.name.lower():
+                    if (
+                        param.is_enabled
+                        and hasattr(param, "name")
+                        and "bypass" in param.name.lower()
+                    ):
                         bypass_param = param
                         break
 
@@ -1621,8 +1776,10 @@ class AbletonMCP(ControlSurface):
                 result = {
                     "track_index": track_index,
                     "device_index": device_index,
-                    "device_name": device.name if hasattr(device, "name") else "Device {}".format(device_index),
-                    "bypass_enabled": bypass_param.value
+                    "device_name": device.name
+                    if hasattr(device, "name")
+                    else "Device {}".format(device_index),
+                    "bypass_enabled": bypass_param.value,
                 }
             else:
                 raise Exception("Device has no bypass parameter")
@@ -1659,7 +1816,7 @@ class AbletonMCP(ControlSurface):
             result = {
                 "bars": int(position.bars),
                 "beats": position.beats,
-                "sub_division": position.sub_division
+                "sub_division": position.sub_division,
             }
             return result
         except Exception as e:
@@ -1727,8 +1884,10 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error setting loop: " + str(e))
             raise
 
-    def _get_clip_notes(self, track_index, clip_index):
-        """Get all notes from a clip"""
+    def _get_clip_notes(
+        self, track_index, clip_index, from_time, from_pitch, time_span, pitch_span
+    ):
+        """Get all notes from a clip with parameters for Ableton Live 11+ API"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")
@@ -1739,24 +1898,58 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
+            # Try to access notes with better error handling
             notes = []
-            for note in clip.notes:
-                notes.append({
-                    "pitch": note[0],
-                    "start_time": note[1],
-                    "duration": note[2],
-                    "velocity": note[3],
-                    "mute": note[4]
-                })
-            
+            if hasattr(clip, "notes") and clip.notes:
+                for note in clip.notes:
+                    notes.append(
+                        {
+                            "pitch": note[0],
+                            "start_time": note[1],
+                            "duration": note[2],
+                            "velocity": note[3],
+                            "mute": note[4] if len(note) > 4 else False,
+                        }
+                    )
+            elif hasattr(clip, "get_notes"):
+                # Alternative API for Ableton Live 11+
+                # Use provided parameters or defaults
+                notes_list = clip.get_notes(
+                    from_time, from_pitch, time_span, pitch_span
+                )
+                if notes_list:
+                    for i, note in enumerate(notes_list):
+                        notes.append(
+                            {
+                                "pitch": note.pitch,
+                                "start_time": note.start_time,
+                                "duration": note.duration,
+                                "velocity": note.velocity,
+                                "mute": note.mute if hasattr(note, "mute") else False,
+                            }
+                        )
+
+            if not notes:
+                raise Exception(
+                    "Unable to access clip notes - clip may be empty or not compatible"
+                )
+
             result = {"notes": notes, "count": len(notes)}
             return result
         except Exception as e:
             self.log_message("Error getting clip notes: " + str(e))
             raise
 
-    def _set_clip_follow_action(self, track_index, clip_index, action_slot, action_type, trigger_time, clip_index_target):
+    def _set_clip_follow_action(
+        self,
+        track_index,
+        clip_index,
+        action_slot,
+        action_type,
+        trigger_time,
+        clip_index_target,
+    ):
         """Set clip follow action"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -1768,8 +1961,14 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            clip.set_follow_action(action_slot, action_type, trigger_time, clip_index_target)
-            result = {"set": True, "action_slot": action_slot, "action_type": action_type}
+            clip.set_follow_action(
+                action_slot, action_type, trigger_time, clip_index_target
+            )
+            result = {
+                "set": True,
+                "action_slot": action_slot,
+                "action_type": action_type,
+            }
             return result
         except Exception as e:
             self.log_message("Error setting clip follow action: " + str(e))
@@ -1796,7 +1995,9 @@ class AbletonMCP(ControlSurface):
     def _set_master_volume(self, volume):
         """Set master track volume (normalized 0.0-1.0)"""
         try:
-            self._song.master_track.mixer_device.volume.value = max(0.0, min(1.0, volume))
+            self._song.master_track.mixer_device.volume.value = max(
+                0.0, min(1.0, volume)
+            )
             result = {"volume": volume}
             return result
         except Exception as e:
@@ -1817,16 +2018,83 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error getting master track info: " + str(e))
             raise
 
+    def _get_session_overview(self):
+        """Get complete session overview combining all session information"""
+        try:
+            result = {}
+
+            # Add session metadata
+            result["tempo"] = self._song.tempo
+            result["signature_numerator"] = self._song.signature_numerator
+            result["signature_denominator"] = self._song.signature_denominator
+
+            # Add master track info
+            master = self._song.master_track
+            result["master_track"] = {
+                "name": "Master",
+                "volume": master.mixer_device.volume.value,
+                "panning": master.mixer_device.panning.value,
+            }
+
+            # Add all tracks
+            tracks_info = []
+            for i, track in enumerate(self._song.tracks):
+                tracks_info.append(
+                    {
+                        "index": i,
+                        "name": track.name if hasattr(track, "name") else f"Track {i}",
+                        "is_audio": track.has_audio_input,
+                        "is_midi": track.has_midi_input,
+                        "mute": track.mute,
+                        "solo": track.solo,
+                        "arm": track.arm,
+                    }
+                )
+            result["tracks"] = tracks_info
+            result["track_count"] = len(tracks_info)
+
+            # Add return tracks
+            returns_info = []
+            for i, track in enumerate(self._song.return_tracks):
+                returns_info.append(
+                    {
+                        "index": i,
+                        "name": track.name if hasattr(track, "name") else f"Return {i}",
+                        "volume": track.mixer_device.volume.value,
+                    }
+                )
+            result["return_tracks"] = returns_info
+            result["return_track_count"] = len(returns_info)
+
+            # Add all scenes
+            scenes_info = []
+            for i, scene in enumerate(self._song.scenes):
+                scenes_info.append(
+                    {
+                        "index": i,
+                        "name": scene.name if hasattr(scene, "name") else f"Scene {i}",
+                    }
+                )
+            result["scenes"] = scenes_info
+            result["scene_count"] = len(scenes_info)
+
+            return result
+        except Exception as e:
+            self.log_message("Error getting session overview: " + str(e))
+            raise
+
     def _get_return_tracks(self):
         """Get all return tracks"""
         try:
             returns = []
             for i, track in enumerate(self._song.return_tracks):
-                returns.append({
-                    "index": i,
-                    "name": track.name if hasattr(track, "name") else f"Return {i}",
-                    "volume": track.mixer_device.volume.value,
-                })
+                returns.append(
+                    {
+                        "index": i,
+                        "name": track.name if hasattr(track, "name") else f"Return {i}",
+                        "volume": track.mixer_device.volume.value,
+                    }
+                )
             result = {"return_tracks": returns, "count": len(returns)}
             return result
         except Exception as e:
@@ -1838,15 +2106,17 @@ class AbletonMCP(ControlSurface):
         try:
             tracks_info = []
             for i, track in enumerate(self._song.tracks):
-                tracks_info.append({
-                    "index": i,
-                    "name": track.name if hasattr(track, "name") else f"Track {i}",
-                    "is_audio": track.has_audio_input,
-                    "is_midi": track.has_midi_input,
-                    "mute": track.mute,
-                    "solo": track.solo,
-                    "arm": track.arm,
-                })
+                tracks_info.append(
+                    {
+                        "index": i,
+                        "name": track.name if hasattr(track, "name") else f"Track {i}",
+                        "is_audio": track.has_audio_input,
+                        "is_midi": track.has_midi_input,
+                        "mute": track.mute,
+                        "solo": track.solo,
+                        "arm": track.arm,
+                    }
+                )
             result = {"tracks": tracks_info, "count": len(tracks_info)}
             return result
         except Exception as e:
@@ -1858,10 +2128,12 @@ class AbletonMCP(ControlSurface):
         try:
             scenes_info = []
             for i, scene in enumerate(self._song.scenes):
-                scenes_info.append({
-                    "index": i,
-                    "name": scene.name if hasattr(scene, "name") else f"Scene {i}",
-                })
+                scenes_info.append(
+                    {
+                        "index": i,
+                        "name": scene.name if hasattr(scene, "name") else f"Scene {i}",
+                    }
+                )
             result = {"scenes": scenes_info, "count": len(scenes_info)}
             return result
         except Exception as e:
@@ -1877,12 +2149,16 @@ class AbletonMCP(ControlSurface):
             clips_info = []
             for i, slot in enumerate(track.clip_slots):
                 if slot.has_clip:
-                    clips_info.append({
-                        "index": i,
-                        "name": slot.clip.name if hasattr(slot.clip, "name") else f"Clip {i}",
-                        "length": slot.clip.length,
-                        "is_playing": slot.clip.is_playing,
-                    })
+                    clips_info.append(
+                        {
+                            "index": i,
+                            "name": slot.clip.name
+                            if hasattr(slot.clip, "name")
+                            else f"Clip {i}",
+                            "length": slot.clip.length,
+                            "is_playing": slot.clip.is_playing,
+                        }
+                    )
             result = {"clips": clips_info, "count": len(clips_info)}
             return result
         except Exception as e:
@@ -1901,14 +2177,14 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             notes = list(clip.notes)
             for idx in note_indices:
                 if 0 <= idx < len(notes):
                     note = list(notes[idx])
                     note[3] = velocity
                     notes[idx] = tuple(note)
-            
+
             clip.notes = tuple(notes)
             result = {"set_count": len(note_indices), "velocity": velocity}
             return result
@@ -1928,14 +2204,14 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             notes = list(clip.notes)
             for idx in note_indices:
                 if 0 <= idx < len(notes):
                     note = list(notes[idx])
                     note[2] = duration
                     notes[idx] = tuple(note)
-            
+
             clip.notes = tuple(notes)
             result = {"set_count": len(note_indices), "duration": duration}
             return result
@@ -1955,14 +2231,14 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             notes = list(clip.notes)
             for idx in note_indices:
                 if 0 <= idx < len(notes):
                     note = list(notes[idx])
                     note[0] = pitch
                     notes[idx] = tuple(note)
-            
+
             clip.notes = tuple(notes)
             result = {"set_count": len(note_indices), "pitch": pitch}
             return result
@@ -1982,7 +2258,7 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             result = {"envelopes": []}
             return result
         except Exception as e:
@@ -1996,14 +2272,14 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Track index out of range")
             if source_track_index < 0 or source_track_index >= len(self._song.tracks):
                 raise IndexError("Source track index out of range")
-            
+
             track = self._song.tracks[track_index]
             if clip_index < 0 or clip_index >= len(track.clip_slots):
                 raise IndexError("Clip index out of range")
             clip_slot = track.clip_slots[clip_index]
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
-            
+
             result = {"mixed": True}
             return result
         except Exception as e:
@@ -2029,7 +2305,9 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error stretching clip: " + str(e))
             raise
 
-    def _duplicate_clip_to(self, track_index, clip_index, target_track_index, target_clip_index):
+    def _duplicate_clip_to(
+        self, track_index, clip_index, target_track_index, target_clip_index
+    ):
         """Duplicate clip to specific slot"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -2048,7 +2326,9 @@ class AbletonMCP(ControlSurface):
                 raise Exception("No clip in slot")
 
             target_track = self._song.tracks[target_track_index]
-            if target_clip_index < 0 or target_clip_index >= len(target_track.clip_slots):
+            if target_clip_index < 0 or target_clip_index >= len(
+                target_track.clip_slots
+            ):
                 raise IndexError("Target clip index out of range")
 
             target_slot = target_track.clip_slots[target_clip_index]
@@ -2134,26 +2414,30 @@ class AbletonMCP(ControlSurface):
             self.log_message(traceback.format_exc())
             raise
 
-    def _duplicate_clip_to(self, track_index, clip_index, target_track_index, target_clip_index):
+    def _duplicate_clip_to(
+        self, track_index, clip_index, target_track_index, target_clip_index
+    ):
         """Duplicate clip to specific slot"""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")
             if target_track_index < 0 or target_track_index >= len(self._song.tracks):
                 raise IndexError("Target track index out of range")
-            
+
             track = self._song.tracks[track_index]
             if clip_index < 0 or clip_index >= len(track.clip_slots):
                 raise IndexError("Clip index out of range")
             clip_slot = track.clip_slots[clip_index]
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
-            
+
             target_track = self._song.tracks[target_track_index]
-            if target_clip_index < 0 or target_clip_index >= len(target_track.clip_slots):
+            if target_clip_index < 0 or target_clip_index >= len(
+                target_track.clip_slots
+            ):
                 raise IndexError("Target clip index out of range")
             target_slot = target_track.clip_slots[target_clip_index]
-            
+
             clip_slot.duplicate_clip_to(target_slot)
             result = {"duplicated": True, "to": [target_track_index, target_clip_index]}
             return result
@@ -2167,7 +2451,7 @@ class AbletonMCP(ControlSurface):
             for track_index in track_indices:
                 if track_index < 0 or track_index >= len(self._song.tracks):
                     raise IndexError("Track index out of range")
-            
+
             self._song.group_selected_tracks(list(track_indices))
             result = {"grouped_count": len(track_indices)}
             return result
@@ -2219,7 +2503,7 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
-            
+
             result = {"warp_markers": []}
             return result
         except Exception as e:

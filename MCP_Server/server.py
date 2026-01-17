@@ -6,12 +6,97 @@ import logging
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
+import time
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("AbletonMCPServer")
+
+# ============================================================================
+# BROWSER CACHING SYSTEM
+# ============================================================================
+
+# Cache structure: {category_type: {"data": result_dict, "timestamp": float}}
+# TTL: Cache entries expire after 1 hour (3600 seconds)
+BROWSER_CACHE_TTL = 3600.0  # 1 hour in seconds
+_browser_cache: Dict[str, Dict[str, Any]] = {}
+
+
+def is_cache_valid(category_type: str) -> bool:
+    """Check if cached data for a category is still valid (not expired)"""
+    if category_type not in _browser_cache:
+        return False
+
+    cache_entry = _browser_cache[category_type]
+    timestamp = cache_entry.get("timestamp", 0)
+
+    # Check if cache is still valid (within TTL)
+    return (time.time() - timestamp) < BROWSER_CACHE_TTL
+
+
+def update_cache(category_type: str, data: Dict[str, Any]) -> None:
+    """Update cache for a specific category type"""
+    _browser_cache[category_type] = {"data": data, "timestamp": time.time()}
+    logger.info(f"Updated browser cache for category: {category_type}")
+
+
+def get_cache(category_type: str) -> Union[Dict[str, Any], None]:
+    """Get cached data for a specific category type, returns None if expired or not found"""
+    if not is_cache_valid(category_type):
+        return None
+    return _browser_cache[category_type].get("data")
+
+
+def clear_browser_cache(category_type: str = None) -> None:
+    """Clear cache for a specific category or all categories"""
+    if category_type:
+        if category_type in _browser_cache:
+            del _browser_cache[category_type]
+            logger.info(f"Cleared browser cache for category: {category_type}")
+    else:
+        _browser_cache.clear()
+        logger.info("Cleared all browser cache")
+
+
+def get_cache_stats() -> Dict[str, Any]:
+    """Get statistics about the current browser cache"""
+    current_time = time.time()
+    cache_info = {}
+
+    for category_type, entry in _browser_cache.items():
+        age = current_time - entry["timestamp"]
+        is_valid = age < BROWSER_CACHE_TTL
+        cache_info[category_type] = {
+            "cached": True,
+            "age_seconds": round(age, 2),
+            "age_readable": format_age(age),
+            "valid": is_valid,
+            "expires_in": round(max(0, BROWSER_CACHE_TTL - age), 2),
+        }
+
+    return {
+        "cache_entries": len(_browser_cache),
+        "ttl_seconds": BROWSER_CACHE_TTL,
+        "ttl_readable": format_age(BROWSER_CACHE_TTL),
+        "categories": cache_info,
+    }
+
+
+def format_age(seconds: float) -> str:
+    """Format age in seconds to human-readable format"""
+    if seconds < 60:
+        return f"{round(seconds, 1)} seconds"
+    elif seconds < 3600:
+        minutes = seconds / 60
+        return f"{round(minutes, 1)} minutes"
+    elif seconds < 86400:
+        hours = seconds / 3600
+        return f"{round(hours, 1)} hours"
+    else:
+        days = seconds / 86400
+        return f"{round(days, 1)} days"
 
 
 @dataclass
@@ -327,7 +412,7 @@ def get_ableton_connection():
 
 @mcp.tool()
 def get_session_info(ctx: Context) -> str:
-    """Get detailed information about the current Ableton session"""
+    """Get detailed information about current Ableton session"""
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_session_info")
@@ -335,6 +420,28 @@ def get_session_info(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error getting session info from Ableton: {str(e)}")
         return f"Error getting session info: {str(e)}"
+
+
+@mcp.tool()
+def get_session_overview(ctx: Context) -> str:
+    """
+    Get a complete overview of the Ableton session in a single call.
+
+    Combines information from:
+    - Session metadata (tempo, time signature)
+    - All tracks (names, types, mute/solo/arm states)
+    - Master track information
+    - All scenes (names and counts)
+
+    This is more efficient than querying each track individually.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_session_overview")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting session overview: {str(e)}")
+        return f"Error getting session overview: {str(e)}"
 
 
 @mcp.tool()
@@ -933,11 +1040,51 @@ def play_arrangement_sequence(ctx: Context) -> str:
 def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
     """
     Get a hierarchical tree of browser categories from Ableton.
+    Uses caching to speed up repeated requests (cache TTL: 1 hour).
 
     Parameters:
     - category_type: Type of categories to get ('all', 'instruments', 'sounds', 'drums', 'audio_effects', 'midi_effects')
     """
     try:
+        # Check cache first
+        cached_data = get_cache(category_type)
+        if cached_data:
+            logger.info(f"Returning cached browser tree for category: {category_type}")
+
+            # Format cached data
+            total_folders = cached_data.get("total_folders", 0)
+            formatted_output = f"Browser tree for '{category_type}' (CACHED - showing {total_folders} folders):\n\n"
+
+            def format_tree(item, indent=0):
+                output = ""
+                if item:
+                    prefix = "  " * indent
+                    name = item.get("name", "Unknown")
+                    path = item.get("path", "")
+                    has_more = item.get("has_more", False)
+
+                    # Add this item
+                    output += f"{prefix}• {name}"
+                    if path:
+                        output += f" (path: {path})"
+                    if has_more:
+                        output += " [...]"
+                    output += "\n"
+
+                    # Add children
+                    for child in item.get("children", []):
+                        output += format_tree(child, indent + 1)
+                return output
+
+            # Format each category
+            for category in cached_data.get("categories", []):
+                formatted_output += format_tree(category)
+                formatted_output += "\n"
+
+            return formatted_output
+
+        # Cache miss - fetch from Ableton
+        logger.info(f"Cache miss for category: {category_type}, fetching from Ableton")
         ableton = get_ableton_connection()
         result = ableton.send_command(
             "get_browser_tree", {"category_type": category_type}
@@ -950,6 +1097,10 @@ def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
                 f"No categories found for '{category_type}'. "
                 f"Available browser categories: {', '.join(available_cats)}"
             )
+
+        # Update cache with fresh data
+        update_cache(category_type, result)
+        logger.info(f"Cached browser tree for category: {category_type}")
 
         # Format the tree in a more readable way
         total_folders = result.get("total_folders", 0)
@@ -991,7 +1142,7 @@ def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
             return f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again."
         elif "Could not access Live application" in error_msg:
             logger.error(f"Could not access Live application: {error_msg}")
-            return f"Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded."
+            return f"Error: Could not access Ableton Live application. Make sure Ableton Live is running and Remote Script is loaded."
         else:
             logger.error(f"Error getting browser tree: {error_msg}")
             return f"Error getting browser tree: {error_msg}"
@@ -1037,6 +1188,70 @@ def get_browser_items_at_path(ctx: Context, path: str) -> str:
         else:
             logger.error(f"Error getting browser items at path: {error_msg}")
             return f"Error getting browser items at path: {error_msg}"
+
+
+@mcp.tool()
+def cache_info(ctx: Context) -> str:
+    """
+    Get information about the browser cache.
+
+    Shows cache statistics including number of cached entries,
+    time-to-live (TTL), and details for each cached category.
+    """
+    try:
+        stats = get_cache_stats()
+
+        output = "Browser Cache Information\n"
+        output += "=" * 50 + "\n\n"
+
+        if stats["cache_entries"] == 0:
+            output += "Cache is empty. No browser data has been cached yet.\n"
+        else:
+            output += f"Total cached entries: {stats['cache_entries']}\n"
+            output += f"Cache TTL (Time-To-Live): {stats['ttl_readable']}\n\n"
+
+            output += "Cached Categories:\n"
+            output += "-" * 50 + "\n"
+
+            for category_type, info in stats["categories"].items():
+                status = "✓ VALID" if info["valid"] else "✗ EXPIRED"
+                output += f"\n{category_type.upper()}:\n"
+                output += f"  Status: {status}\n"
+                output += f"  Age: {info['age_readable']}\n"
+                output += f"  Expires in: {format_age(info['expires_in'])}\n"
+
+        output += "\n" + "=" * 50
+        return output
+    except Exception as e:
+        logger.error(f"Error getting cache info: {str(e)}")
+        return f"Error getting cache info: {str(e)}"
+
+
+@mcp.tool()
+def clear_cache(ctx: Context, category_type: str = None) -> str:
+    """
+    Clear browser cache to force refresh on next request.
+
+    Parameters:
+    - category_type: Optional category to clear ('instruments', 'sounds', 'drums', 'audio_effects', 'midi_effects').
+                   If not provided, clears all cached categories.
+    """
+    try:
+        if category_type:
+            # Clear specific category
+            if category_type not in _browser_cache:
+                return f"Warning: Category '{category_type}' is not cached. Nothing to clear."
+
+            clear_browser_cache(category_type)
+            return f"Cleared browser cache for category: {category_type}"
+        else:
+            # Clear all cache
+            num_cleared = len(_browser_cache)
+            clear_browser_cache()
+            return f"Cleared all browser cache entries ({num_cleared} categories)"
+    except Exception as e:
+        logger.error(f"Error clearing cache: {str(e)}")
+        return f"Error clearing cache: {str(e)}"
 
 
 @mcp.tool()
@@ -2036,18 +2251,38 @@ def set_loop(ctx: Context, start_bar: int, end_bar: int, enabled: bool = True) -
 
 
 @mcp.tool()
-def get_clip_notes(ctx: Context, track_index: int, clip_index: int) -> str:
+def get_clip_notes(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    from_time: float = 0.0,
+    from_pitch: int = 0,
+    time_span: float = 999999.0,
+    pitch_span: int = 128,
+) -> str:
     """
     Get all notes from a clip.
 
     Parameters:
     - track_index: The index of the track
     - clip_index: The index of the clip slot
+    - from_time: Start time in beats (default: 0.0)
+    - from_pitch: Starting pitch note number (default: 0)
+    - time_span: Duration range in beats (default: 999999.0)
+    - pitch_span: Pitch range in MIDI notes (default: 128)
     """
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command(
-            "get_clip_notes", {"track_index": track_index, "clip_index": clip_index}
+            "get_clip_notes",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "from_time": from_time,
+                "from_pitch": from_pitch,
+                "time_span": time_span,
+                "pitch_span": pitch_span,
+            },
         )
         notes = result.get("notes", [])
         return json.dumps(
@@ -2592,7 +2827,9 @@ if __name__ == "__main__":
 
 
 @mcp.tool()
-def move_clip(ctx: Context, track_index: int, new_track_index: int, new_clip_index: int) -> str:
+def move_clip(
+    ctx: Context, track_index: int, new_track_index: int, new_clip_index: int
+) -> str:
     """
     Move a clip to another track.
 
@@ -2632,9 +2869,12 @@ def resize_clip(ctx: Context, track_index: int, clip_index: int, length: float) 
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command(
-            "resize_clip", {"track_index": track_index, "clip_index": clip_index, "length": length}
+            "resize_clip",
+            {"track_index": track_index, "clip_index": clip_index, "length": length},
         )
-        return f"Resized clip at track {track_index}, slot {clip_index} to {length} beats"
+        return (
+            f"Resized clip at track {track_index}, slot {clip_index} to {length} beats"
+        )
     except Exception as e:
         logger.error(f"Error resizing clip: {str(e)}")
         return f"Error resizing clip: {str(e)}"
@@ -2662,9 +2902,28 @@ def crop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
 
 @mcp.tool()
 def delete_device(ctx: Context, track_index: int, device_index: int) -> str:
+    """
+    Delete a device from a track.
+
+    Parameters:
+    - track_index: The index of the track
+    - device_index: The index of the device to delete
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "delete_device", {"track_index": track_index, "device_index": device_index}
+        )
+        return f"Deleted device at track {track_index}, index {device_index}"
+    except Exception as e:
+        logger.error(f"Error deleting device: {str(e)}")
+        return f"Error deleting device: {str(e)}"
+
 
 @mcp.tool()
-def move_clip(ctx: Context, track_index: int, new_track_index: int, new_clip_index: int) -> str:
+def move_clip(
+    ctx: Context, track_index: int, new_track_index: int, new_clip_index: int
+) -> str:
     """
     Move a clip to another track.
 
@@ -2704,9 +2963,12 @@ def resize_clip(ctx: Context, track_index: int, clip_index: int, length: float) 
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command(
-            "resize_clip", {"track_index": track_index, "clip_index": clip_index, "length": length}
+            "resize_clip",
+            {"track_index": track_index, "clip_index": clip_index, "length": length},
         )
-        return f"Resized clip at track {track_index}, slot {clip_index} to {length} beats"
+        return (
+            f"Resized clip at track {track_index}, slot {clip_index} to {length} beats"
+        )
     except Exception as e:
         logger.error(f"Error resizing clip: {str(e)}")
         return f"Error resizing clip: {str(e)}"
@@ -2731,8 +2993,11 @@ def crop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
         logger.error(f"Error cropping clip: {str(e)}")
         return f"Error cropping clip: {str(e)}"
 
+
 @mcp.tool()
-def duplicate_clip_to(ctx: Context, track_index: int, target_track_index: int, target_clip_index: int) -> str:
+def duplicate_clip_to(
+    ctx: Context, track_index: int, target_track_index: int, target_clip_index: int
+) -> str:
     """
     Duplicate clip to specific slot on another track.
 
@@ -2751,7 +3016,9 @@ def duplicate_clip_to(ctx: Context, track_index: int, target_track_index: int, t
                 "target_clip_index": target_clip_index,
             },
         )
-        return f"Duplicated clip to track {target_track_index}, slot {target_clip_index}"
+        return (
+            f"Duplicated clip to track {target_track_index}, slot {target_clip_index}"
+        )
     except Exception as e:
         logger.error(f"Error duplicating clip to: {str(e)}")
         return f"Error duplicating clip to: {str(e)}"
