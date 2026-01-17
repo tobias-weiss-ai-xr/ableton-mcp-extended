@@ -209,10 +209,13 @@ class AbletonConnection:
             "set_clip_name",
             "set_clip_loop",
             "set_clip_launch_mode",
+            "set_clip_follow_action",
+            "get_clip_follow_actions",
             "create_scene",
             "delete_scene",
             "duplicate_scene",
             "set_scene_name",
+            "fire_scene",
             "set_tempo",
             "set_time_signature",
             "set_metronome",
@@ -223,7 +226,7 @@ class AbletonConnection:
             "start_recording",
             "stop_recording",
             "set_track_monitoring_state",
-            "load_instrument_or_effect",
+            "load_browser_item",
             "get_device_parameters",
             "set_device_parameter",
             "add_automation_point",
@@ -231,15 +234,12 @@ class AbletonConnection:
             "duplicate_device",
             "delete_device",
             "move_device",
-            "set_track_volume",
-            "set_track_pan",
-            "set_track_mute",
-            "set_track_solo",
-            "set_track_arm",
-            "set_send_amount",
-            "load_instrument_preset",
+            "toggle_device_bypass",
             "undo",
             "redo",
+            "crop_clip",
+            "resize_clip",
+            "duplicate_clip_to",
             "get_playhead_position",
             "set_playhead_position",
             "create_locator",
@@ -247,6 +247,28 @@ class AbletonConnection:
             "jump_to_locator",
             "set_loop",
             "get_clip_notes",
+            "set_master_volume",
+            "get_master_track_info",
+            "get_return_tracks",
+            "get_all_tracks",
+            "get_all_scenes",
+            "get_session_overview",
+            "get_all_clips_in_track",
+            "set_note_velocity",
+            "set_note_duration",
+            "set_note_pitch",
+            "get_clip_envelopes",
+            "mix_clip",
+            "stretch_clip",
+            "crop_clip",
+            "duplicate_clip_to",
+            "group_tracks",
+            "ungroup_tracks",
+            "set_clip_warp_mode",
+            "get_clip_warp_markers",
+            "add_warp_marker",
+            "delete_warp_marker",
+            "reload_script",
         ]
 
         try:
@@ -3048,3 +3070,63 @@ def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) ->
     except Exception as e:
         logger.error(f"Error setting clip name: {str(e)}")
         return f"Error setting clip name: {str(e)}"
+
+
+@mcp.tool()
+def reload_remote_script(ctx: Context) -> str:
+    """
+    Reload AbletonMCP Remote Script in Ableton Live.
+
+    This allows you to reload the Remote Script without manually
+    restarting Ableton Live.
+
+    Usage: python scripts/util/reload_remote_script.py
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("reload_script")
+
+        if result.get("status") == "success":
+            return (
+                "✅ Reload command sent\n"
+                "\n⚠️  Please reload Remote Script manually in Ableton Live:\n"
+                "   1. Go to: Preferences → Link, Tempo & MIDI\n"
+                "   2. Find 'AbletonMCP' in the Control Surface list\n"
+                "   3. Select it, then click 'Reload'\n"
+                "\n💡 Alternative: Restart Ableton Live (faster, more reliable)\n"
+            )
+        else:
+            return f"❌ Error: {result.get('message', 'Unknown error')}"
+    except Exception as e:
+        logger.error(f"Error reloading Remote Script: {str(e)}")
+        return f"Error: {str(e)}"
+
+
+@mcp.tool()
+def reload_remote_script(ctx: Context) -> str:
+    """
+    Reload AbletonMCP Remote Script in Ableton Live.
+
+    This allows you to reload the Remote Script without manually
+    restarting Ableton Live.
+
+    Usage: python scripts/util/reload_remote_script.py
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("reload_script")
+
+        if result.get("status") == "success":
+            return (
+                "✅ Reload command sent\n"
+                "\n⚠️  Please reload Remote Script manually in Ableton Live:\n"
+                "   1. Go to: Preferences → Link, Tempo & MIDI\n"
+                "   2. Find 'AbletonMCP' in the Control Surface list\n"
+                "   3. Select it, then click 'Reload'\n"
+                "\n💡 Alternative: Restart Ableton Live (faster, more reliable)\n"
+            )
+        else:
+            return f"❌ Error: {result.get('message', 'Unknown error')}"
+    except Exception as e:
+        logger.error(f"Error reloading Remote Script: {str(e)}")
+        return f"Error: {str(e)}"
