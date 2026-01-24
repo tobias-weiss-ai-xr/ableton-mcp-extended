@@ -130,10 +130,10 @@ class AbletonConnection:
             finally:
                 self.sock = None
 
-    def receive_full_response(self, sock, buffer_size=8192):
+    def receive_full_response(self, sock, buffer_size=32768):
         """Receive the complete response, potentially in multiple chunks"""
         chunks = []
-        sock.settimeout(15.0)  # Increased timeout for operations that might take longer
+        sock.settimeout(30.0)  # Increased timeout for large browser responses
 
         try:
             while True:
@@ -359,6 +359,11 @@ mcp = FastMCP(
 
 # Global connection for resources
 _ableton_connection = None
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("MCP_Server.server:mcp", host="127.0.0.1", port=8000, reload=True)
 
 
 def get_ableton_connection():
