@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
 import time
+from datetime import datetime, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -3101,3 +3102,604 @@ def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) ->
     except Exception as e:
         logger.error(f"Error setting clip name: {str(e)}")
         return f"Error setting clip name: {str(e)}"
+
+
+@mcp.tool()
+def save_session_template(ctx: Context, output_path: str) -> str:
+    """
+    Save the current Ableton session as a JSON template file.
+
+    Captures:
+    - Session metadata (tempo, time signature, metronome)
+    - Master track information
+    - All tracks (MIDI and audio) with properties
+    - All devices on each track with parameters
+    - All clips with MIDI notes
+
+    Parameters:
+    - output_path: File path where the JSON template will be saved
+
+    Returns:
+    - JSON string with success status and details about what was captured
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        # Initialize template structure
+        template = {
+            "version": "1.0",
+            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "session": {
+                "metadata": {},
+                "master_track": {},
+                "tracks": [],
+                "return_tracks": [],
+                "scenes": [],
+            },
+        }
+
+        # Capture session metadata
+        try:
+            session_info = ableton.send_command("get_session_info")
+            template["session"]["metadata"] = {
+                "name": session_info.get("name", "Untitled"),
+                "tempo": session_info.get("tempo", 120.0),
+                "signature_numerator": session_info.get("time_signature_numerator", 4),
+                "signature_denominator": session_info.get(
+                    "time_signature_denominator", 4
+                ),
+                "metronome_enabled": session_info.get("metronome_enabled", False),
+            }
+        except Exception as e:
+            logger.error(f"Error getting session info: {str(e)}")
+            template["session"]["metadata"] = {
+                "name": "Untitled",
+                "tempo": 120.0,
+                "signature_numerator": 4,
+                "signature_denominator": 4,
+                "metronome_enabled": False,
+            }
+
+        # Capture master track info
+        try:
+            master_info = ableton.send_command("get_master_track_info")
+            template["session"]["master_track"] = {
+                "name": "Master",
+                "volume": master_info.get("volume", 0.75),
+                "panning": master_info.get("panning", 0.0),
+            }
+        except Exception as e:
+            logger.error(f"Error getting master track info: {str(e)}")
+            template["session"]["master_track"] = {
+                "name": "Master",
+                "volume": 0.75,
+                "panning": 0.0,
+            }
+
+        # Capture all tracks
+        try:
+            all_tracks = ableton.send_command("get_all_tracks")
+            track_count = len(all_tracks.get("tracks", []))
+
+            for i in range(track_count):
+                try:
+                    # Get detailed track info
+                    track_info = ableton.send_command(
+                        "get_track_info", {"track_index": i}
+                    )
+
+                    track_data = {
+                        "index": i,
+                        "type": "midi" if track_info.get("has_midi") else "audio",
+                        "name": track_info.get("name", f"Track {i}"),
+                        "color_index": track_info.get("color_index"),
+                        "mute": track_info.get("mute", False),
+                        "solo": track_info.get("solo", False),
+                        "arm": track_info.get("arm", False),
+                        "volume": track_info.get("volume", 0.75),
+                        "panning": track_info.get("panning", 0.0),
+                        "folded": track_info.get("folded", False),
+                        "devices": [],
+                        "clips": [],
+                    }
+
+                    # Capture devices on this track
+                    device_count = track_info.get("device_count", 0)
+                    for j in range(device_count):
+                        try:
+                            device_params = ableton.send_command(
+                                "get_device_parameters",
+                                {"track_index": i, "device_index": j},
+                            )
+                            track_data["devices"].append(
+                                {
+                                    "index": j,
+                                    "name": device_params.get("name", f"Device {j}"),
+                                    "class_name": device_params.get("class_name", ""),
+                                    "type": device_params.get("type", "audio_effect"),
+                                    "bypass": device_params.get("bypass", False),
+                                    "preset_name": device_params.get("preset_name"),
+                                    "parameters": device_params.get("parameters", {}),
+                                }
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Error getting device {j} on track {i}: {str(e)}"
+                            )
+                            continue
+
+                    # Capture clips on this track
+                    clips_info = ableton.send_command(
+                        "get_all_clips_in_track", {"track_index": i}
+                    )
+                    clips = clips_info.get("clips", [])
+                    for clip_info in clips:
+                        clip_index = clip_info.get("slot_index")
+                        if clip_index is not None:
+                            try:
+                                clip_data = {
+                                    "slot_index": clip_index,
+                                    "name": clip_info.get("name", f"Clip {clip_index}"),
+                                    "length": clip_info.get("length", 4.0),
+                                    "is_audio": clip_info.get("is_audio", False),
+                                    "loop_start": clip_info.get("loop_start", 0.0),
+                                    "loop_length": clip_info.get("loop_length", 4.0),
+                                    "launch_mode": clip_info.get(
+                                        "launch_mode", "trigger"
+                                    ),
+                                    "notes": [],
+                                    "automation": [],
+                                }
+
+                                # Capture MIDI notes if not audio clip
+                                if not clip_data["is_audio"]:
+                                    try:
+                                        notes_info = ableton.send_command(
+                                            "get_clip_notes",
+                                            {
+                                                "track_index": i,
+                                                "clip_index": clip_index,
+                                            },
+                                        )
+                                        clip_data["notes"] = notes_info.get("notes", [])
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Error getting notes for clip {clip_index} on track {i}: {str(e)}"
+                                        )
+
+                                track_data["clips"].append(clip_data)
+                            except Exception as e:
+                                logger.error(
+                                    f"Error getting clip {clip_index} on track {i}: {str(e)}"
+                                )
+                                continue
+
+                    template["session"]["tracks"].append(track_data)
+                except Exception as e:
+                    logger.error(f"Error processing track {i}: {str(e)}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error getting tracks: {str(e)}")
+
+        # Capture scenes
+        try:
+            scenes_info = ableton.send_command("get_all_scenes")
+            template["session"]["scenes"] = scenes_info.get("scenes", [])
+        except Exception as e:
+            logger.error(f"Error getting scenes: {str(e)}")
+
+        # Write template to file
+        try:
+            with open(output_path, "w") as f:
+                json.dump(template, f, indent=2)
+
+            # Return success response
+            result = {
+                "success": True,
+                "message": f"Session template saved to {output_path}",
+                "captured": {
+                    "tracks_count": len(template["session"]["tracks"]),
+                    "scenes_count": len(template["session"]["scenes"]),
+                    "tempo": template["session"]["metadata"]["tempo"],
+                    "signature": f"{template['session']['metadata']['signature_numerator']}/{template['session']['metadata']['signature_denominator']}",
+                },
+            }
+            return json.dumps(result, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to write file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error saving session template: {str(e)}",
+        }
+        logger.error(f"Error in save_session_template: {str(e)}")
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.tool()
+def load_session_template(
+    ctx: Context, template_path: str, clear_existing: bool = False
+) -> str:
+    """
+    Load a session template JSON file and recreate the Ableton session.
+
+    Restores:
+    - Session metadata (tempo, time signature, metronome)
+    - Master track settings
+    - All tracks (MIDI and audio) with properties
+    - All devices and their parameters
+    - All clips with MIDI notes
+
+    Parameters:
+    - template_path: Path to the JSON template file to load
+    - clear_existing: If True, delete all existing tracks before loading (default: False)
+
+    Returns:
+    - JSON string with success status, loaded counts, and any errors encountered
+    """
+    try:
+        # Read template file
+        try:
+            with open(template_path, "r") as f:
+                template = json.load(f)
+        except FileNotFoundError:
+            error_result = {
+                "success": False,
+                "error": f"Template file not found: {template_path}",
+            }
+            return json.dumps(error_result, indent=2)
+        except json.JSONDecodeError as e:
+            error_result = {
+                "success": False,
+                "error": f"Invalid JSON in template file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to read template file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Initialize tracking
+        loaded_tracks_count = 0
+        loaded_clips_count = 0
+        errors = []
+
+        # Get Ableton connection
+        ableton = get_ableton_connection()
+
+        # Clear existing tracks if requested
+        if clear_existing:
+            try:
+                ableton.send_command("delete_all_tracks")
+                logger.info("Cleared all existing tracks")
+            except Exception as e:
+                error_msg = f"Error clearing existing tracks: {str(e)}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        # Load session metadata
+        try:
+            session_data = template.get("session", {})
+            metadata = session_data.get("metadata", {})
+
+            if "tempo" in metadata:
+                tempo = metadata["tempo"]
+                ableton.send_command("set_tempo", {"tempo": tempo})
+                logger.info(f"Set tempo to {tempo} BPM")
+
+            if "signature_numerator" in metadata and "signature_denominator" in metadata:
+                numerator = metadata["signature_numerator"]
+                denominator = metadata["signature_denominator"]
+                ableton.send_command(
+                    "set_time_signature",
+                    {"numerator": numerator, "denominator": denominator},
+                )
+                logger.info(f"Set time signature to {numerator}/{denominator}")
+
+            if "metronome_enabled" in metadata:
+                metronome_enabled = metadata["metronome_enabled"]
+                ableton.send_command("set_metronome", {"enabled": metronome_enabled})
+                logger.info(f"Set metronome to {metronome_enabled}")
+
+        except Exception as e:
+            error_msg = f"Error loading metadata: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+        # Load master track settings
+        try:
+            master_track = session_data.get("master_track", {})
+
+            if "volume" in master_track:
+                volume = master_track["volume"]
+                ableton.send_command("set_master_volume", {"volume": volume})
+                logger.info(f"Set master volume to {volume}")
+
+        except Exception as e:
+            error_msg = f"Error loading master track: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+        # Load tracks
+        tracks = session_data.get("tracks", [])
+        for track_data in tracks:
+            try:
+                track_index = track_data.get("index", -1)
+                track_type = track_data.get("type", "midi")
+                track_name = track_data.get("name", f"Track {track_index}")
+
+                # Create track
+                if track_type == "midi":
+                    ableton.send_command("create_midi_track", {"index": track_index})
+                else:
+                    ableton.send_command("create_audio_track", {"index": track_index})
+
+                # Increment loaded count
+                loaded_tracks_count += 1
+                logger.info(f"Created {track_type} track: {track_name}")
+
+                # Get the index where the track was created
+                # If track_index was -1 (append), we need to find the new track
+                all_tracks = ableton.send_command("get_all_tracks")
+                current_tracks = all_tracks.get("tracks", [])
+                actual_track_index = len(current_tracks) - 1  # Last track created
+
+                # Set track properties
+                try:
+                    if "name" in track_data:
+                        ableton.send_command(
+                            "set_track_name",
+                            {"track_index": actual_track_index, "name": track_data["name"]},
+                        )
+
+                    if "color_index" in track_data and track_data["color_index"] is not None:
+                        ableton.send_command(
+                            "set_track_color",
+                            {
+                                "track_index": actual_track_index,
+                                "color_index": track_data["color_index"],
+                            },
+                        )
+
+                    if "mute" in track_data:
+                        ableton.send_command(
+                            "set_track_mute",
+                            {"track_index": actual_track_index, "mute": track_data["mute"]},
+                        )
+
+                    if "solo" in track_data:
+                        ableton.send_command(
+                            "set_track_solo",
+                            {"track_index": actual_track_index, "solo": track_data["solo"]},
+                        )
+
+                    if "arm" in track_data:
+                        ableton.send_command(
+                            "set_track_arm",
+                            {"track_index": actual_track_index, "arm": track_data["arm"]},
+                        )
+
+                    if "volume" in track_data:
+                        ableton.send_command(
+                            "set_track_volume",
+                            {"track_index": actual_track_index, "volume": track_data["volume"]},
+                        )
+
+                    if "panning" in track_data:
+                        ableton.send_command(
+                            "set_track_pan",
+                            {"track_index": actual_track_index, "pan": track_data["panning"]},
+                        )
+
+                    if "folded" in track_data:
+                        ableton.send_command(
+                            "set_track_fold",
+                            {"track_index": actual_track_index, "folded": track_data["folded"]},
+                        )
+
+                except Exception as e:
+                    error_msg = f"Error setting properties for track {track_name}: {str(e)}"
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+
+                # Load devices
+                devices = track_data.get("devices", [])
+                for device_data in devices:
+                    try:
+                        device_index = device_data.get("index", 0)
+                        device_uri = device_data.get("uri")
+                        device_preset = device_data.get("preset_name")
+
+                        # Load device if URI provided
+                        if device_uri:
+                            try:
+                                ableton.send_command(
+                                    "load_browser_item",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "item_uri": device_uri,
+                                    },
+                                )
+                                logger.info(
+                                    f"Loaded device with URI: {device_data.get('name', 'Device')}"
+                                )
+                            except Exception as e:
+                                error_msg = f"Error loading device URI for {track_name}: {str(e)}"
+                                logger.error(error_msg)
+                                errors.append(error_msg)
+
+                        # Load preset if provided
+                        if device_preset and not device_uri:
+                            try:
+                                ableton.send_command(
+                                    "load_instrument_preset",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "device_index": device_index,
+                                        "preset_name": device_preset,
+                                    },
+                                )
+                                logger.info(
+                                    f"Loaded preset: {device_preset} on device {device_index}"
+                                )
+                            except Exception as e:
+                                error_msg = f"Error loading preset for {track_name}: {str(e)}"
+                                logger.error(error_msg)
+                                errors.append(error_msg)
+
+                        # Set device bypass
+                        if "bypass" in device_data:
+                            try:
+                                ableton.send_command(
+                                    "toggle_device_bypass",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "device_index": device_index,
+                                        "enabled": not device_data["bypass"],
+                                    },
+                                )
+                            except Exception as e:
+                                logger.warning(
+                                    f"Could not set device bypass: {str(e)}"
+                                )
+
+                        # Set device parameters
+                        parameters = device_data.get("parameters", {})
+                        if "all" in parameters:
+                            for param in parameters["all"]:
+                                try:
+                                    ableton.send_command(
+                                        "set_device_parameter",
+                                        {
+                                            "track_index": actual_track_index,
+                                            "device_index": device_index,
+                                            "parameter_index": param["index"],
+                                            "value": param["value"],
+                                        },
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Could not set parameter {param['index']}: {str(e)}"
+                                    )
+
+                    except Exception as e:
+                        error_msg = f"Error loading device for {track_name}: {str(e)}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+
+                # Load clips
+                clips = track_data.get("clips", [])
+                for clip_data in clips:
+                    try:
+                        clip_index = clip_data.get("slot_index", 0)
+                        clip_name = clip_data.get("name", f"Clip {clip_index}")
+                        clip_length = clip_data.get("length", 4.0)
+                        is_audio = clip_data.get("is_audio", False)
+
+                        # Create clip
+                        ableton.send_command(
+                            "create_clip",
+                            {
+                                "track_index": actual_track_index,
+                                "clip_index": clip_index,
+                                "length": clip_length,
+                            },
+                        )
+                        loaded_clips_count += 1
+                        logger.info(f"Created clip: {clip_name}")
+
+                        # Set clip properties
+                        try:
+                            ableton.send_command(
+                                "set_clip_name",
+                                {
+                                    "track_index": actual_track_index,
+                                    "clip_index": clip_index,
+                                    "name": clip_name,
+                                },
+                            )
+
+                            if "loop_start" in clip_data and "loop_length" in clip_data:
+                                ableton.send_command(
+                                    "set_clip_loop",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "clip_index": clip_index,
+                                        "loop_start": clip_data["loop_start"],
+                                        "loop_length": clip_data["loop_length"],
+                                    },
+                                )
+
+                            if "launch_mode" in clip_data:
+                                launch_mode_map = {
+                                    "trigger": 0,
+                                    "gate": 1,
+                                    "toggle": 2,
+                                    "repeat": 3,
+                                }
+                                launch_mode_value = launch_mode_map.get(
+                                    clip_data["launch_mode"], 0
+                                )
+                                ableton.send_command(
+                                    "set_clip_launch_mode",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "clip_index": clip_index,
+                                        "mode": launch_mode_value,
+                                    },
+                                )
+
+                        except Exception as e:
+                            logger.warning(
+                                f"Could not set clip properties for {clip_name}: {str(e)}"
+                            )
+
+                        # Add MIDI notes if not audio clip
+                        if not is_audio:
+                            notes = clip_data.get("notes", [])
+                            if notes:
+                                ableton.send_command(
+                                    "add_notes_to_clip",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "clip_index": clip_index,
+                                        "notes": notes,
+                                    },
+                                )
+                                logger.info(f"Added {len(notes)} notes to {clip_name}")
+
+                    except Exception as e:
+                        error_msg = f"Error loading clip {clip_data.get('name', 'Unknown')}: {str(e)}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+
+            except Exception as e:
+                error_msg = f"Error loading track {track_data.get('name', 'Unknown')}: {str(e)}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        # Return success response
+        result = {
+            "success": True,
+            "message": f"Session template loaded from {template_path}",
+            "loaded_tracks_count": loaded_tracks_count,
+            "loaded_clips_count": loaded_clips_count,
+            "errors": errors,
+        }
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error loading session template: {str(e)}",
+        }
+        logger.error(f"Error in load_session_template: {str(e)}")
+        return json.dumps(error_result, indent=2)

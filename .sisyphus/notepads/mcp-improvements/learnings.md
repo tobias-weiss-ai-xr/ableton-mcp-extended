@@ -368,3 +368,289 @@ python scripts/test/test_performance_udp.py
 **All acceptance criteria met!**
 
 Score: **1000/1000** ✅
+# Task 19: Session Template Structure Design - Learnings
+
+## Analysis Complete
+
+Successfully designed session template structure for saving/loading Ableton Live sessions via MCP tools.
+
+## Key Findings
+
+### Available MCP Capabilities
+- **Session State**: get_session_info, get_session_overview (tempo, signature, track info)
+- **Track Management**: create/delete tracks, rename, set properties (name, color, mute, solo, arm, volume, pan)
+- **Device Management**: get_device_parameters, set_device_parameter, load_instrument_or_effect, load_instrument_preset, toggle_device_bypass
+- **Clip Management**: create_clip, add_notes_to_clip, get_clip_notes, quantize_clip, transpose_clip, set_clip_loop, set_clip_launch_mode
+- **Scene Management**: create_scene, delete_scene, set_scene_name
+
+### Remote Script API Limitations
+1. **No create_return_track**: Cannot programmatically create return/send tracks
+   - Workaround: Document manual setup requirement
+2. **Send routing not query-able**: Cannot capture track → send routing configuration
+   - Workaround: Store send levels only, routing must be manual
+3. **Device URIs not exposed**: get_track_info doesn't return device URIs
+   - Workaround: Store preset_name, use load_instrument_preset fallback
+4. **Scene clip mapping not query-able**: Cannot save which clips trigger per scene
+   - Workaround: Implicit mapping via clip slot positions
+
+### Design Decisions
+- **JSON Format**: Portable, version-controllable, human-readable
+- **Pydantic Models**: Validation, type safety, auto-validation on load
+- **Normalized Values**: All parameters 0.0-1.0 (except pan: -1.0 to 1.0)
+- **Graceful Degradation**: Skip missing presets/parameters, log warnings
+
+### Recommended Implementation Phases
+1. **MVP (Short, 1-4h)**: Pydantic models, save/load MCP tools, basic test
+2. **Device Support (Short, 1-4h)**: Parameter save/restore, preset handling
+3. **Advanced Features (Medium, 1-2d)**: Automation, error recovery, return tracks (with limitations)
+
+### File Structure
+```
+MCP_Server/
+└── templates/
+    ├── __init__.py
+    ├── models.py              # Pydantic models
+    ├── save.py                # Save implementation
+    ├── load.py                # Load implementation
+    └── validation.py          # Template validation
+```
+
+## Conventions Discovered
+- All parameter values are normalized (0.0-1.0)
+- Track indices are 0-based from get_all_tracks
+- Clip slots are 0-based within track
+- Device parameters use index-based addressing
+- Remote Script API is Python 2 (avoid Python 3+ features)
+
+## Anti-Patterns to Avoid
+- Don't design for features that don't have MCP support (e.g., full save/load like Ableton's .als)
+- Don't assume device URIs are available (they're not exposed)
+- Don't over-engineer return track support (manual setup required)
+- Don't try to capture audio clip sample data (not possible via API)
+
+## References Used
+- MCP_Server/server.py: All MCP tool implementations
+- AbletonMCP_Remote_Script/__init__.py: Remote Script API methods
+- README.md: Project overview and capabilities
+
+### Task 20: Session Save Functionality - Learnings (2026-02-09)
+
+**Implementation Complete:**
+- ✅ Created `save_session_template` MCP tool in `MCP_Server/server.py`
+- ✅ Created test file `scripts/test/test_session_templates.py`
+- ✅ All tests pass (4/4)
+- ✅ Follows TDD principles exactly
+
+**TDD Process Followed:**
+1. **RED Phase**: Created test file first with failing tests
+   - Verified tests fail with ImportError (function doesn't exist)
+   - All 4 tests written: basic, metadata, timestamp, file error
+   
+2. **GREEN Phase**: Implemented minimal tool to pass tests
+   - Added `save_session_template` function with @mcp.tool() decorator
+   - Captures session metadata, master track, all tracks with devices, clips with notes
+   - Returns JSON string (MCP tool pattern)
+   
+3. **REFACTOR**: Cleaned up implementation
+   - Added `datetime, timezone` import for UTC timestamps
+   - Fixed deprecation warning (utcnow() → now(timezone.utc))
+   - Fixed syntax error (indentation issue)
+
+**Implementation Details:**
+
+1. **Function Signature**:
+   ```python
+   @mcp.tool()
+   def save_session_template(ctx: Context, output_path: str) -> str:
+   ```
+
+2. **Captured Data**:
+   - Session metadata: name, tempo, signature (numerator/denominator), metronome
+   - Master track: volume, panning
+   - All tracks: type, name, color, mute/solo/arm, volume/pan, folded
+   - Devices per track: index, name, class_name, type, bypass, preset_name, parameters
+   - Clips per track: slot_index, name, length, is_audio, loop settings, launch_mode, notes
+   - All scenes
+
+3. **Error Handling**:
+   - Graceful degradation: Skip missing data, log errors, continue
+   - File I/O errors: Return JSON with success=False, error message
+   - Connection errors: Return JSON with success=False, error message
+
+4. **JSON Structure** (matches design doc):
+   ```json
+   {
+     "version": "1.0",
+     "created_at": "2026-02-09T12:00:00Z",
+     "session": {
+       "metadata": {...},
+       "master_track": {...},
+       "tracks": [...],
+       "return_tracks": [],
+       "scenes": [...]
+     }
+   }
+   ```
+
+**Key Learnings:**
+
+1. **MCP Tool Pattern**: Functions return JSON strings, not dicts
+   - Tests must parse JSON with `json.loads()` before accessing fields
+   - This maintains consistency with existing MCP tools
+
+2. **Error Recovery**: Individual track/clip/device failures don't crash entire save
+   - Each try/except logs error and continues
+   - Captures whatever data is available
+   - Returns partial success if file written
+
+3. **DateTime Handling**: 
+   - Used `datetime.now(timezone.utc)` for UTC timestamps
+   - Replaced deprecated `datetime.utcnow()` 
+   - ISO format with 'Z' suffix: `.isoformat().replace("+00:00", "Z")`
+
+4. **Nested Data Capture**: Session save requires multiple API calls per track
+   - get_all_tracks → list of tracks
+   - get_track_info → detailed track info
+   - get_device_parameters per device
+   - get_all_clips_in_track → list of clips
+   - get_clip_notes per clip (MIDI only)
+
+**Testing:**
+- All 4 tests pass:
+  1. `test_save_session_template_basic` - Basic structure verification
+  2. `test_save_session_template_metadata` - Metadata fields captured
+  3. `test_save_session_template_timestamp` - ISO format validation
+  4. `test_save_session_template_file_error` - Invalid path handling
+
+**Files Modified:**
+- `MCP_Server/server.py` - Added save_session_template function (210 lines)
+- `scripts/test/test_session_templates.py` - Created test file (110 lines)
+
+**Next Steps (Task 21):**
+- Implement `load_session_template` MCP tool
+- Tests should verify session recreation
+- Handle missing instruments/presets gracefully
+- Return summary of what was restored
+
+**All Acceptance Criteria Met:**
+✅ New MCP tool: `save_session_template` in `MCP_Server/server.py`
+✅ Tool accepts `output_path` parameter
+✅ Captures session metadata, all tracks, all devices, all clips with notes
+✅ Returns JSON template file saved to specified path
+✅ Handles errors gracefully and reports what was captured
+✅ Test file created: `scripts/test/test_session_templates.py`
+
+### Task 21: Session Load Functionality - Learnings (2026-02-09)
+
+**Implementation Complete:**
+- ✅ Created `load_session_template` MCP tool in `MCP_Server/server.py`
+- ✅ Added 4 load tests to `scripts/test/test_session_templates.py`
+- ✅ All tests pass (8/8 total - 4 save + 4 load)
+- ✅ Follows TDD principles exactly
+
+**TDD Process Followed:**
+1. **RED Phase**: Created failing tests for load functionality
+   - 4 test cases: minimal template, template with tracks, invalid file, invalid JSON
+   - Verified tests fail with ImportError (function doesn't exist)
+   
+2. **GREEN Phase**: Implemented minimal tool to pass tests
+   - Added `load_session_template` function with @mcp.tool() decorator
+   - Reads JSON template, recreates Ableton session
+   - Restores metadata, tracks, devices, parameters, clips
+   
+3. **REFACTOR**: Cleaned up implementation
+   - Fixed code corruption during initial edit attempt
+   - Corrected indentation issues (lines 3308, 3316)
+   - Proper try/except structure save_session_template (lines 3125-3323)
+   - Proper try/except structure load_session_template (lines 3326-3704)
+
+**Implementation Details:**
+
+1. **Function Signature:**
+   ```python
+   @mcp.tool()
+   def load_session_template(ctx: Context, template_path: str, clear_existing: bool = False) -> str:
+   ```
+
+2. **Restored Data:**
+   - Session metadata: tempo, time signature, metronome
+   - Master track: volume, panning
+   - All tracks: type, name, color, mix states, volume/pan, folded
+   - Devices per track: URI loading, preset loading, bypass state, parameters
+   - Clips per track: slot, name, length, loop settings, launch_mode, MIDI notes
+
+3. **Error Handling:**
+   - File errors: FileNotFoundError, JSONDecodeError, IOError handled gracefully
+   - Individual track/device/clip failures: Logged to errors list, continue processing
+   - clear_existing errors: Logged but don't stop loading
+   - Returns JSON with success status, loaded counts, errors list
+
+4. **Loading Order:**
+   1. Read and parse JSON template
+   2. Clear existing tracks (if clear_existing=True)
+   3. Load session metadata (tempo, signature, metronome)
+   4. Load master track settings
+   5. Load each track in order
+      - Create track (MIDI or audio)
+      - Set track properties
+      - Load devices
+      - Load clips and notes
+
+**Key Learnings:**
+
+1. **TDD Discipline Prevents Bugs:**
+   - Writing tests first catches missing implementations early
+   - Forced error handling for invalid file paths, invalid JSON
+   - Tests verify JSON return format before implementation
+
+2. **Code Corruption Prevention:**
+   - Large edits can introduce indentation errors
+   - Use sed or small targeted edits instead of massive replacements
+   - Verify syntax with `python -m py_compile` after each major change
+   - Use AST parser for detailed debugging: `ast.parse(code)`
+
+3. **Error Recovery Pattern:**
+   - Continue execution despite individual failures
+   - Collect errors in list, return in JSON response
+   - Log each error with context (track name, clip name, etc.)
+   - Partial success: Return loaded counts even if some operations failed
+
+4. **MCP Tool Pattern Consistency:**
+   - All functions return JSON strings
+   - Error responses: `{"success": false, "error": "..."}`
+   - Success responses include operation statistics
+   - Context parameter first (ctx: Context)
+
+5. **Index Management During Load:**
+   - When creating tracks with index=-1 (append), need to find actual index
+   - Use `get_all_tracks()` to get current count after creation
+   - Actual track index = last track index
+   - This ensures subsequent operations (devices, clips) target correct track
+
+**Testing:**
+- All 4 load tests pass:
+  1. `test_load_session_template_minimal` - Metadata only
+  2. `test_load_session_template_with_tracks` - Full session with tracks/clips
+  3. `test_load_session_template_invalid_file` - Non-existent file
+  4. `test_load_session_template_invalid_json` - Malformed JSON
+
+**Files Modified:**
+- `MCP_Server/server.py` - Added load_session_template function (378 lines)
+- `scripts/test/test_session_templates.py` - Added 4 load tests (180 new lines)
+
+**Challenges Overcome:**
+- Code corruption during initial large edit attempt
+- Indentation issues in try/except blocks (lines 3308, 3316)
+- Separation of save_session_template and load_session_template code
+- Proper track index resolution when appending tracks
+
+**All Acceptance Criteria Met:**
+✅ New MCP tool: `load_session_template` in `MCP_Server/server.py`
+✅ Function signature: `load_session_template(ctx, template_path, clear_existing=False)`
+✅ Reads JSON template, recreates Ableton session
+✅ Sets session metadata, creates tracks/clips, loads devices, sets parameters
+✅ Handles errors gracefully (missing files, invalid JSON, invalid indices)
+✅ Returns JSON with success status, loaded_tracks_count, loaded_clips_count, errors
+✅ Tests added to `scripts/test/test_session_templates.py`
+✅ All tests pass (8/8)
+✅ lsp_diagnostics clean (Python compilation successful)
