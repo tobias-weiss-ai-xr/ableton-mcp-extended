@@ -4,6 +4,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 from _Framework.ControlSurface import ControlSurface
 import socket
 import json
+import os
 import threading
 import time
 import traceback
@@ -16,7 +17,6 @@ except ImportError:
 
 # Constants for socket communication
 DEFAULT_PORT = 9877
-UDP_PORT = 9878
 HOST = "127.0.0.1"
 
 
@@ -39,22 +39,17 @@ class AbletonMCP(ControlSurface):
         self.server_thread = None
         self.running = False
 
-        # UDP server for high-frequency parameter updates
-        self.udp_server_socket = None
-        self.udp_server_thread = None
-
         # Cache the song reference for easier access
         self._song = self.song()
 
-        # Start the socket servers (both TCP and UDP)
+        # Start the socket server
         self.start_server()
-        self.start_udp_server()
 
         self.log_message("AbletonMCP initialized")
 
         # Show a message in Ableton
         self.show_message(
-            "AbletonMCP: TCP on " + str(DEFAULT_PORT) + ", UDP on " + str(UDP_PORT)
+            "AbletonMCP: Listening for commands on port " + str(DEFAULT_PORT)
         )
 
     def disconnect(self):
@@ -62,27 +57,16 @@ class AbletonMCP(ControlSurface):
         self.log_message("AbletonMCP disconnecting...")
         self.running = False
 
-        # Stop the TCP server
+        # Stop the server
         if self.server:
             try:
                 self.server.close()
             except:
                 pass
 
-        # Wait for the TCP server thread to exit
+        # Wait for the server thread to exit
         if self.server_thread and self.server_thread.is_alive():
             self.server_thread.join(1.0)
-
-        # Stop the UDP server
-        if self.udp_server_socket:
-            try:
-                self.udp_server_socket.close()
-            except:
-                pass
-
-        # Wait for the UDP server thread to exit
-        if self.udp_server_thread and self.udp_server_thread.is_alive():
-            self.udp_server_thread.join(1.0)
 
         # Clean up any client threads
         for client_thread in self.client_threads[:]:
@@ -228,198 +212,6 @@ class AbletonMCP(ControlSurface):
                 pass
             self.log_message("Client handler stopped")
 
-    def start_udp_server(self):
-        """Start the UDP server in a separate thread for high-frequency parameter updates"""
-        try:
-            self.udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.udp_server_socket.bind((HOST, UDP_PORT))
-
-            self.running = True
-            self.udp_server_thread = threading.Thread(target=self._udp_server_loop)
-            self.udp_server_thread.daemon = True
-            self.udp_server_thread.start()
-
-            self.log_message("UDP server started on port " + str(UDP_PORT))
-        except Exception as e:
-            self.log_message("Error starting UDP server: " + str(e))
-            self.show_message("AbletonMCP: UDP Server Error - " + str(e))
-
-    def _udp_server_loop(self):
-        """UDP server thread implementation - handles incoming datagrams"""
-        try:
-            self.log_message("UDP server thread started")
-
-            while self.running:
-                try:
-                    # Receive datagram
-                    data, addr = self.udp_server_socket.recvfrom(1024)
-                    if not self.running:
-                        break
-
-                    # Process datagram (fire-and-forget, no response)
-                    self._handle_udp_data(data, addr)
-
-                except socket.error as se:
-                    if self.running:
-                        self.log_message("UDP server socket error: " + str(se))
-                    break
-                except Exception as e:
-                    if self.running:
-                        self.log_message("UDP server loop error: " + str(e))
-                    time.sleep(0.1)
-
-            self.log_message("UDP server thread stopped")
-        except Exception as e:
-            self.log_message("UDP server thread critical error: " + str(e))
-
-    def _handle_udp_data(self, data, addr):
-        """Handle UDP datagram (fire-and-forget)"""
-        try:
-            # Parse JSON
-            command_str = data.decode("utf-8")
-            command_json = json.loads(command_str)
-
-            self.log_message(
-                f"UDP: Received {command_json.get('type', 'unknown')} from {addr}"
-            )
-
-            # Execute without response queue
-            def udp_task():
-                try:
-                    self._process_udp_command(command_json)
-                except Exception as e:
-                    # Log but don't block (fire-and-forget acceptable)
-                    self.log_message(
-                        f"UDP: Error executing {command_json.get('type', 'unknown')}: {e}"
-                    )
-
-            # Schedule on main thread
-            try:
-                self.schedule_message(0, udp_task)
-            except AssertionError:
-                # Already on main thread, execute directly
-                udp_task()
-
-        except Exception as e:
-            self.log_message(f"UDP: Error processing datagram from {addr}: {e}")
-            # Continue processing, don't crash
-
-def _process_udp_command(self, command):
-        """Process UDP command (limited routing for parameter commands)"""
-        command_type = command.get("type", "")
-        params = command.get("params", {})
-
-        # UDP command handlers - fire-and-forget pattern
-        # No response sent, errors logged but don't crash
-        try:
-            if command_type == "set_device_parameter":
-                track_index = params.get("track_index", 0)
-                device_index = params.get("device_index", 0)
-                parameter_index = params.get("parameter_index", 0)
-                value = params.get("value", 0.0)
-                self._set_device_parameter(track_index, device_index,
-                                           parameter_index, value)
-                self.log_message(
-                    f"UDP: set_device_parameter track={track_index} "
-                    f"device={device_index} param={parameter_index} value={value}"
-                )
-
-            elif command_type == "batch_set_device_parameters":
-                track_index = params.get("track_index", 0)
-                device_index = params.get("device_index", 0)
-                parameter_indices = params.get("parameter_indices", [])
-                values = params.get("values", [])
-                self._batch_set_device_parameters(track_index, device_index,
-                                                 parameter_indices, values)
-                self.log_message(
-                    f"UDP: batch_set_device_parameters track={track_index} "
-                    f"device={device_index} count={len(parameter_indices)}"
-                )
-
-            elif command_type == "set_track_volume":
-                track_index = params.get("track_index", 0)
-                volume = params.get("volume", 0.75)
-                self._set_track_volume(track_index, volume)
-                self.log_message(
-                    f"UDP: set_track_volume track={track_index} volume={volume}"
-                )
-
-            elif command_type == "set_track_pan":
-                track_index = params.get("track_index", 0)
-                pan = params.get("pan", 0.0)
-                self._set_track_pan(track_index, pan)
-                self.log_message(
-                    f"UDP: set_track_pan track={track_index} pan={pan}"
-                )
-
-            elif command_type == "set_track_mute":
-                track_index = params.get("track_index", 0)
-                mute = params.get("mute", False)
-                self._set_track_mute(track_index, mute)
-                self.log_message(
-                    f"UDP: set_track_mute track={track_index} mute={mute}"
-                )
-
-            elif command_type == "set_track_solo":
-                track_index = params.get("track_index", 0)
-                solo = params.get("solo", False)
-                self._set_track_solo(track_index, solo)
-                self.log_message(
-                    f"UDP: set_track_solo track={track_index} solo={solo}"
-                )
-
-            elif command_type == "set_track_arm":
-                track_index = params.get("track_index", 0)
-                arm = params.get("arm", False)
-                self._set_track_arm(track_index, arm)
-                self.log_message(
-                    f"UDP: set_track_arm track={track_index} arm={arm}"
-                )
-
-            elif command_type == "set_master_volume":
-                volume = params.get("volume", 0.75)
-                self._set_master_volume(volume)
-                self.log_message(f"UDP: set_master_volume volume={volume}")
-
-            elif command_type == "fire_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                self._fire_clip(track_index, clip_index)
-                self.log_message(
-                    f"UDP: fire_clip track={track_index} clip={clip_index}"
-                )
-
-            elif command_type == "set_clip_launch_mode":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                mode = params.get("mode", 0)
-                self._set_clip_launch_mode(track_index, clip_index, mode)
-                self.log_message(
-                    f"UDP: set_clip_launch_mode track={track_index} "
-                    f"clip={clip_index} mode={mode}"
-                )
-
-            elif command_type == "set_send_amount":
-                track_index = params.get("track_index", 0)
-                send_index = params.get("send_index", 0)
-                amount = params.get("amount", 0.0)
-                self._set_send_amount(track_index, send_index, amount)
-                self.log_message(
-                    f"UDP: set_send_amount track={track_index} "
-                    f"send={send_index} amount={amount}"
-                )
-
-            else:
-                self.log_message(
-                    f"UDP: Unknown or unsupported command type: {command_type}"
-                )
-
-        except Exception as e:
-            # Log error but don't crash (UDP tolerance)
-            self.log_message(
-                f"UDP: Error executing {command_type} - {str(e)}"
-            )
-
     def _process_command(self, command):
         """Process a command from the client and return a response"""
         command_type = command.get("type", "")
@@ -494,6 +286,9 @@ def _process_udp_command(self, command):
                 "create_locator",
                 "delete_locator",
                 "jump_to_locator",
+                "list_device_presets",
+                "load_device_preset",
+                "save_device_preset",
                 "set_loop",
                 "get_clip_notes",
                 "set_master_volume",
@@ -501,6 +296,7 @@ def _process_udp_command(self, command):
                 "get_return_tracks",
                 "get_all_tracks",
                 "get_all_scenes",
+                "get_session_overview",
                 "get_all_clips_in_track",
                 "set_note_velocity",
                 "set_note_duration",
@@ -516,6 +312,7 @@ def _process_udp_command(self, command):
                 "get_clip_warp_markers",
                 "add_warp_marker",
                 "delete_warp_marker",
+                "reload_script",
             ]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
@@ -603,11 +400,31 @@ def _process_udp_command(self, command):
                             track_index = params.get("track_index", 0)
                             arm = params.get("arm", False)
                             result = self._set_track_arm(track_index, arm)
+elif command_type == "list_device_presets":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            result = self._list_device_presets(
+                                track_index, device_index
+                            )
+                        elif command_type == "load_device_preset":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            preset_name = params.get("preset_name", "")
+                            result = self._load_device_preset(
+                                track_index, device_index, preset_name
+                            )
                         elif command_type == "load_instrument_preset":
                             track_index = params.get("track_index", 0)
                             device_index = params.get("device_index", 0)
                             preset_name = params.get("preset_name", "")
                             result = self._load_instrument_preset(
+                                track_index, device_index, preset_name
+                            )
+                        elif command_type == "save_device_preset":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            preset_name = params.get("preset_name", "")
+                            result = self._save_device_preset(
                                 track_index, device_index, preset_name
                             )
                         elif command_type == "toggle_device_bypass":
@@ -755,6 +572,9 @@ def _process_udp_command(self, command):
                         elif command_type == "ungroup_tracks":
                             track_index = params.get("track_index", 0)
                             result = self._ungroup_tracks(track_index)
+                        elif command_type == "reload_script":
+                            result = self._reload_script()
+                            result = self._reload_script()
                         elif command_type == "set_clip_warp_mode":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -1242,51 +1062,9 @@ def _process_udp_command(self, command):
                 }
                 return result
             else:
-raise Exception("Device has no parameters")
-        except Exception as e:
-            self.log_message("Error setting device parameter: " + str(e))
-            raise
-
-    def _batch_set_device_parameters(self, track_index, device_index,
-                                   parameter_indices, values):
-        """Batch set multiple device parameters (normalized 0.0-1.0)"""
-        try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-
-            track = self._song.tracks[track_index]
-
-            if device_index < 0 or device_index >= len(track.devices):
-                raise IndexError("Device index out of range")
-
-            device = track.devices[device_index]
-
-            if hasattr(device, "parameters"):
-                # Validate arrays match
-                if len(parameter_indices) != len(values):
-                    raise Exception(
-                        f"Array length mismatch: {len(parameter_indices)} "
-                        f"indices vs {len(values)} values"
-                    )
-
-                # Set all parameters
-                for i, param_idx in enumerate(parameter_indices):
-                    if param_idx < 0 or param_idx >= len(device.parameters):
-                        raise IndexError(f"Parameter index {param_idx} out of range")
-                    device.parameters[param_idx].value = values[i]
-
-                result = {
-                    "device_name": device.name
-                    if hasattr(device, "name")
-                    else "Device {}".format(device_index),
-                    "parameter_count": len(parameter_indices),
-                    "device_index": device_index,
-                }
-                return result
-            else:
                 raise Exception("Device has no parameters")
         except Exception as e:
-            self.log_message("Error batch setting device parameters: " + str(e))
+            self.log_message("Error setting device parameter: " + str(e))
             raise
 
     def _set_track_volume(self, track_index, volume):
@@ -1449,6 +1227,306 @@ raise Exception("Device has no parameters")
             return result
         except Exception as e:
             self.log_message("Error loading instrument preset: " + str(e))
+            raise
+
+    def _save_device_preset(self, track_index, device_index, preset_name):
+        """
+        Save a device preset using Ableton's preset system.
+
+        Note: Ableton Live's Remote Script API does NOT provide a method to
+        programmatically save device presets. This function captures the device's
+        current parameter values and saves them to a local JSON database for
+        later restoration. This is NOT Ableton's native .advpt preset format.
+
+        For native Ableton presets, use the Ableton UI to save manually.
+        """
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+
+            device = track.devices[device_index]
+
+            # Get device class name for storage
+            device_class = (
+                device.class_name if hasattr(device, "class_name") else "Unknown"
+            )
+            device_name = (
+                device.name
+                if hasattr(device, "name")
+                else "Device {}".format(device_index)
+            )
+
+            # Capture all device parameters
+            parameters = []
+            if hasattr(device, "parameters"):
+                for i, param in enumerate(device.parameters):
+                    if param.is_enabled:
+                        try:
+                            param_info = {
+                                "index": i,
+                                "name": (
+                                    param.name
+                                    if hasattr(param, "name")
+                                    else "Parameter {}".format(i)
+                                ),
+                                "value": param.value,
+                            }
+                            parameters.append(param_info)
+                        except Exception as e:
+                            self.log_message(
+                                "Error reading parameter {}: {}".format(i, str(e))
+                            )
+                            continue
+
+            # Get home directory for storage
+            home_dir = os.path.expanduser("~")
+            preset_db_path = os.path.join(home_dir, ".ableton_mcp", "device_presets")
+            os.makedirs(preset_db_path, exist_ok=True)
+
+            # Save to JSON file
+            preset_file = os.path.join(
+                preset_db_path, "{}_{}.json".format(device_class, preset_name)
+            )
+            preset_data = {
+                "device_class": device_class,
+                "device_name": device_name,
+                "preset_name": preset_name,
+                "parameters": parameters,
+            }
+
+            with open(preset_file, "w") as f:
+                json.dump(preset_data, f, indent=2)
+
+            self.log_message(
+                "Saved preset '{}' for device '{}' (class: {}) to {}".format(
+                    preset_name, device_name, device_class, preset_file
+                )
+            )
+
+            result = {
+                "track_name": (
+                    track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index)
+                ),
+                "device_name": device_name,
+                "device_class": device_class,
+                "preset_name": preset_name,
+                "saved": True,
+                "file": preset_file,
+                "note": "Saved to JSON database (not Ableton's native .advpt format)",
+            }
+
+            return result
+
+        except Exception as e:
+            self.log_message("Error saving device preset: " + str(e))
+            self.log_message(traceback.format_exc())
+            raise
+
+    def _load_device_preset(self, track_index, device_index, preset_name):
+        """
+        Load a device preset.
+
+        First tries to load from Ableton's native preset system (via device.presets).
+        If not found, searches the local JSON preset database.
+        """
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+
+            device = track.devices[device_index]
+            device_name = (
+                device.name
+                if hasattr(device, "name")
+                else "Device {}".format(device_index)
+            )
+
+            # First try Ableton's native preset system
+            if hasattr(device, "presets"):
+                found_preset = None
+                for preset in device.presets:
+                    if (
+                        hasattr(preset, "name")
+                        and preset.name.lower() == preset_name.lower()
+                    ):
+                        found_preset = preset
+                        break
+
+                if found_preset:
+                    device.presets = found_preset
+                    self.log_message(
+                        "Loaded native Ableton preset '{}' for device '{}' on track '{}'".format(
+                            preset_name, device_name, track.name
+                        )
+                    )
+
+                    return {
+                        "track_name": (
+                            track.name
+                            if hasattr(track, "name")
+                            else "Track {}".format(track_index)
+                        ),
+                        "device_name": device_name,
+                        "preset_name": preset_name,
+                        "loaded": True,
+                        "source": "native",
+                    }
+
+            # If not found in native presets, try JSON database
+            device_class = (
+                device.class_name if hasattr(device, "class_name") else "Unknown"
+            )
+            home_dir = os.path.expanduser("~")
+            preset_db_path = os.path.join(home_dir, ".ableton_mcp", "device_presets")
+            preset_file = os.path.join(
+                preset_db_path, "{}_{}.json".format(device_class, preset_name)
+            )
+
+            if not os.path.exists(preset_file):
+                # Preset not found in either native or JSON database
+                return {
+                    "track_name": (
+                        track.name
+                        if hasattr(track, "name")
+                        else "Track {}".format(track_index)
+                    ),
+                    "device_name": device_name,
+                    "preset_name": preset_name,
+                    "loaded": False,
+                    "error": "Preset not found in Ableton native presets or JSON database",
+                }
+
+            # Load from JSON database
+            with open(preset_file, "r") as f:
+                preset_data = json.load(f)
+
+            # Validate device class matches
+            if preset_data.get("device_class") != device_class:
+                return {
+                    "track_name": (
+                        track.name
+                        if hasattr(track, "name")
+                        else "Track {}".format(track_index)
+                    ),
+                    "device_name": device_name,
+                    "preset_name": preset_name,
+                    "loaded": False,
+                    "error": "Preset device class mismatch. Expected: {}, Got: {}".format(
+                        device_class, preset_data.get("device_class")
+                    ),
+                }
+
+            # Apply parameters
+            for param_data in preset_data.get("parameters", []):
+                param_idx = param_data["index"]
+                if param_idx < len(device.parameters):
+                    try:
+                        device.parameters[param_idx].value = param_data["value"]
+                    except Exception as e:
+                        self.log_message(
+                            "Error setting parameter {}: {}".format(param_idx, str(e))
+                        )
+                        continue
+
+            self.log_message(
+                "Loaded JSON preset '{}' for device '{}' (class: {}) from {}".format(
+                    preset_name, device_name, device_class, preset_file
+                )
+            )
+
+            return {
+                "track_name": (
+                    track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index)
+                ),
+                "device_name": device_name,
+                "device_class": device_class,
+                "preset_name": preset_name,
+                "loaded": True,
+                "source": "json",
+                "file": preset_file,
+            }
+
+        except Exception as e:
+            self.log_message("Error loading device preset: " + str(e))
+            self.log_message(traceback.format_exc())
+            raise
+
+    def _list_device_presets(self, track_index, device_index):
+        """
+        List available presets for a specific device.
+
+        Returns presets from both Ableton's native system and the local JSON database.
+        """
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+
+            device = track.devices[device_index]
+            device_class = (
+                device.class_name if hasattr(device, "class_name") else "Unknown"
+            )
+            device_name = (
+                device.name
+                if hasattr(device, "name")
+                else "Device {}".format(device_index)
+            )
+
+            # Get native Ableton presets
+            native_presets = []
+            if hasattr(device, "presets"):
+                for preset in device.presets:
+                    if hasattr(preset, "name"):
+                        native_presets.append(preset.name)
+
+            # Get JSON database presets for this device class
+            home_dir = os.path.expanduser("~")
+            preset_db_path = os.path.join(home_dir, ".ableton_mcp", "device_presets")
+            json_presets = []
+
+            if os.path.exists(preset_db_path):
+                prefix = device_class + "_"
+                for filename in os.listdir(preset_db_path):
+                    if filename.startswith(prefix) and filename.endswith(".json"):
+                        # Extract preset name by removing prefix and .json
+                        preset_name = filename[len(prefix) : -5]
+                        json_presets.append(preset_name)
+
+            result = {
+                "track_name": (
+                    track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index)
+                ),
+                "device_name": device_name,
+                "device_class": device_class,
+                "native_presets": native_presets,
+                "json_presets": json_presets,
+                "all_presets": sorted(list(set(native_presets + json_presets))),
+            }
+
+            return result
+
+        except Exception as e:
+            self.log_message("Error listing device presets: " + str(e))
+            self.log_message(traceback.format_exc())
             raise
 
     def _create_audio_track(self, index):

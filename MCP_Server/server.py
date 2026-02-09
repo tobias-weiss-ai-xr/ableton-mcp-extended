@@ -1537,6 +1537,141 @@ def load_instrument_preset(
 
 
 @mcp.tool()
+def save_device_preset(
+    ctx: Context, track_index: int, device_index: int, preset_name: str
+) -> str:
+    """
+    Save a device preset.
+
+    Note: This saves to a JSON database in ~/.ableton_mcp/device_presets/,
+    NOT to Ableton's native .advpt preset format. Ableton's Remote Script API
+    does not support programmatically saving native presets.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    - preset_name: The name to save the preset as
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "save_device_preset",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "preset_name": preset_name,
+            },
+        )
+
+        if result.get("saved"):
+            device_name = result.get("device_name", "Unknown Device")
+            device_class = result.get("device_class", "Unknown")
+            preset_file = result.get("file", "")
+            return f"Saved preset '{preset_name}' for {device_name} (class: {device_class}) to {preset_file}"
+
+        return f"Failed to save preset '{preset_name}'"
+    except Exception as e:
+        logger.error(f"Error saving device preset: {str(e)}")
+        return f"Error saving device preset: {str(e)}"
+
+
+@mcp.tool()
+def load_device_preset(
+    ctx: Context, track_index: int, device_index: int, preset_name: str
+) -> str:
+    """
+    Load a device preset.
+
+    First tries to load from Ableton's native preset system, then falls back
+    to the JSON preset database.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    - preset_name: The name of the preset to load
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "load_device_preset",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "preset_name": preset_name,
+            },
+        )
+
+        if result.get("loaded"):
+            device_name = result.get("device_name", "Unknown Device")
+            source = result.get("source", "unknown")
+            return f"Loaded preset '{preset_name}' for {device_name} (source: {source})"
+
+        error_msg = result.get("error", "Unknown error")
+        return f"Failed to load preset '{preset_name}': {error_msg}"
+    except Exception as e:
+        logger.error(f"Error loading device preset: {str(e)}")
+        return f"Error loading device preset: {str(e)}"
+
+
+@mcp.tool()
+def list_device_presets(ctx: Context, track_index: int, device_index: int) -> str:
+    """
+    List available presets for a specific device.
+
+    Returns presets from both Ableton's native system and the JSON preset database.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "list_device_presets",
+            {"track_index": track_index, "device_index": device_index},
+        )
+
+        device_name = result.get("device_name", "Unknown Device")
+        device_class = result.get("device_class", "Unknown")
+        native_presets = result.get("native_presets", [])
+        json_presets = result.get("json_presets", [])
+        all_presets = result.get("all_presets", [])
+
+        output = [
+            f"Preset listing for {device_name} (class: {device_class}):",
+            "",
+            f"Native Ableton presets: {len(native_presets)}",
+        ]
+        if native_presets:
+            output.extend([f"  - {p}" for p in native_presets])
+        else:
+            output.append("  (none)")
+
+        output.extend(
+            [
+                "",
+                f"JSON database presets: {len(json_presets)}",
+            ]
+        )
+        if json_presets:
+            output.extend([f"  - {p}" for p in json_presets])
+        else:
+            output.append("  (none)")
+
+        output.extend(
+            [
+                "",
+                f"Total unique presets: {len(all_presets)}",
+            ]
+        )
+
+        return "\n".join(output)
+    except Exception as e:
+        logger.error(f"Error listing device presets: {str(e)}")
+        return f"Error listing device presets: {str(e)}"
+
+
+@mcp.tool()
 def create_audio_track(ctx: Context, index: int = -1) -> str:
     """
     Create a new audio track in the Ableton session.
