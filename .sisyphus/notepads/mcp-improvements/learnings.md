@@ -654,3 +654,143 @@ MCP_Server/
 ✅ Tests added to `scripts/test/test_session_templates.py`
 ✅ All tests pass (8/8)
 ✅ lsp_diagnostics clean (Python compilation successful)
+
+### Task 22: Preset Bank Management System - Learnings (2026-02-09)
+
+**Implementation Complete:**
+- ✅ Created 3 new MCP tools: `list_preset_banks`, `save_preset_bank`, `load_preset_bank`
+- ✅ Added tools to `MCP_Server/server.py` (after session template functions)
+- ✅ Created comprehensive test file `scripts/test/test_preset_banks.py`
+- ✅ All tests pass (9/9)
+- ✅ Follows TDD principles exactly
+
+**TDD Process Followed:**
+1. **RED Phase**: Created failing tests first
+   - 9 test cases covering all functionality
+   - Verified tests fail with ImportError (functions don't exist)
+   - Tests saved as `scripts/test/test_preset_banks.py`
+
+2. **GREEN Phase**: Implemented minimal tools to pass tests
+   - Added 3 functions with @mcp.tool() decorators
+   - Device-level only (independent of full session templates)
+   - Multi-preset bank support (one bank = multiple device presets)
+
+3. **REFACTOR**: Cleaned up implementation
+   - Used pattern matching from session templates
+   - Error handling for missing devices/files
+   - Fallback mechanism: preset loading → parameter setting
+
+**Implementation Details:**
+
+1. **list_preset_bank(ctx)** - List available preset banks
+   - Scans `~/.ableton_mcp/preset_banks/` directory
+   - Returns list of bank names (without .json extension)
+   - Returns empty list if directory doesn't exist
+   - Sorted alphabetical output
+
+2. **save_preset_bank(ctx, track_index, device_index, bank_name)** - Save device preset
+   - Gets device parameters via `get_device_parameters`
+   - Creates target directory if it doesn't exist
+   - Appends to existing bank or creates new bank
+   - Tracks preset by (track_index, device_index) combo
+   - Updates existing preset if found, adds new if not
+   - JSON structure:
+     ```json
+     {
+       "version": "1.0",
+       "created_at": "2026-02-09T12:00:00Z",
+       "updated_at": "2026-02-09T12:05:00Z",
+       "presets": [
+         {
+           "device_class": "Operator",
+           "device_name": "Bass Lead",
+           "track_index": 0,
+           "device_index": 0,
+           "preset_name": "Deep Sub Bass",
+           "parameters": {...}
+         }
+       ]
+     }
+     ```
+
+3. **load_preset_bank(ctx, bank_name, track_index=None, device_index=None)** - Load presets
+   - Selective loading: specific preset OR entire bank
+   - Two-phase loading:
+     1. Try `load_instrument_preset(preset_name)` first
+     2. Fallback to `set_device_parameter()` for each parameter
+   - Handles missing gracefully: log error, continue
+   - Returns loaded count + errors list
+
+**Key Learnings:**
+
+1. **Device-Level vs Session-Level:**
+   - Preset banks store only device presets (no tracks, clips, metadata)
+   - Independent of session templates
+   - Focus: sound design workflow, not project management
+   - Use case: save/restore synth patches, effect chains
+
+2. **JSON Structure Consistency:**
+   - Same pattern as session templates: version 1.0, created_at timestamp
+   - ISO 8601 with 'Z' suffix for UTC
+   - Parameters dictionary with normalized values (0.0-1.0)
+   - device_class and device_name for preset matching
+
+3. **Multi-Preset Banks:**
+   - Single `.json` file can contain presets for multiple devices
+   - Updates existing preset by (track_index, device_index)
+   - preset_count tracks total presets in bank
+   - Bank update sets "updated_at" timestamp
+
+4. **Loading Strategy:**
+   - Primary: Load by preset name via `load_instrument_preset`
+   - Fallback: Set parameters individually via `set_device_parameter`
+   - Handles missing presets gracefully (parameters array always saved)
+   - Allows partial success (some presets fail, others succeed)
+
+5. **Directory Structure:**
+   - Uses `~/.ableton_mcp/preset_banks/` (same base as other persistent data)
+   - Bank filename: `{bank_name}.json`
+   - Auto-creates directory on first save
+   - List tools handles non-existent directory gracefully
+
+**Testing:**
+- All 9 tests pass:
+  1. `test_list_preset_banks_empty` - Empty directory handling
+  2. `test_save_preset_bank_single_device` - Save one preset
+  3. `test_save_preset_bank_multiple_devices` - Multiple presets in one bank
+  4. `test_save_preset_bank_json_structure` - Verify JSON schema
+  5. `test_load_preset_bank_single_preset` - Load specific preset
+  6. `test_load_preset_bank_entire_bank` - Load all presets
+  7. `test_load_preset_bank_missing_device_fallback` - Parameter fallback
+  8. `test_load_preset_bank_nonexistent` - Missing file error
+  9. `test_load_preset_bank_invalid_json` - Malformed JSON error
+
+**Files Modified:**
+- `MCP_Server/server.py` - Added 3 preset bank functions (370+ lines)
+  - `list_preset_banks` (50+ lines)
+  - `save_preset_bank` (130+ lines)
+  - `load_preset_bank` (200+ lines)
+- `scripts/test/test_preset_banks.py` - Created test file (275 lines)
+
+**Use Cases:**
+- Save synth patches for reuse across projects
+- Organize presets by genre/vibe (e.g., "Dub Techno Bass", "Atmospheric Pads")
+- Backup device configurations
+- Share sound designs with collaborators
+- Quick A/B testing of different presets
+
+**All Acceptance Criteria Met:**
+✅ JSON structure designed with version (1.0) and timestamp (ISO 8601 with Z)
+✅ `save_preset_bank` tool saves device preset to bank file
+✅ `load_preset_bank` tool loads preset from bank to device
+✅ `list_preset_banks` tool lists available bank names
+✅ Preset banks independent of full session templates (device-level only)
+✅ Uses same directory structure: `~/.ableton_mcp/preset_banks/`
+✅ Selective loading: track_index + device_index optional
+✅ Handles missing devices gracefully (skip, don't fail)
+✅ Comprehensive error handling (file errors, JSON errors, device errors)
+✅ Multi-preset banks: one bank = multiple device presets
+✅ Fallback mechanism: preset loading → parameter setting
+✅ Device matching: device_class + device_name + track_index + device_index
+✅ Test file: `scripts/test/test_preset_banks.py`
+✅ All tests pass (9/9)

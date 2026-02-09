@@ -3395,7 +3395,10 @@ def load_session_template(
                 ableton.send_command("set_tempo", {"tempo": tempo})
                 logger.info(f"Set tempo to {tempo} BPM")
 
-            if "signature_numerator" in metadata and "signature_denominator" in metadata:
+            if (
+                "signature_numerator" in metadata
+                and "signature_denominator" in metadata
+            ):
                 numerator = metadata["signature_numerator"]
                 denominator = metadata["signature_denominator"]
                 ableton.send_command(
@@ -3457,10 +3460,16 @@ def load_session_template(
                     if "name" in track_data:
                         ableton.send_command(
                             "set_track_name",
-                            {"track_index": actual_track_index, "name": track_data["name"]},
+                            {
+                                "track_index": actual_track_index,
+                                "name": track_data["name"],
+                            },
                         )
 
-                    if "color_index" in track_data and track_data["color_index"] is not None:
+                    if (
+                        "color_index" in track_data
+                        and track_data["color_index"] is not None
+                    ):
                         ableton.send_command(
                             "set_track_color",
                             {
@@ -3472,41 +3481,61 @@ def load_session_template(
                     if "mute" in track_data:
                         ableton.send_command(
                             "set_track_mute",
-                            {"track_index": actual_track_index, "mute": track_data["mute"]},
+                            {
+                                "track_index": actual_track_index,
+                                "mute": track_data["mute"],
+                            },
                         )
 
                     if "solo" in track_data:
                         ableton.send_command(
                             "set_track_solo",
-                            {"track_index": actual_track_index, "solo": track_data["solo"]},
+                            {
+                                "track_index": actual_track_index,
+                                "solo": track_data["solo"],
+                            },
                         )
 
                     if "arm" in track_data:
                         ableton.send_command(
                             "set_track_arm",
-                            {"track_index": actual_track_index, "arm": track_data["arm"]},
+                            {
+                                "track_index": actual_track_index,
+                                "arm": track_data["arm"],
+                            },
                         )
 
                     if "volume" in track_data:
                         ableton.send_command(
                             "set_track_volume",
-                            {"track_index": actual_track_index, "volume": track_data["volume"]},
+                            {
+                                "track_index": actual_track_index,
+                                "volume": track_data["volume"],
+                            },
                         )
 
                     if "panning" in track_data:
                         ableton.send_command(
                             "set_track_pan",
-                            {"track_index": actual_track_index, "pan": track_data["panning"]},
+                            {
+                                "track_index": actual_track_index,
+                                "pan": track_data["panning"],
+                            },
                         )
 
                     if "folded" in track_data:
                         ableton.send_command(
                             "set_track_fold",
-                            {"track_index": actual_track_index, "folded": track_data["folded"]},
+                            {
+                                "track_index": actual_track_index,
+                                "folded": track_data["folded"],
+                            },
                         )
 
                 except Exception as e:
-                    error_msg = f"Error setting properties for track {track_name}: {str(e)}"
+                    error_msg = (
+                        f"Error setting properties for track {track_name}: {str(e)}"
+                    )
                     logger.error(error_msg)
                     errors.append(error_msg)
 
@@ -3551,7 +3580,9 @@ def load_session_template(
                                     f"Loaded preset: {device_preset} on device {device_index}"
                                 )
                             except Exception as e:
-                                error_msg = f"Error loading preset for {track_name}: {str(e)}"
+                                error_msg = (
+                                    f"Error loading preset for {track_name}: {str(e)}"
+                                )
                                 logger.error(error_msg)
                                 errors.append(error_msg)
 
@@ -3567,9 +3598,7 @@ def load_session_template(
                                     },
                                 )
                             except Exception as e:
-                                logger.warning(
-                                    f"Could not set device bypass: {str(e)}"
-                                )
+                                logger.warning(f"Could not set device bypass: {str(e)}")
 
                         # Set device parameters
                         parameters = device_data.get("parameters", {})
@@ -3682,7 +3711,9 @@ def load_session_template(
                         errors.append(error_msg)
 
             except Exception as e:
-                error_msg = f"Error loading track {track_data.get('name', 'Unknown')}: {str(e)}"
+                error_msg = (
+                    f"Error loading track {track_data.get('name', 'Unknown')}: {str(e)}"
+                )
                 logger.error(error_msg)
                 errors.append(error_msg)
 
@@ -3702,4 +3733,366 @@ def load_session_template(
             "error": f"Error loading session template: {str(e)}",
         }
         logger.error(f"Error in load_session_template: {str(e)}")
+        return json.dumps(error_result, indent=2)
+
+
+# ============================================================================
+# PRESET BANK MANAGEMENT
+# ============================================================================
+
+import os
+
+
+@mcp.tool()
+def list_preset_banks(ctx: Context) -> str:
+    """
+    List all available preset banks.
+
+    Returns a list of preset bank names found in the preset_banks directory.
+
+    Returns:
+    - JSON string with success status and list of bank names
+    """
+    try:
+        preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
+
+        # Check if directory exists
+        if not os.path.exists(preset_bank_dir):
+            result = {
+                "success": True,
+                "banks": [],
+                "message": "No preset banks directory found",
+            }
+            return json.dumps(result, indent=2)
+
+        # List JSON files in the directory
+        bank_files = []
+        try:
+            for filename in os.listdir(preset_bank_dir):
+                if filename.endswith(".json"):
+                    # Remove .json extension to get bank name
+                    bank_name = filename[:-5]
+                    bank_files.append(bank_name)
+        except Exception as e:
+            logger.error(f"Error listing preset banks: {str(e)}")
+            result = {
+                "success": True,
+                "banks": [],
+                "message": f"Error reading preset banks: {str(e)}",
+            }
+            return json.dumps(result, indent=2)
+
+        # Sort banks alphabetically
+        bank_files.sort()
+
+        result = {
+            "success": True,
+            "banks": bank_files,
+            "count": len(bank_files),
+        }
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error listing preset banks: {str(e)}",
+        }
+        logger.error(f"Error in list_preset_banks: {str(e)}")
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.tool()
+def save_preset_bank(
+    ctx: Context, track_index: int, device_index: int, bank_name: str
+) -> str:
+    """
+    Save a device preset to a preset bank.
+
+    Saves the current state of a device (preset name and parameters) to a
+    preset bank file. Multiple device presets can be saved to the same bank.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    - bank_name: Name of the preset bank (will be saved as bank_name.json)
+
+    Returns:
+    - JSON string with success status and details of what was saved
+    """
+    try:
+        ableton = get_ableton_connection()
+        preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
+
+        # Create directory if it doesn't exist
+        os.makedirs(preset_bank_dir, exist_ok=True)
+
+        # Get device parameters
+        try:
+            device_params = ableton.send_command(
+                "get_device_parameters",
+                {"track_index": track_index, "device_index": device_index},
+            )
+        except Exception as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to get device parameters: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Create preset entry
+        preset_entry = {
+            "device_class": device_params.get("class_name", ""),
+            "device_name": device_params.get("name", ""),
+            "track_index": track_index,
+            "device_index": device_index,
+            "preset_name": device_params.get("preset_name"),
+            "parameters": device_params.get("parameters", {}),
+        }
+
+        # Check if bank already exists
+        bank_path = os.path.join(preset_bank_dir, f"{bank_name}.json")
+
+        if os.path.exists(bank_path):
+            # Load existing bank
+            try:
+                with open(bank_path, "r") as f:
+                    bank = json.load(f)
+            except Exception as e:
+                error_result = {
+                    "success": False,
+                    "error": f"Failed to read existing bank: {str(e)}",
+                }
+                return json.dumps(error_result, indent=2)
+
+            # Check if preset already exists for this track/device
+            existing_preset = None
+            for i, preset in enumerate(bank.get("presets", [])):
+                if (
+                    preset.get("track_index") == track_index
+                    and preset.get("device_index") == device_index
+                ):
+                    existing_preset = i
+                    break
+
+            if existing_preset is not None:
+                # Update existing preset
+                bank["presets"][existing_preset] = preset_entry
+                update_type = "updated"
+            else:
+                # Add new preset
+                bank["presets"].append(preset_entry)
+                update_type = "added"
+
+            # Update timestamp
+            bank["updated_at"] = (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            )
+        else:
+            # Create new bank
+            bank = {
+                "version": "1.0",
+                "created_at": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "presets": [preset_entry],
+            }
+            update_type = "created"
+
+        # Write bank to file
+        try:
+            with open(bank_path, "w") as f:
+                json.dump(bank, f, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to write bank file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Return success response
+        result = {
+            "success": True,
+            "message": f"Preset {update_type} in bank '{bank_name}'",
+            "bank_name": bank_name,
+            "device_name": device_params.get("name", ""),
+            "preset_count": len(bank["presets"]),
+        }
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error saving preset to bank: {str(e)}",
+        }
+        logger.error(f"Error in save_preset_bank: {str(e)}")
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.tool()
+def load_preset_bank(
+    ctx: Context, bank_name: str, track_index: int = None, device_index: int = None
+) -> str:
+    """
+    Load presets from a preset bank.
+
+    Loads device presets from a preset bank. Can load either:
+    - A specific preset (if track_index and device_index are provided)
+    - All presets in the bank (if track_index and device_index are not provided)
+
+    Parameters:
+    - bank_name: Name of the preset bank to load from (without .json extension)
+    - track_index: Optional. The index of the target track
+    - device_index: Optional. The index of the target device
+
+    Returns:
+    - JSON string with success status, loaded count, and any errors
+    """
+    try:
+        preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
+        bank_path = os.path.join(preset_bank_dir, f"{bank_name}.json")
+
+        # Read bank file
+        try:
+            with open(bank_path, "r") as f:
+                bank = json.load(f)
+        except FileNotFoundError:
+            error_result = {
+                "success": False,
+                "error": f"Preset bank file not found: {bank_name}",
+            }
+            return json.dumps(error_result, indent=2)
+        except json.JSONDecodeError as e:
+            error_result = {
+                "success": False,
+                "error": f"Invalid JSON in preset bank: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to read preset bank: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Get Ableton connection
+        ableton = get_ableton_connection()
+
+        # Determine which presets to load
+        if track_index is not None and device_index is not None:
+            # Load specific preset
+            presets_to_load = []
+            for preset in bank.get("presets", []):
+                if (
+                    preset.get("track_index") == track_index
+                    and preset.get("device_index") == device_index
+                ):
+                    presets_to_load.append(preset)
+                    break
+        else:
+            # Load all presets
+            presets_to_load = bank.get("presets", [])
+
+        if not presets_to_load:
+            if track_index is not None and device_index is not None:
+                error_result = {
+                    "success": False,
+                    "error": f"No preset found for track {track_index}, device {device_index}",
+                }
+                return json.dumps(error_result, indent=2)
+            else:
+                # Bank is empty
+                result = {
+                    "success": True,
+                    "message": "Preset bank is empty",
+                    "loaded_presets_count": 0,
+                    "errors": [],
+                }
+                return json.dumps(result, indent=2)
+
+        # Load presets
+        loaded_count = 0
+        errors = []
+
+        for preset in presets_to_load:
+            try:
+                target_track_index = (
+                    track_index if track_index is not None else preset["track_index"]
+                )
+                target_device_index = (
+                    device_index if device_index is not None else preset["device_index"]
+                )
+
+                # Try to load by preset name first
+                preset_name = preset.get("preset_name")
+                if preset_name:
+                    try:
+                        ableton.send_command(
+                            "load_instrument_preset",
+                            {
+                                "track_index": target_track_index,
+                                "device_index": target_device_index,
+                                "preset_name": preset_name,
+                            },
+                        )
+                        loaded_count += 1
+                        logger.info(
+                            f"Loaded preset '{preset_name}' for device {target_device_index} on track {target_track_index}"
+                        )
+                        continue
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to load preset '{preset_name}': {str(e)}"
+                        )
+
+                # Fallback: set parameters directly
+                parameters = preset.get("parameters", [])
+                for param_data in parameters.values():
+                    param_index = param_data.get("index")
+                    param_value = param_data.get("value")
+
+                    if param_index is not None and param_value is not None:
+                        try:
+                            ableton.send_command(
+                                "set_device_parameter",
+                                {
+                                    "track_index": target_track_index,
+                                    "device_index": target_device_index,
+                                    "parameter_index": param_index,
+                                    "value": param_value,
+                                },
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to set parameter {param_index}: {str(e)}"
+                            )
+
+                loaded_count += 1
+                logger.info(
+                    f"Set parameters for device {target_device_index} on track {target_track_index}"
+                )
+
+            except Exception as e:
+                error_msg = (
+                    f"Error loading preset for track {preset.get('track_index')}, "
+                    f"device {preset.get('device_index')}: {str(e)}"
+                )
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        # Return result
+        result = {
+            "success": True,
+            "message": f"Loaded {loaded_count} preset(s) from bank '{bank_name}'",
+            "bank_name": bank_name,
+            "loaded_presets_count": loaded_count,
+            "errors": errors,
+        }
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error loading preset bank: {str(e)}",
+        }
+        logger.error(f"Error in load_preset_bank: {str(e)}")
         return json.dumps(error_result, indent=2)
