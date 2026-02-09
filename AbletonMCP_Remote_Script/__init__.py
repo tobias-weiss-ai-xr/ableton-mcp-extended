@@ -16,6 +16,7 @@ except ImportError:
 
 # Constants for socket communication
 DEFAULT_PORT = 9877
+UDP_PORT = 9878
 HOST = "127.0.0.1"
 
 
@@ -38,17 +39,22 @@ class AbletonMCP(ControlSurface):
         self.server_thread = None
         self.running = False
 
+        # UDP server for high-frequency parameter updates
+        self.udp_server_socket = None
+        self.udp_server_thread = None
+
         # Cache the song reference for easier access
         self._song = self.song()
 
-        # Start the socket server
+        # Start the socket servers (both TCP and UDP)
         self.start_server()
+        self.start_udp_server()
 
         self.log_message("AbletonMCP initialized")
 
         # Show a message in Ableton
         self.show_message(
-            "AbletonMCP: Listening for commands on port " + str(DEFAULT_PORT)
+            "AbletonMCP: TCP on " + str(DEFAULT_PORT) + ", UDP on " + str(UDP_PORT)
         )
 
     def disconnect(self):
@@ -56,16 +62,27 @@ class AbletonMCP(ControlSurface):
         self.log_message("AbletonMCP disconnecting...")
         self.running = False
 
-        # Stop the server
+        # Stop the TCP server
         if self.server:
             try:
                 self.server.close()
             except:
                 pass
 
-        # Wait for the server thread to exit
+        # Wait for the TCP server thread to exit
         if self.server_thread and self.server_thread.is_alive():
             self.server_thread.join(1.0)
+
+        # Stop the UDP server
+        if self.udp_server_socket:
+            try:
+                self.udp_server_socket.close()
+            except:
+                pass
+
+        # Wait for the UDP server thread to exit
+        if self.udp_server_thread and self.udp_server_thread.is_alive():
+            self.udp_server_thread.join(1.0)
 
         # Clean up any client threads
         for client_thread in self.client_threads[:]:
@@ -210,6 +227,198 @@ class AbletonMCP(ControlSurface):
             except:
                 pass
             self.log_message("Client handler stopped")
+
+    def start_udp_server(self):
+        """Start the UDP server in a separate thread for high-frequency parameter updates"""
+        try:
+            self.udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.udp_server_socket.bind((HOST, UDP_PORT))
+
+            self.running = True
+            self.udp_server_thread = threading.Thread(target=self._udp_server_loop)
+            self.udp_server_thread.daemon = True
+            self.udp_server_thread.start()
+
+            self.log_message("UDP server started on port " + str(UDP_PORT))
+        except Exception as e:
+            self.log_message("Error starting UDP server: " + str(e))
+            self.show_message("AbletonMCP: UDP Server Error - " + str(e))
+
+    def _udp_server_loop(self):
+        """UDP server thread implementation - handles incoming datagrams"""
+        try:
+            self.log_message("UDP server thread started")
+
+            while self.running:
+                try:
+                    # Receive datagram
+                    data, addr = self.udp_server_socket.recvfrom(1024)
+                    if not self.running:
+                        break
+
+                    # Process datagram (fire-and-forget, no response)
+                    self._handle_udp_data(data, addr)
+
+                except socket.error as se:
+                    if self.running:
+                        self.log_message("UDP server socket error: " + str(se))
+                    break
+                except Exception as e:
+                    if self.running:
+                        self.log_message("UDP server loop error: " + str(e))
+                    time.sleep(0.1)
+
+            self.log_message("UDP server thread stopped")
+        except Exception as e:
+            self.log_message("UDP server thread critical error: " + str(e))
+
+    def _handle_udp_data(self, data, addr):
+        """Handle UDP datagram (fire-and-forget)"""
+        try:
+            # Parse JSON
+            command_str = data.decode("utf-8")
+            command_json = json.loads(command_str)
+
+            self.log_message(
+                f"UDP: Received {command_json.get('type', 'unknown')} from {addr}"
+            )
+
+            # Execute without response queue
+            def udp_task():
+                try:
+                    self._process_udp_command(command_json)
+                except Exception as e:
+                    # Log but don't block (fire-and-forget acceptable)
+                    self.log_message(
+                        f"UDP: Error executing {command_json.get('type', 'unknown')}: {e}"
+                    )
+
+            # Schedule on main thread
+            try:
+                self.schedule_message(0, udp_task)
+            except AssertionError:
+                # Already on main thread, execute directly
+                udp_task()
+
+        except Exception as e:
+            self.log_message(f"UDP: Error processing datagram from {addr}: {e}")
+            # Continue processing, don't crash
+
+def _process_udp_command(self, command):
+        """Process UDP command (limited routing for parameter commands)"""
+        command_type = command.get("type", "")
+        params = command.get("params", {})
+
+        # UDP command handlers - fire-and-forget pattern
+        # No response sent, errors logged but don't crash
+        try:
+            if command_type == "set_device_parameter":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                parameter_index = params.get("parameter_index", 0)
+                value = params.get("value", 0.0)
+                self._set_device_parameter(track_index, device_index,
+                                           parameter_index, value)
+                self.log_message(
+                    f"UDP: set_device_parameter track={track_index} "
+                    f"device={device_index} param={parameter_index} value={value}"
+                )
+
+            elif command_type == "batch_set_device_parameters":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                parameter_indices = params.get("parameter_indices", [])
+                values = params.get("values", [])
+                self._batch_set_device_parameters(track_index, device_index,
+                                                 parameter_indices, values)
+                self.log_message(
+                    f"UDP: batch_set_device_parameters track={track_index} "
+                    f"device={device_index} count={len(parameter_indices)}"
+                )
+
+            elif command_type == "set_track_volume":
+                track_index = params.get("track_index", 0)
+                volume = params.get("volume", 0.75)
+                self._set_track_volume(track_index, volume)
+                self.log_message(
+                    f"UDP: set_track_volume track={track_index} volume={volume}"
+                )
+
+            elif command_type == "set_track_pan":
+                track_index = params.get("track_index", 0)
+                pan = params.get("pan", 0.0)
+                self._set_track_pan(track_index, pan)
+                self.log_message(
+                    f"UDP: set_track_pan track={track_index} pan={pan}"
+                )
+
+            elif command_type == "set_track_mute":
+                track_index = params.get("track_index", 0)
+                mute = params.get("mute", False)
+                self._set_track_mute(track_index, mute)
+                self.log_message(
+                    f"UDP: set_track_mute track={track_index} mute={mute}"
+                )
+
+            elif command_type == "set_track_solo":
+                track_index = params.get("track_index", 0)
+                solo = params.get("solo", False)
+                self._set_track_solo(track_index, solo)
+                self.log_message(
+                    f"UDP: set_track_solo track={track_index} solo={solo}"
+                )
+
+            elif command_type == "set_track_arm":
+                track_index = params.get("track_index", 0)
+                arm = params.get("arm", False)
+                self._set_track_arm(track_index, arm)
+                self.log_message(
+                    f"UDP: set_track_arm track={track_index} arm={arm}"
+                )
+
+            elif command_type == "set_master_volume":
+                volume = params.get("volume", 0.75)
+                self._set_master_volume(volume)
+                self.log_message(f"UDP: set_master_volume volume={volume}")
+
+            elif command_type == "fire_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                self._fire_clip(track_index, clip_index)
+                self.log_message(
+                    f"UDP: fire_clip track={track_index} clip={clip_index}"
+                )
+
+            elif command_type == "set_clip_launch_mode":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                mode = params.get("mode", 0)
+                self._set_clip_launch_mode(track_index, clip_index, mode)
+                self.log_message(
+                    f"UDP: set_clip_launch_mode track={track_index} "
+                    f"clip={clip_index} mode={mode}"
+                )
+
+            elif command_type == "set_send_amount":
+                track_index = params.get("track_index", 0)
+                send_index = params.get("send_index", 0)
+                amount = params.get("amount", 0.0)
+                self._set_send_amount(track_index, send_index, amount)
+                self.log_message(
+                    f"UDP: set_send_amount track={track_index} "
+                    f"send={send_index} amount={amount}"
+                )
+
+            else:
+                self.log_message(
+                    f"UDP: Unknown or unsupported command type: {command_type}"
+                )
+
+        except Exception as e:
+            # Log error but don't crash (UDP tolerance)
+            self.log_message(
+                f"UDP: Error executing {command_type} - {str(e)}"
+            )
 
     def _process_command(self, command):
         """Process a command from the client and return a response"""
@@ -1033,9 +1242,51 @@ class AbletonMCP(ControlSurface):
                 }
                 return result
             else:
-                raise Exception("Device has no parameters")
+raise Exception("Device has no parameters")
         except Exception as e:
             self.log_message("Error setting device parameter: " + str(e))
+            raise
+
+    def _batch_set_device_parameters(self, track_index, device_index,
+                                   parameter_indices, values):
+        """Batch set multiple device parameters (normalized 0.0-1.0)"""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+
+            device = track.devices[device_index]
+
+            if hasattr(device, "parameters"):
+                # Validate arrays match
+                if len(parameter_indices) != len(values):
+                    raise Exception(
+                        f"Array length mismatch: {len(parameter_indices)} "
+                        f"indices vs {len(values)} values"
+                    )
+
+                # Set all parameters
+                for i, param_idx in enumerate(parameter_indices):
+                    if param_idx < 0 or param_idx >= len(device.parameters):
+                        raise IndexError(f"Parameter index {param_idx} out of range")
+                    device.parameters[param_idx].value = values[i]
+
+                result = {
+                    "device_name": device.name
+                    if hasattr(device, "name")
+                    else "Device {}".format(device_index),
+                    "parameter_count": len(parameter_indices),
+                    "device_index": device_index,
+                }
+                return result
+            else:
+                raise Exception("Device has no parameters")
+        except Exception as e:
+            self.log_message("Error batch setting device parameters: " + str(e))
             raise
 
     def _set_track_volume(self, track_index, volume):

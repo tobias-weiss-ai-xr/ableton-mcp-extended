@@ -104,6 +104,7 @@ class AbletonConnection:
     host: str
     port: int
     sock: socket.socket = None
+    udp_port: int = 9878
 
     def connect(self) -> bool:
         """Connect to the Ableton Remote Script socket server"""
@@ -129,6 +130,58 @@ class AbletonConnection:
                 logger.error(f"Error disconnecting from Ableton: {str(e)}")
             finally:
                 self.sock = None
+
+    def send_command_udp(
+        self, command_type: str, params: Dict[str, Any] = None
+    ) -> None:
+        """
+        Send command via UDP (fire-and-forget).
+
+        This sends a command to Ableton using UDP protocol without waiting for a response.
+        Use for high-frequency parameter updates where occasional packet loss is acceptable.
+
+        Parameters:
+        - command_type: Type of command to send (e.g., "set_device_parameter", "set_track_volume")
+        - params: Command parameters as dictionary
+
+        Returns:
+        - None (fire-and-forget, no response)
+
+        UDP-ALLOWED commands (fast, reversible):
+        - set_device_parameter
+        - set_track_volume
+        - set_track_pan
+        - set_track_mute
+        - set_track_solo
+        - set_track_arm
+        - set_clip_launch_mode
+        - fire_clip
+
+        Note: UDP is connectionless, so no connection check is needed.
+        Port 9878 is used for UDP (9877 is TCP).
+        """
+        command = {"type": command_type, "params": params or {}}
+
+        try:
+            logger.info(f"Sending UDP command: {command_type} with params: {params}")
+
+            # Create UDP socket
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+            # Send command (fire-and-forget, no response)
+            udp_socket.sendto(
+                json.dumps(command).encode("utf-8"), (self.host, self.udp_port)
+            )
+
+            # Close socket immediately (UDP is connectionless)
+            udp_socket.close()
+
+            logger.info(f"UDP command sent (fire-and-forget): {command_type}")
+
+        except Exception as e:
+            # Log error but don't raise (UDP fire-and-forget acceptable)
+            logger.error(f"Error sending UDP command: {str(e)}")
+            # Continue without raising - UDP can tolerate occasional failures
 
     def receive_full_response(self, sock, buffer_size=8192):
         """Receive the complete response, potentially in multiple chunks"""
