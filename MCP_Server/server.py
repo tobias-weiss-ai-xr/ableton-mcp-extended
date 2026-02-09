@@ -4181,7 +4181,7 @@ def load_preset_bank(
 
                 # Fallback: set parameters directly
                 parameters = preset.get("parameters", [])
-                for param_data in parameters.values():
+                for param_data in parameters:
                     param_index = param_data.get("index")
                     param_value = param_data.get("value")
 
