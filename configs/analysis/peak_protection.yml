@@ -1,0 +1,100 @@
+# Peak Protection and Dynamic Range Control
+#
+# This rules file focuses on peak protection and dynamic range
+# management using Youlean Loudness Meter 2.
+#
+# Setup Requirements:
+# - Youlean Loudness Meter 2 on Track 0, Device 0
+# - Compressor device on Track 0, Device 1 (optional)
+
+rules:
+  # Priority 1: CRITICAL - Peak protection
+  - name: "Peak protection -10 dB reduction"
+    priority: 1
+    condition:
+      operator: ">"
+      param1: "0:4"  # True Peak
+      param2: "-0.3"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-10.0"
+
+  # Priority 2: Moderate peak reduction
+  - name: "Peak protection -3 dB reduction"
+    priority: 2
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: ">"
+          param1: "0:4"
+          param2: "-1.0"
+        - operator: "<="
+          param1: "0:4"
+          param2: "-0.3"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-3.0"
+
+  # Priority 5: Crest factor control
+  # High crest factor means peaks are much higher than average (transient-heavy)
+  - name: "Reduce transient-heavy peaks"
+    priority: 5
+    condition:
+      operator: ">"
+      param1: "0:6"  # Crest Factor
+      param2: "18.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-5.0"
+
+  # Priority 10: Dynamic range management
+  # High LRA = very dynamic, may need compression
+  - name: "Compress high dynamic range"
+    priority: 10
+    condition:
+      operator: ">"
+      param1: "0:5"  # Loudness Range
+      param2: "20.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-2.0"
+
+  # Priority 15: Restore volume on normal levels
+  - name: "Restore volume on normal levels"
+    priority: 15
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: "<="
+          param1: "0:4"
+          param2: "-1.0"
+        - operator: "<="
+          param1: "0:0"
+          param2: "-14.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: 0.0
+
+  # Priority 20: Warn about low dynamic range
+  # Low LRA may indicate over-compression
+  - name: "Warning - low dynamic range"
+    priority: 20
+    condition:
+      operator: "<"
+      param1: "0:5"
+      param2: "6.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-0.5"  # Slight reduction

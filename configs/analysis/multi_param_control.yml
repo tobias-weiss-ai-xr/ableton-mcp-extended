@@ -1,0 +1,134 @@
+# Multi-Parameter Control Rules
+#
+# This rules file demonstrates complex conditions using multiple
+# parameters from Youlean Loudness Meter 2.
+#
+# Setup Requirements:
+# - Youlean Loudness Meter 2 on Track 0, Device 0
+# - Compressor on Track 0, Device 1 (optional)
+# - Limiter on Track 0, Device 2 (optional)
+
+rules:
+  # Priority 1: Critical - Peak + loudness protection
+  # Trigger only when BOTH peak is high AND LUFS is high
+  - name: "Critical: Peak + LUFS overload"
+    priority: 1
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: ">"
+          param1: "0:4"  # True Peak
+          param2: "-0.3"
+        - operator: ">"
+          param1: "0:0"  # Momentary LUFS
+          param2: "-10.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-15.0"
+
+  # Priority 2: Transient-heavy peak protection
+  # High peak with moderate LUFS = transient spikes
+  - name: "Protect transient spikes"
+    priority: 2
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: ">"
+          param1: "0:4"  # True Peak
+          param2: "-1.0"
+        - operator: "<"
+          param1: "0:0"  # Momentary LUFS
+          param2: "-18.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-6.0"
+
+  # Priority 5: Sustained loudness handling
+  # Moderate LUFS over time (integrated)
+  - name: "Reduce sustained loudness"
+    priority: 5
+    condition:
+      operator: ">"
+      param1: "0:2"  # Integrated LUFS
+      param2: "-12.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-4.0"
+
+  # Priority 10: Dynamic vs Momentary comparison
+  # Trigger when Momentary >> Integrated (transient build-up)
+  - name: "Momentary build-up detected"
+    priority: 10
+    condition:
+      operator: ">"
+      param1: "0:0"  # Momentary LUFS
+      param2: "-12.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-2.0"
+
+  # Priority 15: Low dynamics warning
+  # High LUFS but low LRA = compressed sound
+  - name: "Warn low dynamics"
+    priority: 15
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: ">"
+          param1: "0:0"
+          param2: "-14.0"
+        - operator: "<"
+          param1: "0:5"  # Loudness Range
+          param2: "8.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-1.0"
+
+  # Priority 20: Normal range detection
+  # Restore volume when levels are within normal range
+  - name: "Restore volume on normal range"
+    priority: 20
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: "<="
+          param1: "0:0"  # Momentary LUFS
+          param2: "-16.0"
+        - operator: ">="
+          param1: "0:0"
+          param2: "-20.0"
+        - operator: "<="
+          param1: "0:4"  # True Peak
+          param2: "-1.0"
+        - operator: ">="
+          param1: "0:5"  # Loudness Range
+          param2: "10.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: 0.0
+
+  # Priority 25: RMS-based verification
+  # Cross-check RMS level for consistency
+  - name: "Verify RMS level"
+    priority: 25
+    condition:
+      operator: ">"
+      param1: "0:3"  # RMS Level
+      param2: "-6.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-3.0"

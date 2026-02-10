@@ -1,0 +1,100 @@
+# LUFS-Based Loudness Control System
+# 
+# This rules file implements loudness-based control decisions using
+# the Youlean Loudness Meter 2 plugin.
+# 
+# Setup Requirements:
+# - Youlean Loudness Meter 2 on Track 0, Device 0
+# - Track 1: Master output (volume control)
+# - Track 2: Break clip (trigger on quiet sections)
+
+rules:
+  # Priority 1: CRITICAL - Emergency peak protection
+  # Immediately reduce volume if true peak exceeds -0.3 dBTP
+  - name: "Emergency peak limit"
+    priority: 1
+    condition:
+      operator: ">"
+      param1: "0:4"  # True Peak (Track 0, Device 0, Param 4)
+      param2: "-0.3"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-10.0"  # Reduce by 10 dB
+
+  # Priority 2: Apply compression when LUFS exceeds -14
+  - name: "Compress when LUFS exceeds -14"
+    priority: 2
+    condition:
+      operator: ">"
+      param1: "0:0"  # Momentary LUFS (Track 0, Device 0, Param 0)
+      param2: "-14.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-3.0"  # Reduce by 3 dB
+
+  # Priority 3: Restore volume when LUFS drops below -20
+  - name: "Restore volume when quiet"
+    priority: 3
+    condition:
+      operator: "<"
+      param1: "0:0"
+      param2: "-20.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: 0.0  # Full volume
+
+  # Priority 10: Trigger break clip on quiet sections
+  - name: "Trigger break clip on quiet"
+    priority: 10
+    condition:
+      operator: "<"
+      param1: "0:0"
+      param2: "-25.0"
+    action:
+      type: "fire_clip"
+      params:
+        track_index: 2
+        clip_index: 0
+
+  # Priority 20: Increase tempo on high energy
+  # Only activate when loud AND dynamic (high LRA)
+  - name: "Increase tempo on high energy"
+    priority: 20
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: ">"
+          param1: "0:0"
+          param2: "-10.0"
+        - operator: ">"
+          param1: "0:5"  # Loudness Range
+          param2: "15.0"
+    action:
+      type: "set_tempo"
+      params:
+        tempo: 128
+
+  # Priority 25: Warn about over-compression
+  # Trigger when LUFS is high but loudness range is very low
+  - name: "Warn about over-compression"
+    priority: 25
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: ">"
+          param1: "0:0"
+          param2: "-12.0"
+        - operator: "<"
+          param1: "0:5"
+          param2: "8.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-1.0"  # Slight reduction
