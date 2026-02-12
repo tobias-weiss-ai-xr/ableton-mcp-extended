@@ -61,8 +61,8 @@ class AbletonMCP(ControlSurface):
         if self.server:
             try:
                 self.server.close()
-            except:
-                pass
+            except Exception as e:
+                self.log_message(f"Error closing server: {e}")
 
         # Wait for the server thread to exit
         if self.server_thread and self.server_thread.is_alive():
@@ -196,8 +196,9 @@ class AbletonMCP(ControlSurface):
                     except AttributeError:
                         # Python 2: string is already bytes
                         client.sendall(json.dumps(error_response))
-                    except:
+                    except Exception as e:
                         # If we can't send the error, the connection is probably dead
+                        self.log_message(f"Failed to send error response: {e}")
                         break
 
                     # For serious errors, break the loop
@@ -208,8 +209,8 @@ class AbletonMCP(ControlSurface):
         finally:
             try:
                 client.close()
-            except:
-                pass
+            except Exception as e:
+                self.log_message(f"Error closing client connection: {e}")
             self.log_message("Client handler stopped")
 
     def _process_command(self, command):
@@ -400,7 +401,7 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             arm = params.get("arm", False)
                             result = self._set_track_arm(track_index, arm)
-elif command_type == "list_device_presets":
+                        elif command_type == "list_device_presets":
                             track_index = params.get("track_index", 0)
                             device_index = params.get("device_index", 0)
                             result = self._list_device_presets(
@@ -3057,7 +3058,8 @@ elif command_type == "list_device_presets":
                 return "midi_effect"
             else:
                 return "unknown"
-        except:
+        except Exception as e:
+            self.log_message(f"Error determining device class: {e}")
             return "unknown"
 
     def get_browser_tree(self, category_type="all"):
