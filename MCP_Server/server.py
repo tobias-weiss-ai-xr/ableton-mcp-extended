@@ -407,10 +407,11 @@ def get_ableton_connection():
             return _ableton_connection
         except Exception as e:
             logger.warning(f"Existing connection is no longer valid: {str(e)}")
-            try:
-                _ableton_connection.disconnect()
-            except:
-                pass
+
+        try:
+            _ableton_connection.disconnect()
+        except Exception as e:
+            logger.debug(f"Failed to disconnect connection: {e}")
             _ableton_connection = None
 
     # Connection doesn't exist or is invalid, create a new one
