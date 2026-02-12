@@ -320,7 +320,7 @@ for track_index in range(6):
                                     "  [INFO] Available presets (showing first 5): "
                                     + ", ".join(available[:5])
                                 )
-                    except:
+                    except Exception as e:
                         pass  # Preset loading failed silently
         except Exception as e:
             print("  [WARNING] " + str(e))
