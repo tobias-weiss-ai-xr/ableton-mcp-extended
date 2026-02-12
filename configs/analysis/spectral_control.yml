@@ -1,0 +1,109 @@
+# Spectral Analysis-Based Control
+#
+# This rules file uses spectral analysis parameters for control decisions.
+# Designed for use with PSP Spector (31-band analyzer) or similar.
+#
+# Setup Requirements:
+# - PSP Spector on Track 0, Device 0
+# - Device exposes spectral bands as parameters (0-60 for Peak, 1-61 for RMS)
+#
+# Note: This is a template. Actual parameter indices must be validated
+# via Task 3 testing in Ableton.
+
+rules:
+  # Priority 1: Bass-heavy detection
+  # High energy in low-frequency bands (80-125 Hz, bands 5-6)
+  - name: "Reduce bass-heavy content"
+    priority: 1
+    condition:
+      operator: "OR"
+      conditions:
+        - operator: ">"
+          param1: "0:10"  # RMS Band 5 (80-100 Hz)
+          param2: "-15.0"
+        - operator: ">"
+          param1: "0:12"  # RMS Band 6 (100-125 Hz)
+          param2: "-15.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-3.0"
+
+  # Priority 2: Harsh high-frequency detection
+  # High energy in upper-mid bands (2.5-5.0 kHz, bands 20-21)
+  - name: "Reduce harsh high frequencies"
+    priority: 2
+    condition:
+      operator: "OR"
+      conditions:
+        - operator: ">"
+          param1: "0:40"  # Peak Band 20 (2.5-3.15 kHz)
+          param2: "-18.0"
+        - operator: ">"
+          param1: "0:42"  # Peak Band 21 (3.15-4.0 kHz)
+          param2: "-18.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "-2.0"
+
+  # Priority 5: Mid-range clarity check
+  # Balanced energy across mids (400-800 Hz, bands 12-15)
+  - name: "Ensure mid-range presence"
+    priority: 5
+    condition:
+      operator: "AND"
+      conditions:
+        - operator: "<"
+          param1: "0:24"  # RMS Band 12 (400-500 Hz)
+          param2: "-20.0"
+        - operator: "<"
+          param1: "0:28"  # RMS Band 13 (500-630 Hz)
+          param2: "-20.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: "2.0"  # Boost by 2 dB
+
+  # Priority 10: Sub-bass activation
+  # Very low frequency energy (25-50 Hz, bands 0-2)
+  - name: "Activate on sub-bass presence"
+    priority: 10
+    condition:
+      operator: "OR"
+      conditions:
+        - operator: ">"
+          param1: "0:0"   # Peak Band 0 (25-31 Hz)
+          param2: "-20.0"
+        - operator: ">"
+          param1: "0:4"   # RMS Band 2 (40-50 Hz)
+          param2: "-20.0"
+    action:
+      type: "fire_clip"
+      params:
+        track_index: 1
+        clip_index: 0
+
+  # Priority 15: Restore volume on balanced spectrum
+  # No extreme peaks in any band
+  - name: "Restore volume on balanced spectrum"
+    priority: 15
+    condition:
+      operator: "NOT"
+      condition:
+        operator: "OR"
+        conditions:
+          - operator: ">"
+            param1: "0:10"  # Check low-mid
+            param2: "-12.0"
+          - operator: ">"
+            param1: "0:40"  # Check high-mid
+            param2: "-12.0"
+    action:
+      type: "set_volume"
+      params:
+        track_index: 0
+        volume: 0.0

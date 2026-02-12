@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
 import time
+from datetime import datetime, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -104,6 +105,7 @@ class AbletonConnection:
     host: str
     port: int
     sock: socket.socket = None
+    udp_port: int = 9878
 
     def connect(self) -> bool:
         """Connect to the Ableton Remote Script socket server"""
@@ -130,10 +132,62 @@ class AbletonConnection:
             finally:
                 self.sock = None
 
-    def receive_full_response(self, sock, buffer_size=32768):
+    def send_command_udp(
+        self, command_type: str, params: Dict[str, Any] = None
+    ) -> None:
+        """
+        Send command via UDP (fire-and-forget).
+
+        This sends a command to Ableton using UDP protocol without waiting for a response.
+        Use for high-frequency parameter updates where occasional packet loss is acceptable.
+
+        Parameters:
+        - command_type: Type of command to send (e.g., "set_device_parameter", "set_track_volume")
+        - params: Command parameters as dictionary
+
+        Returns:
+        - None (fire-and-forget, no response)
+
+        UDP-ALLOWED commands (fast, reversible):
+        - set_device_parameter
+        - set_track_volume
+        - set_track_pan
+        - set_track_mute
+        - set_track_solo
+        - set_track_arm
+        - set_clip_launch_mode
+        - fire_clip
+
+        Note: UDP is connectionless, so no connection check is needed.
+        Port 9878 is used for UDP (9877 is TCP).
+        """
+        command = {"type": command_type, "params": params or {}}
+
+        try:
+            logger.info(f"Sending UDP command: {command_type} with params: {params}")
+
+            # Create UDP socket
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+            # Send command (fire-and-forget, no response)
+            udp_socket.sendto(
+                json.dumps(command).encode("utf-8"), (self.host, self.udp_port)
+            )
+
+            # Close socket immediately (UDP is connectionless)
+            udp_socket.close()
+
+            logger.info(f"UDP command sent (fire-and-forget): {command_type}")
+
+        except Exception as e:
+            # Log error but don't raise (UDP fire-and-forget acceptable)
+            logger.error(f"Error sending UDP command: {str(e)}")
+            # Continue without raising - UDP can tolerate occasional failures
+
+    def receive_full_response(self, sock, buffer_size=8192):
         """Receive the complete response, potentially in multiple chunks"""
         chunks = []
-        sock.settimeout(30.0)  # Increased timeout for large browser responses
+        sock.settimeout(15.0)  # Increased timeout for operations that might take longer
 
         try:
             while True:
@@ -209,13 +263,10 @@ class AbletonConnection:
             "set_clip_name",
             "set_clip_loop",
             "set_clip_launch_mode",
-            "set_clip_follow_action",
-            "get_clip_follow_actions",
             "create_scene",
             "delete_scene",
             "duplicate_scene",
             "set_scene_name",
-            "fire_scene",
             "set_tempo",
             "set_time_signature",
             "set_metronome",
@@ -226,7 +277,7 @@ class AbletonConnection:
             "start_recording",
             "stop_recording",
             "set_track_monitoring_state",
-            "load_browser_item",
+            "load_instrument_or_effect",
             "get_device_parameters",
             "set_device_parameter",
             "add_automation_point",
@@ -234,12 +285,15 @@ class AbletonConnection:
             "duplicate_device",
             "delete_device",
             "move_device",
-            "toggle_device_bypass",
+            "set_track_volume",
+            "set_track_pan",
+            "set_track_mute",
+            "set_track_solo",
+            "set_track_arm",
+            "set_send_amount",
+            "load_instrument_preset",
             "undo",
             "redo",
-            "crop_clip",
-            "resize_clip",
-            "duplicate_clip_to",
             "get_playhead_position",
             "set_playhead_position",
             "create_locator",
@@ -247,28 +301,6 @@ class AbletonConnection:
             "jump_to_locator",
             "set_loop",
             "get_clip_notes",
-            "set_master_volume",
-            "get_master_track_info",
-            "get_return_tracks",
-            "get_all_tracks",
-            "get_all_scenes",
-            "get_session_overview",
-            "get_all_clips_in_track",
-            "set_note_velocity",
-            "set_note_duration",
-            "set_note_pitch",
-            "get_clip_envelopes",
-            "mix_clip",
-            "stretch_clip",
-            "crop_clip",
-            "duplicate_clip_to",
-            "group_tracks",
-            "ungroup_tracks",
-            "set_clip_warp_mode",
-            "get_clip_warp_markers",
-            "add_warp_marker",
-            "delete_warp_marker",
-            "reload_script",
         ]
 
         try:
@@ -359,11 +391,6 @@ mcp = FastMCP(
 
 # Global connection for resources
 _ableton_connection = None
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("MCP_Server.server:mcp", host="127.0.0.1", port=8000, reload=True)
 
 
 def get_ableton_connection():
@@ -1507,6 +1534,141 @@ def load_instrument_preset(
     except Exception as e:
         logger.error(f"Error loading instrument preset: {str(e)}")
         return f"Error loading instrument preset: {str(e)}"
+
+
+@mcp.tool()
+def save_device_preset(
+    ctx: Context, track_index: int, device_index: int, preset_name: str
+) -> str:
+    """
+    Save a device preset.
+
+    Note: This saves to a JSON database in ~/.ableton_mcp/device_presets/,
+    NOT to Ableton's native .advpt preset format. Ableton's Remote Script API
+    does not support programmatically saving native presets.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    - preset_name: The name to save the preset as
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "save_device_preset",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "preset_name": preset_name,
+            },
+        )
+
+        if result.get("saved"):
+            device_name = result.get("device_name", "Unknown Device")
+            device_class = result.get("device_class", "Unknown")
+            preset_file = result.get("file", "")
+            return f"Saved preset '{preset_name}' for {device_name} (class: {device_class}) to {preset_file}"
+
+        return f"Failed to save preset '{preset_name}'"
+    except Exception as e:
+        logger.error(f"Error saving device preset: {str(e)}")
+        return f"Error saving device preset: {str(e)}"
+
+
+@mcp.tool()
+def load_device_preset(
+    ctx: Context, track_index: int, device_index: int, preset_name: str
+) -> str:
+    """
+    Load a device preset.
+
+    First tries to load from Ableton's native preset system, then falls back
+    to the JSON preset database.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    - preset_name: The name of the preset to load
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "load_device_preset",
+            {
+                "track_index": track_index,
+                "device_index": device_index,
+                "preset_name": preset_name,
+            },
+        )
+
+        if result.get("loaded"):
+            device_name = result.get("device_name", "Unknown Device")
+            source = result.get("source", "unknown")
+            return f"Loaded preset '{preset_name}' for {device_name} (source: {source})"
+
+        error_msg = result.get("error", "Unknown error")
+        return f"Failed to load preset '{preset_name}': {error_msg}"
+    except Exception as e:
+        logger.error(f"Error loading device preset: {str(e)}")
+        return f"Error loading device preset: {str(e)}"
+
+
+@mcp.tool()
+def list_device_presets(ctx: Context, track_index: int, device_index: int) -> str:
+    """
+    List available presets for a specific device.
+
+    Returns presets from both Ableton's native system and the JSON preset database.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "list_device_presets",
+            {"track_index": track_index, "device_index": device_index},
+        )
+
+        device_name = result.get("device_name", "Unknown Device")
+        device_class = result.get("device_class", "Unknown")
+        native_presets = result.get("native_presets", [])
+        json_presets = result.get("json_presets", [])
+        all_presets = result.get("all_presets", [])
+
+        output = [
+            f"Preset listing for {device_name} (class: {device_class}):",
+            "",
+            f"Native Ableton presets: {len(native_presets)}",
+        ]
+        if native_presets:
+            output.extend([f"  - {p}" for p in native_presets])
+        else:
+            output.append("  (none)")
+
+        output.extend(
+            [
+                "",
+                f"JSON database presets: {len(json_presets)}",
+            ]
+        )
+        if json_presets:
+            output.extend([f"  - {p}" for p in json_presets])
+        else:
+            output.append("  (none)")
+
+        output.extend(
+            [
+                "",
+                f"Total unique presets: {len(all_presets)}",
+            ]
+        )
+
+        return "\n".join(output)
+    except Exception as e:
+        logger.error(f"Error listing device presets: {str(e)}")
+        return f"Error listing device presets: {str(e)}"
 
 
 @mcp.tool()
@@ -3078,60 +3240,994 @@ def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) ->
 
 
 @mcp.tool()
-def reload_remote_script(ctx: Context) -> str:
+def save_session_template(ctx: Context, output_path: str) -> str:
     """
-    Reload AbletonMCP Remote Script in Ableton Live.
+    Save the current Ableton session as a JSON template file.
 
-    This allows you to reload the Remote Script without manually
-    restarting Ableton Live.
+    Captures:
+    - Session metadata (tempo, time signature, metronome)
+    - Master track information
+    - All tracks (MIDI and audio) with properties
+    - All devices on each track with parameters
+    - All clips with MIDI notes
 
-    Usage: python scripts/util/reload_remote_script.py
+    Parameters:
+    - output_path: File path where the JSON template will be saved
+
+    Returns:
+    - JSON string with success status and details about what was captured
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("reload_script")
 
-        if result.get("status") == "success":
-            return (
-                "✅ Reload command sent\n"
-                "\n⚠️  Please reload Remote Script manually in Ableton Live:\n"
-                "   1. Go to: Preferences → Link, Tempo & MIDI\n"
-                "   2. Find 'AbletonMCP' in the Control Surface list\n"
-                "   3. Select it, then click 'Reload'\n"
-                "\n💡 Alternative: Restart Ableton Live (faster, more reliable)\n"
-            )
-        else:
-            return f"❌ Error: {result.get('message', 'Unknown error')}"
+        # Initialize template structure
+        template = {
+            "version": "1.0",
+            "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "session": {
+                "metadata": {},
+                "master_track": {},
+                "tracks": [],
+                "return_tracks": [],
+                "scenes": [],
+            },
+        }
+
+        # Capture session metadata
+        try:
+            session_info = ableton.send_command("get_session_info")
+            template["session"]["metadata"] = {
+                "name": session_info.get("name", "Untitled"),
+                "tempo": session_info.get("tempo", 120.0),
+                "signature_numerator": session_info.get("time_signature_numerator", 4),
+                "signature_denominator": session_info.get(
+                    "time_signature_denominator", 4
+                ),
+                "metronome_enabled": session_info.get("metronome_enabled", False),
+            }
+        except Exception as e:
+            logger.error(f"Error getting session info: {str(e)}")
+            template["session"]["metadata"] = {
+                "name": "Untitled",
+                "tempo": 120.0,
+                "signature_numerator": 4,
+                "signature_denominator": 4,
+                "metronome_enabled": False,
+            }
+
+        # Capture master track info
+        try:
+            master_info = ableton.send_command("get_master_track_info")
+            template["session"]["master_track"] = {
+                "name": "Master",
+                "volume": master_info.get("volume", 0.75),
+                "panning": master_info.get("panning", 0.0),
+            }
+        except Exception as e:
+            logger.error(f"Error getting master track info: {str(e)}")
+            template["session"]["master_track"] = {
+                "name": "Master",
+                "volume": 0.75,
+                "panning": 0.0,
+            }
+
+        # Capture all tracks
+        try:
+            all_tracks = ableton.send_command("get_all_tracks")
+            track_count = len(all_tracks.get("tracks", []))
+
+            for i in range(track_count):
+                try:
+                    # Get detailed track info
+                    track_info = ableton.send_command(
+                        "get_track_info", {"track_index": i}
+                    )
+
+                    track_data = {
+                        "index": i,
+                        "type": "midi" if track_info.get("has_midi") else "audio",
+                        "name": track_info.get("name", f"Track {i}"),
+                        "color_index": track_info.get("color_index"),
+                        "mute": track_info.get("mute", False),
+                        "solo": track_info.get("solo", False),
+                        "arm": track_info.get("arm", False),
+                        "volume": track_info.get("volume", 0.75),
+                        "panning": track_info.get("panning", 0.0),
+                        "folded": track_info.get("folded", False),
+                        "devices": [],
+                        "clips": [],
+                    }
+
+                    # Capture devices on this track
+                    device_count = track_info.get("device_count", 0)
+                    for j in range(device_count):
+                        try:
+                            device_params = ableton.send_command(
+                                "get_device_parameters",
+                                {"track_index": i, "device_index": j},
+                            )
+                            track_data["devices"].append(
+                                {
+                                    "index": j,
+                                    "name": device_params.get("name", f"Device {j}"),
+                                    "class_name": device_params.get("class_name", ""),
+                                    "type": device_params.get("type", "audio_effect"),
+                                    "bypass": device_params.get("bypass", False),
+                                    "preset_name": device_params.get("preset_name"),
+                                    "parameters": device_params.get("parameters", {}),
+                                }
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Error getting device {j} on track {i}: {str(e)}"
+                            )
+                            continue
+
+                    # Capture clips on this track
+                    clips_info = ableton.send_command(
+                        "get_all_clips_in_track", {"track_index": i}
+                    )
+                    clips = clips_info.get("clips", [])
+                    for clip_info in clips:
+                        clip_index = clip_info.get("slot_index")
+                        if clip_index is not None:
+                            try:
+                                clip_data = {
+                                    "slot_index": clip_index,
+                                    "name": clip_info.get("name", f"Clip {clip_index}"),
+                                    "length": clip_info.get("length", 4.0),
+                                    "is_audio": clip_info.get("is_audio", False),
+                                    "loop_start": clip_info.get("loop_start", 0.0),
+                                    "loop_length": clip_info.get("loop_length", 4.0),
+                                    "launch_mode": clip_info.get(
+                                        "launch_mode", "trigger"
+                                    ),
+                                    "notes": [],
+                                    "automation": [],
+                                }
+
+                                # Capture MIDI notes if not audio clip
+                                if not clip_data["is_audio"]:
+                                    try:
+                                        notes_info = ableton.send_command(
+                                            "get_clip_notes",
+                                            {
+                                                "track_index": i,
+                                                "clip_index": clip_index,
+                                            },
+                                        )
+                                        clip_data["notes"] = notes_info.get("notes", [])
+                                    except Exception as e:
+                                        logger.error(
+                                            f"Error getting notes for clip {clip_index} on track {i}: {str(e)}"
+                                        )
+
+                                track_data["clips"].append(clip_data)
+                            except Exception as e:
+                                logger.error(
+                                    f"Error getting clip {clip_index} on track {i}: {str(e)}"
+                                )
+                                continue
+
+                    template["session"]["tracks"].append(track_data)
+                except Exception as e:
+                    logger.error(f"Error processing track {i}: {str(e)}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error getting tracks: {str(e)}")
+
+        # Capture scenes
+        try:
+            scenes_info = ableton.send_command("get_all_scenes")
+            template["session"]["scenes"] = scenes_info.get("scenes", [])
+        except Exception as e:
+            logger.error(f"Error getting scenes: {str(e)}")
+
+        # Write template to file
+        try:
+            with open(output_path, "w") as f:
+                json.dump(template, f, indent=2)
+
+            # Return success response
+            result = {
+                "success": True,
+                "message": f"Session template saved to {output_path}",
+                "captured": {
+                    "tracks_count": len(template["session"]["tracks"]),
+                    "scenes_count": len(template["session"]["scenes"]),
+                    "tempo": template["session"]["metadata"]["tempo"],
+                    "signature": f"{template['session']['metadata']['signature_numerator']}/{template['session']['metadata']['signature_denominator']}",
+                },
+            }
+            return json.dumps(result, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to write file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
     except Exception as e:
-        logger.error(f"Error reloading Remote Script: {str(e)}")
-        return f"Error: {str(e)}"
+        error_result = {
+            "success": False,
+            "error": f"Error saving session template: {str(e)}",
+        }
+        logger.error(f"Error in save_session_template: {str(e)}")
+        return json.dumps(error_result, indent=2)
 
 
 @mcp.tool()
-def reload_remote_script(ctx: Context) -> str:
+def load_session_template(
+    ctx: Context, template_path: str, clear_existing: bool = False
+) -> str:
     """
-    Reload AbletonMCP Remote Script in Ableton Live.
+    Load a session template JSON file and recreate the Ableton session.
 
-    This allows you to reload the Remote Script without manually
-    restarting Ableton Live.
+    Restores:
+    - Session metadata (tempo, time signature, metronome)
+    - Master track settings
+    - All tracks (MIDI and audio) with properties
+    - All devices and their parameters
+    - All clips with MIDI notes
 
-    Usage: python scripts/util/reload_remote_script.py
+    Parameters:
+    - template_path: Path to the JSON template file to load
+    - clear_existing: If True, delete all existing tracks before loading (default: False)
+
+    Returns:
+    - JSON string with success status, loaded counts, and any errors encountered
+    """
+    try:
+        # Read template file
+        try:
+            with open(template_path, "r") as f:
+                template = json.load(f)
+        except FileNotFoundError:
+            error_result = {
+                "success": False,
+                "error": f"Template file not found: {template_path}",
+            }
+            return json.dumps(error_result, indent=2)
+        except json.JSONDecodeError as e:
+            error_result = {
+                "success": False,
+                "error": f"Invalid JSON in template file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to read template file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Initialize tracking
+        loaded_tracks_count = 0
+        loaded_clips_count = 0
+        errors = []
+
+        # Get Ableton connection
+        ableton = get_ableton_connection()
+
+        # Clear existing tracks if requested
+        if clear_existing:
+            try:
+                ableton.send_command("delete_all_tracks")
+                logger.info("Cleared all existing tracks")
+            except Exception as e:
+                error_msg = f"Error clearing existing tracks: {str(e)}"
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        # Load session metadata
+        try:
+            session_data = template.get("session", {})
+            metadata = session_data.get("metadata", {})
+
+            if "tempo" in metadata:
+                tempo = metadata["tempo"]
+                ableton.send_command("set_tempo", {"tempo": tempo})
+                logger.info(f"Set tempo to {tempo} BPM")
+
+            if (
+                "signature_numerator" in metadata
+                and "signature_denominator" in metadata
+            ):
+                numerator = metadata["signature_numerator"]
+                denominator = metadata["signature_denominator"]
+                ableton.send_command(
+                    "set_time_signature",
+                    {"numerator": numerator, "denominator": denominator},
+                )
+                logger.info(f"Set time signature to {numerator}/{denominator}")
+
+            if "metronome_enabled" in metadata:
+                metronome_enabled = metadata["metronome_enabled"]
+                ableton.send_command("set_metronome", {"enabled": metronome_enabled})
+                logger.info(f"Set metronome to {metronome_enabled}")
+
+        except Exception as e:
+            error_msg = f"Error loading metadata: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+        # Load master track settings
+        try:
+            master_track = session_data.get("master_track", {})
+
+            if "volume" in master_track:
+                volume = master_track["volume"]
+                ableton.send_command("set_master_volume", {"volume": volume})
+                logger.info(f"Set master volume to {volume}")
+
+        except Exception as e:
+            error_msg = f"Error loading master track: {str(e)}"
+            logger.error(error_msg)
+            errors.append(error_msg)
+
+        # Load tracks
+        tracks = session_data.get("tracks", [])
+        for track_data in tracks:
+            try:
+                track_index = track_data.get("index", -1)
+                track_type = track_data.get("type", "midi")
+                track_name = track_data.get("name", f"Track {track_index}")
+
+                # Create track
+                if track_type == "midi":
+                    ableton.send_command("create_midi_track", {"index": track_index})
+                else:
+                    ableton.send_command("create_audio_track", {"index": track_index})
+
+                # Increment loaded count
+                loaded_tracks_count += 1
+                logger.info(f"Created {track_type} track: {track_name}")
+
+                # Get the index where the track was created
+                # If track_index was -1 (append), we need to find the new track
+                all_tracks = ableton.send_command("get_all_tracks")
+                current_tracks = all_tracks.get("tracks", [])
+                actual_track_index = len(current_tracks) - 1  # Last track created
+
+                # Set track properties
+                try:
+                    if "name" in track_data:
+                        ableton.send_command(
+                            "set_track_name",
+                            {
+                                "track_index": actual_track_index,
+                                "name": track_data["name"],
+                            },
+                        )
+
+                    if (
+                        "color_index" in track_data
+                        and track_data["color_index"] is not None
+                    ):
+                        ableton.send_command(
+                            "set_track_color",
+                            {
+                                "track_index": actual_track_index,
+                                "color_index": track_data["color_index"],
+                            },
+                        )
+
+                    if "mute" in track_data:
+                        ableton.send_command(
+                            "set_track_mute",
+                            {
+                                "track_index": actual_track_index,
+                                "mute": track_data["mute"],
+                            },
+                        )
+
+                    if "solo" in track_data:
+                        ableton.send_command(
+                            "set_track_solo",
+                            {
+                                "track_index": actual_track_index,
+                                "solo": track_data["solo"],
+                            },
+                        )
+
+                    if "arm" in track_data:
+                        ableton.send_command(
+                            "set_track_arm",
+                            {
+                                "track_index": actual_track_index,
+                                "arm": track_data["arm"],
+                            },
+                        )
+
+                    if "volume" in track_data:
+                        ableton.send_command(
+                            "set_track_volume",
+                            {
+                                "track_index": actual_track_index,
+                                "volume": track_data["volume"],
+                            },
+                        )
+
+                    if "panning" in track_data:
+                        ableton.send_command(
+                            "set_track_pan",
+                            {
+                                "track_index": actual_track_index,
+                                "pan": track_data["panning"],
+                            },
+                        )
+
+                    if "folded" in track_data:
+                        ableton.send_command(
+                            "set_track_fold",
+                            {
+                                "track_index": actual_track_index,
+                                "folded": track_data["folded"],
+                            },
+                        )
+
+                except Exception as e:
+                    error_msg = (
+                        f"Error setting properties for track {track_name}: {str(e)}"
+                    )
+                    logger.error(error_msg)
+                    errors.append(error_msg)
+
+                # Load devices
+                devices = track_data.get("devices", [])
+                for device_data in devices:
+                    try:
+                        device_index = device_data.get("index", 0)
+                        device_uri = device_data.get("uri")
+                        device_preset = device_data.get("preset_name")
+
+                        # Load device if URI provided
+                        if device_uri:
+                            try:
+                                ableton.send_command(
+                                    "load_browser_item",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "item_uri": device_uri,
+                                    },
+                                )
+                                logger.info(
+                                    f"Loaded device with URI: {device_data.get('name', 'Device')}"
+                                )
+                            except Exception as e:
+                                error_msg = f"Error loading device URI for {track_name}: {str(e)}"
+                                logger.error(error_msg)
+                                errors.append(error_msg)
+
+                        # Load preset if provided
+                        if device_preset and not device_uri:
+                            try:
+                                ableton.send_command(
+                                    "load_instrument_preset",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "device_index": device_index,
+                                        "preset_name": device_preset,
+                                    },
+                                )
+                                logger.info(
+                                    f"Loaded preset: {device_preset} on device {device_index}"
+                                )
+                            except Exception as e:
+                                error_msg = (
+                                    f"Error loading preset for {track_name}: {str(e)}"
+                                )
+                                logger.error(error_msg)
+                                errors.append(error_msg)
+
+                        # Set device bypass
+                        if "bypass" in device_data:
+                            try:
+                                ableton.send_command(
+                                    "toggle_device_bypass",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "device_index": device_index,
+                                        "enabled": not device_data["bypass"],
+                                    },
+                                )
+                            except Exception as e:
+                                logger.warning(f"Could not set device bypass: {str(e)}")
+
+                        # Set device parameters
+                        parameters = device_data.get("parameters", {})
+                        if "all" in parameters:
+                            for param in parameters["all"]:
+                                try:
+                                    ableton.send_command(
+                                        "set_device_parameter",
+                                        {
+                                            "track_index": actual_track_index,
+                                            "device_index": device_index,
+                                            "parameter_index": param["index"],
+                                            "value": param["value"],
+                                        },
+                                    )
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Could not set parameter {param['index']}: {str(e)}"
+                                    )
+
+                    except Exception as e:
+                        error_msg = f"Error loading device for {track_name}: {str(e)}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+
+                # Load clips
+                clips = track_data.get("clips", [])
+                for clip_data in clips:
+                    try:
+                        clip_index = clip_data.get("slot_index", 0)
+                        clip_name = clip_data.get("name", f"Clip {clip_index}")
+                        clip_length = clip_data.get("length", 4.0)
+                        is_audio = clip_data.get("is_audio", False)
+
+                        # Create clip
+                        ableton.send_command(
+                            "create_clip",
+                            {
+                                "track_index": actual_track_index,
+                                "clip_index": clip_index,
+                                "length": clip_length,
+                            },
+                        )
+                        loaded_clips_count += 1
+                        logger.info(f"Created clip: {clip_name}")
+
+                        # Set clip properties
+                        try:
+                            ableton.send_command(
+                                "set_clip_name",
+                                {
+                                    "track_index": actual_track_index,
+                                    "clip_index": clip_index,
+                                    "name": clip_name,
+                                },
+                            )
+
+                            if "loop_start" in clip_data and "loop_length" in clip_data:
+                                ableton.send_command(
+                                    "set_clip_loop",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "clip_index": clip_index,
+                                        "loop_start": clip_data["loop_start"],
+                                        "loop_length": clip_data["loop_length"],
+                                    },
+                                )
+
+                            if "launch_mode" in clip_data:
+                                launch_mode_map = {
+                                    "trigger": 0,
+                                    "gate": 1,
+                                    "toggle": 2,
+                                    "repeat": 3,
+                                }
+                                launch_mode_value = launch_mode_map.get(
+                                    clip_data["launch_mode"], 0
+                                )
+                                ableton.send_command(
+                                    "set_clip_launch_mode",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "clip_index": clip_index,
+                                        "mode": launch_mode_value,
+                                    },
+                                )
+
+                        except Exception as e:
+                            logger.warning(
+                                f"Could not set clip properties for {clip_name}: {str(e)}"
+                            )
+
+                        # Add MIDI notes if not audio clip
+                        if not is_audio:
+                            notes = clip_data.get("notes", [])
+                            if notes:
+                                ableton.send_command(
+                                    "add_notes_to_clip",
+                                    {
+                                        "track_index": actual_track_index,
+                                        "clip_index": clip_index,
+                                        "notes": notes,
+                                    },
+                                )
+                                logger.info(f"Added {len(notes)} notes to {clip_name}")
+
+                    except Exception as e:
+                        error_msg = f"Error loading clip {clip_data.get('name', 'Unknown')}: {str(e)}"
+                        logger.error(error_msg)
+                        errors.append(error_msg)
+
+            except Exception as e:
+                error_msg = (
+                    f"Error loading track {track_data.get('name', 'Unknown')}: {str(e)}"
+                )
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        # Return success response
+        result = {
+            "success": True,
+            "message": f"Session template loaded from {template_path}",
+            "loaded_tracks_count": loaded_tracks_count,
+            "loaded_clips_count": loaded_clips_count,
+            "errors": errors,
+        }
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error loading session template: {str(e)}",
+        }
+        logger.error(f"Error in load_session_template: {str(e)}")
+        return json.dumps(error_result, indent=2)
+
+
+# ============================================================================
+# PRESET BANK MANAGEMENT
+# ============================================================================
+
+import os
+
+
+@mcp.tool()
+def list_preset_banks(ctx: Context) -> str:
+    """
+    List all available preset banks.
+
+    Returns a list of preset bank names found in the preset_banks directory.
+
+    Returns:
+    - JSON string with success status and list of bank names
+    """
+    try:
+        preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
+
+        # Check if directory exists
+        if not os.path.exists(preset_bank_dir):
+            result = {
+                "success": True,
+                "banks": [],
+                "message": "No preset banks directory found",
+            }
+            return json.dumps(result, indent=2)
+
+        # List JSON files in the directory
+        bank_files = []
+        try:
+            for filename in os.listdir(preset_bank_dir):
+                if filename.endswith(".json"):
+                    # Remove .json extension to get bank name
+                    bank_name = filename[:-5]
+                    bank_files.append(bank_name)
+        except Exception as e:
+            logger.error(f"Error listing preset banks: {str(e)}")
+            result = {
+                "success": True,
+                "banks": [],
+                "message": f"Error reading preset banks: {str(e)}",
+            }
+            return json.dumps(result, indent=2)
+
+        # Sort banks alphabetically
+        bank_files.sort()
+
+        result = {
+            "success": True,
+            "banks": bank_files,
+            "count": len(bank_files),
+        }
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error listing preset banks: {str(e)}",
+        }
+        logger.error(f"Error in list_preset_banks: {str(e)}")
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.tool()
+def save_preset_bank(
+    ctx: Context, track_index: int, device_index: int, bank_name: str
+) -> str:
+    """
+    Save a device preset to a preset bank.
+
+    Saves the current state of a device (preset name and parameters) to a
+    preset bank file. Multiple device presets can be saved to the same bank.
+
+    Parameters:
+    - track_index: The index of the track containing the device
+    - device_index: The index of the device on the track
+    - bank_name: Name of the preset bank (will be saved as bank_name.json)
+
+    Returns:
+    - JSON string with success status and details of what was saved
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("reload_script")
+        preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
 
-        if result.get("status") == "success":
-            return (
-                "✅ Reload command sent\n"
-                "\n⚠️  Please reload Remote Script manually in Ableton Live:\n"
-                "   1. Go to: Preferences → Link, Tempo & MIDI\n"
-                "   2. Find 'AbletonMCP' in the Control Surface list\n"
-                "   3. Select it, then click 'Reload'\n"
-                "\n💡 Alternative: Restart Ableton Live (faster, more reliable)\n"
+        # Create directory if it doesn't exist
+        os.makedirs(preset_bank_dir, exist_ok=True)
+
+        # Get device parameters
+        try:
+            device_params = ableton.send_command(
+                "get_device_parameters",
+                {"track_index": track_index, "device_index": device_index},
+            )
+        except Exception as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to get device parameters: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Create preset entry
+        preset_entry = {
+            "device_class": device_params.get("class_name", ""),
+            "device_name": device_params.get("name", ""),
+            "track_index": track_index,
+            "device_index": device_index,
+            "preset_name": device_params.get("preset_name"),
+            "parameters": device_params.get("parameters", {}),
+        }
+
+        # Check if bank already exists
+        bank_path = os.path.join(preset_bank_dir, f"{bank_name}.json")
+
+        if os.path.exists(bank_path):
+            # Load existing bank
+            try:
+                with open(bank_path, "r") as f:
+                    bank = json.load(f)
+            except Exception as e:
+                error_result = {
+                    "success": False,
+                    "error": f"Failed to read existing bank: {str(e)}",
+                }
+                return json.dumps(error_result, indent=2)
+
+            # Check if preset already exists for this track/device
+            existing_preset = None
+            for i, preset in enumerate(bank.get("presets", [])):
+                if (
+                    preset.get("track_index") == track_index
+                    and preset.get("device_index") == device_index
+                ):
+                    existing_preset = i
+                    break
+
+            if existing_preset is not None:
+                # Update existing preset
+                bank["presets"][existing_preset] = preset_entry
+                update_type = "updated"
+            else:
+                # Add new preset
+                bank["presets"].append(preset_entry)
+                update_type = "added"
+
+            # Update timestamp
+            bank["updated_at"] = (
+                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
             )
         else:
-            return f"❌ Error: {result.get('message', 'Unknown error')}"
+            # Create new bank
+            bank = {
+                "version": "1.0",
+                "created_at": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "presets": [preset_entry],
+            }
+            update_type = "created"
+
+        # Write bank to file
+        try:
+            with open(bank_path, "w") as f:
+                json.dump(bank, f, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to write bank file: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Return success response
+        result = {
+            "success": True,
+            "message": f"Preset {update_type} in bank '{bank_name}'",
+            "bank_name": bank_name,
+            "device_name": device_params.get("name", ""),
+            "preset_count": len(bank["presets"]),
+        }
+        return json.dumps(result, indent=2)
+
     except Exception as e:
-        logger.error(f"Error reloading Remote Script: {str(e)}")
-        return f"Error: {str(e)}"
+        error_result = {
+            "success": False,
+            "error": f"Error saving preset to bank: {str(e)}",
+        }
+        logger.error(f"Error in save_preset_bank: {str(e)}")
+        return json.dumps(error_result, indent=2)
+
+
+@mcp.tool()
+def load_preset_bank(
+    ctx: Context, bank_name: str, track_index: int = None, device_index: int = None
+) -> str:
+    """
+    Load presets from a preset bank.
+
+    Loads device presets from a preset bank. Can load either:
+    - A specific preset (if track_index and device_index are provided)
+    - All presets in the bank (if track_index and device_index are not provided)
+
+    Parameters:
+    - bank_name: Name of the preset bank to load from (without .json extension)
+    - track_index: Optional. The index of the target track
+    - device_index: Optional. The index of the target device
+
+    Returns:
+    - JSON string with success status, loaded count, and any errors
+    """
+    try:
+        preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
+        bank_path = os.path.join(preset_bank_dir, f"{bank_name}.json")
+
+        # Read bank file
+        try:
+            with open(bank_path, "r") as f:
+                bank = json.load(f)
+        except FileNotFoundError:
+            error_result = {
+                "success": False,
+                "error": f"Preset bank file not found: {bank_name}",
+            }
+            return json.dumps(error_result, indent=2)
+        except json.JSONDecodeError as e:
+            error_result = {
+                "success": False,
+                "error": f"Invalid JSON in preset bank: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+        except IOError as e:
+            error_result = {
+                "success": False,
+                "error": f"Failed to read preset bank: {str(e)}",
+            }
+            return json.dumps(error_result, indent=2)
+
+        # Get Ableton connection
+        ableton = get_ableton_connection()
+
+        # Determine which presets to load
+        if track_index is not None and device_index is not None:
+            # Load specific preset
+            presets_to_load = []
+            for preset in bank.get("presets", []):
+                if (
+                    preset.get("track_index") == track_index
+                    and preset.get("device_index") == device_index
+                ):
+                    presets_to_load.append(preset)
+                    break
+        else:
+            # Load all presets
+            presets_to_load = bank.get("presets", [])
+
+        if not presets_to_load:
+            if track_index is not None and device_index is not None:
+                error_result = {
+                    "success": False,
+                    "error": f"No preset found for track {track_index}, device {device_index}",
+                }
+                return json.dumps(error_result, indent=2)
+            else:
+                # Bank is empty
+                result = {
+                    "success": True,
+                    "message": "Preset bank is empty",
+                    "loaded_presets_count": 0,
+                    "errors": [],
+                }
+                return json.dumps(result, indent=2)
+
+        # Load presets
+        loaded_count = 0
+        errors = []
+
+        for preset in presets_to_load:
+            try:
+                target_track_index = (
+                    track_index if track_index is not None else preset["track_index"]
+                )
+                target_device_index = (
+                    device_index if device_index is not None else preset["device_index"]
+                )
+
+                # Try to load by preset name first
+                preset_name = preset.get("preset_name")
+                if preset_name:
+                    try:
+                        ableton.send_command(
+                            "load_instrument_preset",
+                            {
+                                "track_index": target_track_index,
+                                "device_index": target_device_index,
+                                "preset_name": preset_name,
+                            },
+                        )
+                        loaded_count += 1
+                        logger.info(
+                            f"Loaded preset '{preset_name}' for device {target_device_index} on track {target_track_index}"
+                        )
+                        continue
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to load preset '{preset_name}': {str(e)}"
+                        )
+
+                # Fallback: set parameters directly
+                parameters = preset.get("parameters", [])
+                for param_data in parameters:
+                    param_index = param_data.get("index")
+                    param_value = param_data.get("value")
+
+                    if param_index is not None and param_value is not None:
+                        try:
+                            ableton.send_command(
+                                "set_device_parameter",
+                                {
+                                    "track_index": target_track_index,
+                                    "device_index": target_device_index,
+                                    "parameter_index": param_index,
+                                    "value": param_value,
+                                },
+                            )
+                        except Exception as e:
+                            logger.error(
+                                f"Failed to set parameter {param_index}: {str(e)}"
+                            )
+
+                loaded_count += 1
+                logger.info(
+                    f"Set parameters for device {target_device_index} on track {target_track_index}"
+                )
+
+            except Exception as e:
+                error_msg = (
+                    f"Error loading preset for track {preset.get('track_index')}, "
+                    f"device {preset.get('device_index')}: {str(e)}"
+                )
+                logger.error(error_msg)
+                errors.append(error_msg)
+
+        # Return result
+        result = {
+            "success": True,
+            "message": f"Loaded {loaded_count} preset(s) from bank '{bank_name}'",
+            "bank_name": bank_name,
+            "loaded_presets_count": loaded_count,
+            "errors": errors,
+        }
+        return json.dumps(result, indent=2)
+
+    except Exception as e:
+        error_result = {
+            "success": False,
+            "error": f"Error loading preset bank: {str(e)}",
+        }
+        logger.error(f"Error in load_preset_bank: {str(e)}")
+        return json.dumps(error_result, indent=2)

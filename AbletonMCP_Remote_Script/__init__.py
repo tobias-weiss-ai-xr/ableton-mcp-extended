@@ -4,6 +4,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 from _Framework.ControlSurface import ControlSurface
 import socket
 import json
+import os
 import threading
 import time
 import traceback
@@ -285,6 +286,9 @@ class AbletonMCP(ControlSurface):
                 "create_locator",
                 "delete_locator",
                 "jump_to_locator",
+                "list_device_presets",
+                "load_device_preset",
+                "save_device_preset",
                 "set_loop",
                 "get_clip_notes",
                 "set_master_volume",
@@ -396,11 +400,31 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             arm = params.get("arm", False)
                             result = self._set_track_arm(track_index, arm)
+elif command_type == "list_device_presets":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            result = self._list_device_presets(
+                                track_index, device_index
+                            )
+                        elif command_type == "load_device_preset":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            preset_name = params.get("preset_name", "")
+                            result = self._load_device_preset(
+                                track_index, device_index, preset_name
+                            )
                         elif command_type == "load_instrument_preset":
                             track_index = params.get("track_index", 0)
                             device_index = params.get("device_index", 0)
                             preset_name = params.get("preset_name", "")
                             result = self._load_instrument_preset(
+                                track_index, device_index, preset_name
+                            )
+                        elif command_type == "save_device_preset":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            preset_name = params.get("preset_name", "")
+                            result = self._save_device_preset(
                                 track_index, device_index, preset_name
                             )
                         elif command_type == "toggle_device_bypass":
@@ -1203,6 +1227,306 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error loading instrument preset: " + str(e))
+            raise
+
+    def _save_device_preset(self, track_index, device_index, preset_name):
+        """
+        Save a device preset using Ableton's preset system.
+
+        Note: Ableton Live's Remote Script API does NOT provide a method to
+        programmatically save device presets. This function captures the device's
+        current parameter values and saves them to a local JSON database for
+        later restoration. This is NOT Ableton's native .advpt preset format.
+
+        For native Ableton presets, use the Ableton UI to save manually.
+        """
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+
+            device = track.devices[device_index]
+
+            # Get device class name for storage
+            device_class = (
+                device.class_name if hasattr(device, "class_name") else "Unknown"
+            )
+            device_name = (
+                device.name
+                if hasattr(device, "name")
+                else "Device {}".format(device_index)
+            )
+
+            # Capture all device parameters
+            parameters = []
+            if hasattr(device, "parameters"):
+                for i, param in enumerate(device.parameters):
+                    if param.is_enabled:
+                        try:
+                            param_info = {
+                                "index": i,
+                                "name": (
+                                    param.name
+                                    if hasattr(param, "name")
+                                    else "Parameter {}".format(i)
+                                ),
+                                "value": param.value,
+                            }
+                            parameters.append(param_info)
+                        except Exception as e:
+                            self.log_message(
+                                "Error reading parameter {}: {}".format(i, str(e))
+                            )
+                            continue
+
+            # Get home directory for storage
+            home_dir = os.path.expanduser("~")
+            preset_db_path = os.path.join(home_dir, ".ableton_mcp", "device_presets")
+            os.makedirs(preset_db_path, exist_ok=True)
+
+            # Save to JSON file
+            preset_file = os.path.join(
+                preset_db_path, "{}_{}.json".format(device_class, preset_name)
+            )
+            preset_data = {
+                "device_class": device_class,
+                "device_name": device_name,
+                "preset_name": preset_name,
+                "parameters": parameters,
+            }
+
+            with open(preset_file, "w") as f:
+                json.dump(preset_data, f, indent=2)
+
+            self.log_message(
+                "Saved preset '{}' for device '{}' (class: {}) to {}".format(
+                    preset_name, device_name, device_class, preset_file
+                )
+            )
+
+            result = {
+                "track_name": (
+                    track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index)
+                ),
+                "device_name": device_name,
+                "device_class": device_class,
+                "preset_name": preset_name,
+                "saved": True,
+                "file": preset_file,
+                "note": "Saved to JSON database (not Ableton's native .advpt format)",
+            }
+
+            return result
+
+        except Exception as e:
+            self.log_message("Error saving device preset: " + str(e))
+            self.log_message(traceback.format_exc())
+            raise
+
+    def _load_device_preset(self, track_index, device_index, preset_name):
+        """
+        Load a device preset.
+
+        First tries to load from Ableton's native preset system (via device.presets).
+        If not found, searches the local JSON preset database.
+        """
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+
+            device = track.devices[device_index]
+            device_name = (
+                device.name
+                if hasattr(device, "name")
+                else "Device {}".format(device_index)
+            )
+
+            # First try Ableton's native preset system
+            if hasattr(device, "presets"):
+                found_preset = None
+                for preset in device.presets:
+                    if (
+                        hasattr(preset, "name")
+                        and preset.name.lower() == preset_name.lower()
+                    ):
+                        found_preset = preset
+                        break
+
+                if found_preset:
+                    device.presets = found_preset
+                    self.log_message(
+                        "Loaded native Ableton preset '{}' for device '{}' on track '{}'".format(
+                            preset_name, device_name, track.name
+                        )
+                    )
+
+                    return {
+                        "track_name": (
+                            track.name
+                            if hasattr(track, "name")
+                            else "Track {}".format(track_index)
+                        ),
+                        "device_name": device_name,
+                        "preset_name": preset_name,
+                        "loaded": True,
+                        "source": "native",
+                    }
+
+            # If not found in native presets, try JSON database
+            device_class = (
+                device.class_name if hasattr(device, "class_name") else "Unknown"
+            )
+            home_dir = os.path.expanduser("~")
+            preset_db_path = os.path.join(home_dir, ".ableton_mcp", "device_presets")
+            preset_file = os.path.join(
+                preset_db_path, "{}_{}.json".format(device_class, preset_name)
+            )
+
+            if not os.path.exists(preset_file):
+                # Preset not found in either native or JSON database
+                return {
+                    "track_name": (
+                        track.name
+                        if hasattr(track, "name")
+                        else "Track {}".format(track_index)
+                    ),
+                    "device_name": device_name,
+                    "preset_name": preset_name,
+                    "loaded": False,
+                    "error": "Preset not found in Ableton native presets or JSON database",
+                }
+
+            # Load from JSON database
+            with open(preset_file, "r") as f:
+                preset_data = json.load(f)
+
+            # Validate device class matches
+            if preset_data.get("device_class") != device_class:
+                return {
+                    "track_name": (
+                        track.name
+                        if hasattr(track, "name")
+                        else "Track {}".format(track_index)
+                    ),
+                    "device_name": device_name,
+                    "preset_name": preset_name,
+                    "loaded": False,
+                    "error": "Preset device class mismatch. Expected: {}, Got: {}".format(
+                        device_class, preset_data.get("device_class")
+                    ),
+                }
+
+            # Apply parameters
+            for param_data in preset_data.get("parameters", []):
+                param_idx = param_data["index"]
+                if param_idx < len(device.parameters):
+                    try:
+                        device.parameters[param_idx].value = param_data["value"]
+                    except Exception as e:
+                        self.log_message(
+                            "Error setting parameter {}: {}".format(param_idx, str(e))
+                        )
+                        continue
+
+            self.log_message(
+                "Loaded JSON preset '{}' for device '{}' (class: {}) from {}".format(
+                    preset_name, device_name, device_class, preset_file
+                )
+            )
+
+            return {
+                "track_name": (
+                    track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index)
+                ),
+                "device_name": device_name,
+                "device_class": device_class,
+                "preset_name": preset_name,
+                "loaded": True,
+                "source": "json",
+                "file": preset_file,
+            }
+
+        except Exception as e:
+            self.log_message("Error loading device preset: " + str(e))
+            self.log_message(traceback.format_exc())
+            raise
+
+    def _list_device_presets(self, track_index, device_index):
+        """
+        List available presets for a specific device.
+
+        Returns presets from both Ableton's native system and the local JSON database.
+        """
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+
+            track = self._song.tracks[track_index]
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+
+            device = track.devices[device_index]
+            device_class = (
+                device.class_name if hasattr(device, "class_name") else "Unknown"
+            )
+            device_name = (
+                device.name
+                if hasattr(device, "name")
+                else "Device {}".format(device_index)
+            )
+
+            # Get native Ableton presets
+            native_presets = []
+            if hasattr(device, "presets"):
+                for preset in device.presets:
+                    if hasattr(preset, "name"):
+                        native_presets.append(preset.name)
+
+            # Get JSON database presets for this device class
+            home_dir = os.path.expanduser("~")
+            preset_db_path = os.path.join(home_dir, ".ableton_mcp", "device_presets")
+            json_presets = []
+
+            if os.path.exists(preset_db_path):
+                prefix = device_class + "_"
+                for filename in os.listdir(preset_db_path):
+                    if filename.startswith(prefix) and filename.endswith(".json"):
+                        # Extract preset name by removing prefix and .json
+                        preset_name = filename[len(prefix) : -5]
+                        json_presets.append(preset_name)
+
+            result = {
+                "track_name": (
+                    track.name
+                    if hasattr(track, "name")
+                    else "Track {}".format(track_index)
+                ),
+                "device_name": device_name,
+                "device_class": device_class,
+                "native_presets": native_presets,
+                "json_presets": json_presets,
+                "all_presets": sorted(list(set(native_presets + json_presets))),
+            }
+
+            return result
+
+        except Exception as e:
+            self.log_message("Error listing device presets: " + str(e))
+            self.log_message(traceback.format_exc())
             raise
 
     def _create_audio_track(self, index):
