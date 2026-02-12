@@ -555,8 +555,8 @@ finally:
     try:
         stop_playback()
         print("Playback stopped.")
-    except:
-        pass
+    except Exception as e:
+        print(f"Error stopping playback: {e}")
 
     s.close()
 
