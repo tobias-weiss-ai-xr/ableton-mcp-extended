@@ -17,6 +17,7 @@ except ImportError:
 
 # Constants for socket communication
 DEFAULT_PORT = 9877
+UDP_PORT = 9878
 HOST = "127.0.0.1"
 
 
@@ -37,20 +38,21 @@ class AbletonMCP(ControlSurface):
         self.server = None
         self.client_threads = []
         self.server_thread = None
+        self.udp_server_socket = None
+        self.udp_server_thread = None
         self.running = False
 
         # Cache the song reference for easier access
         self._song = self.song()
 
-        # Start the socket server
-        self.start_server()
+        # Start both servers
+        self.start_server()  # TCP on 9877
+        self.start_udp_server()  # UDP on 9878
 
         self.log_message("AbletonMCP initialized")
 
         # Show a message in Ableton
-        self.show_message(
-            "AbletonMCP: Listening for commands on port " + str(DEFAULT_PORT)
-        )
+        self.show_message("AbletonMCP: TCP on 9877, UDP on 9878")
 
     def disconnect(self):
         """Called when Ableton closes or the control surface is removed"""
@@ -68,6 +70,16 @@ class AbletonMCP(ControlSurface):
         if self.server_thread and self.server_thread.is_alive():
             self.server_thread.join(1.0)
 
+        # Stop UDP server - NEW
+        if self.udp_server_socket:
+            try:
+                self.udp_server_socket.close()
+            except Exception as e:
+                self.log_message(f"Error closing UDP server: {e}")
+
+        if self.udp_server_thread and self.udp_server_thread.is_alive():
+            self.udp_server_thread.join(1.0)
+
         # Clean up any client threads
         for client_thread in self.client_threads[:]:
             if client_thread.is_alive():
@@ -78,7 +90,7 @@ class AbletonMCP(ControlSurface):
         self.log_message("AbletonMCP disconnected")
 
     def start_server(self):
-        """Start the socket server in a separate thread"""
+        """Start socket server in a separate thread"""
         try:
             self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -94,6 +106,22 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error starting server: " + str(e))
             self.show_message("AbletonMCP: Error starting server - " + str(e))
+
+    def start_udp_server(self):
+        """Start UDP server in daemon thread"""
+        try:
+            self.udp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.udp_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.udp_server_socket.bind((HOST, UDP_PORT))
+
+            self.running = True
+            self.udp_server_thread = threading.Thread(target=self._udp_server_loop)
+            self.udp_server_thread.daemon = True
+            self.udp_server_thread.start()
+
+            self.log_message("UDP server started on port " + str(UDP_PORT))
+        except Exception as e:
+            self.log_message("Error starting UDP server: " + str(e))
 
     def _server_thread(self):
         """Server thread implementation - handles client connections"""
@@ -135,6 +163,35 @@ class AbletonMCP(ControlSurface):
             self.log_message("Server thread stopped")
         except Exception as e:
             self.log_message("Server thread error: " + str(e))
+
+    def _udp_server_loop(self):
+        """UDP server thread implementation - fire-and-forget"""
+        try:
+            self.log_message("UDP server thread started")
+            self.udp_server_socket.settimeout(1.0)
+
+            while self.running:
+                try:
+                    data, addr = self.udp_server_socket.recvfrom(1024)
+                    if not self.running:
+                        break
+
+                    self._handle_udp_data(data, addr)
+
+                except socket.timeout:
+                    continue
+                except socket.error as se:
+                    if self.running:
+                        self.log_message("UDP server socket error: " + str(se))
+                    break
+                except Exception as e:
+                    if self.running:
+                        self.log_message("UDP server loop error: " + str(e))
+                    time.sleep(0.1)
+
+            self.log_message("UDP server thread stopped")
+        except Exception as e:
+            self.log_message("UDP server thread error: " + str(e))
 
     def _handle_client(self, client):
         """Handle communication with a connected client"""
@@ -212,6 +269,32 @@ class AbletonMCP(ControlSurface):
             except Exception as e:
                 self.log_message(f"Error closing client connection: {e}")
             self.log_message("Client handler stopped")
+
+    def _handle_udp_data(self, data, addr):
+        """Handle UDP datagram - fire-and-forget"""
+        try:
+            command_str = data.decode("utf-8")
+            command_json = json.loads(command_str)
+
+            self.log_message(
+                f"UDP: Received {command_json.get('type', 'unknown')} from {addr}"
+            )
+
+            def udp_task():
+                try:
+                    # Command routing will be added in later task
+                    self._execute_udp_command(command_json)
+                except Exception as e:
+                    self.log_message(f"UDP: Error executing command: {e}")
+
+            try:
+                self.schedule_message(0, udp_task)
+            except AssertionError:
+                # Already on main thread
+                udp_task()
+
+        except Exception as e:
+            self.log_message(f"UDP: Error processing datagram from {addr}: {e}")
 
     def _process_command(self, command):
         """Process a command from the client and return a response"""
@@ -659,6 +742,17 @@ class AbletonMCP(ControlSurface):
             response["message"] = str(e)
 
         return response
+
+    def _execute_udp_command(self, command_json):
+        """Execute UDP command - placeholder for command routing"""
+        command_type = command_json.get("type", "")
+
+        # For now, just log that we received a UDP command
+        # Command routing will be implemented in later task
+        self.log_message(f"UDP: Executing {command_type} command")
+
+        # Future: Add routing for UDP-allowed commands
+        # set_device_parameter, set_track_volume, set_track_mute, etc.
 
     # Command implementations
 
