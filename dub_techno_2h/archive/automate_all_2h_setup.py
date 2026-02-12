@@ -261,8 +261,8 @@ print("[1/8] Cleaning session and setting tempo to 126 BPM...")
 try:
     delete_result = send_command("delete_all_tracks")
     print("  [OK] Deleted " + str(delete_result["result"]["deleted_count"]) + " tracks")
-except:
-    print("  [WARNING] Could not delete tracks")
+except Exception as e:
+    print(f"  [WARNING] Could not delete tracks: {str(e)}")
 time.sleep(0.5)
 
 send_command({"type": "set_tempo", "params": {"tempo": 126.0}})
@@ -347,8 +347,8 @@ try:
         {"track_index": 6, "item_uri": "Audio Effects/Hybrid Reverb"},
     )
     print("  [OK] Hybrid Reverb loaded on Track 6")
-except:
-    print("  [ERROR] Could not load Hybrid Reverb")
+except Exception as e:
+    print(f"  [ERROR] Could not load Hybrid Reverb: {str(e)}")
 
 try:
     send_command(
@@ -356,8 +356,8 @@ try:
         {"track_index": 7, "item_uri": "Audio Effects/Simple Delay"},
     )
     print("  [OK] Simple Delay loaded on Track 7")
-except:
-    print("  [ERROR] Could not load Simple Delay")
+except Exception as e:
+    print(f"  [ERROR] Could not load Simple Delay: {str(e)}")
 
 time.sleep(0.5)
 
@@ -406,12 +406,12 @@ print()
 print("1. SEND ROUTING (5-10 minutes - MOST IMPORTANT):")
 print("-" * 80)
 print("   For each main track (0-5), create sends to Tracks 6 & 7:")
-print("   Track 0 (Kick):     → Track 6: 0%,  → Track 7: 0%")
-print("   Track 1 (Sub-bass): → Track 6: 10%,  → Track 7: 10%")
-print("   Track 2 (Hi-hats):  → Track 6: 30%,  → Track 7: 30%")
-print("   Track 3 (Pads):     → Track 6: 50%,  → Track 7: 50%")
-print("   Track 4 (FX):       → Track 6: 70%,  → Track 7: 70%")
-print("   Track 5 (Delays):   → Track 6: 100%, → Track 7: 100%")
+print("   Track 0 (Kick):     -> Track 6: 0%,  -> Track 7: 0%")
+print("   Track 1 (Sub-bass): -> Track 6: 10%,  -> Track 7: 10%")
+print("   Track 2 (Hi-hats): -> Track 6: 30%,  -> Track 7: 30%")
+print("   Track 3 (Pads):     -> Track 6: 50%,  -> Track 7: 50%")
+print("   Track 4 (FX):       -> Track 6: 70%,  -> Track 7: 70%")
+print("   Track 5 (Delays):   -> Track 6: 100%, -> Track 7: 100%")
 print()
 print("   HOW TO CREATE SENDS IN ABLETON:")
 print("     a. Click on track 0 to select it")
