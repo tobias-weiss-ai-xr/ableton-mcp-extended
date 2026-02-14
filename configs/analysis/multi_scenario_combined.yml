@@ -1,0 +1,192 @@
+# Multi-Scenario Combined Analysis
+# This configuration combines LUFS, spectral, and dynamics control
+# Demonstrates complex multi-parameter rule system
+
+plugin:
+  name: "Sound Analyser"
+  track: 0
+  device: 0
+
+rules:
+  # === LOUDNESS CONTROL ===
+  - name: "Loud audio - reduce master volume"
+    priority: 15
+    condition:
+      parameter: "LUFS Integrated"
+      operator: ">"
+      value: -14.0
+    action:
+      type: "set_master_volume"
+      volume: 0.85
+    cooldown: 200
+
+  - name: "Quiet audio - increase master volume"
+    priority: 12
+    condition:
+      parameter: "LUFS Integrated"
+      operator: "<"
+      value: -17.0
+    action:
+      type: "set_master_volume"
+      volume: 0.92
+    cooldown: 200
+
+  # === SPECTRAL CONTROL ===
+  - name: "Bright sound - open pad filter"
+    priority: 10
+    condition:
+      parameter: "Spectral Centroid"
+      operator: ">"
+      value: 3500.0
+    action:
+      type: "set_device_parameter"
+      target_track: 2  # Synth pads
+      device_index: 1
+      parameter: "Filter Frequency"
+      value: 0.88
+    cooldown: 300
+
+  - name: "Dark sound - close pad filter"
+    priority: 10
+    condition:
+      parameter: "Spectral Centroid"
+      operator: "<"
+      value: 2200.0
+    action:
+      type: "set_device_parameter"
+      target_track: 2
+      device_index: 1
+      parameter: "Filter Frequency"
+      value: 0.45
+    cooldown: 300
+
+  # === DYNAMICS CONTROL ===
+  - name: "High dynamics - enable compression"
+    priority: 11
+    condition:
+      parameter: "Dynamic Range"
+      operator: ">"
+      value: 0.65
+    action:
+      type: "set_device_parameter"
+      target_track: 3  # Mix bus
+      device_index: 2
+      parameter: "Compressor Threshold"
+      value: 0.60
+    cooldown: 350
+
+  - name: "Low dynamics - reduce compression"
+    priority: 9
+    condition:
+      parameter: "Dynamic Range"
+      operator: "<"
+      value: 0.35
+    action:
+      type: "set_device_parameter"
+      target_track: 3
+      device_index: 2
+      parameter: "Compressor Threshold"
+      value: 0.80
+    cooldown: 350
+
+  # === COMBINED SCENARIOS ===
+  # Scenario 1: Loud AND bright - aggressive filtering
+  - name: "Loud bright sound - aggressive control"
+    priority: 18
+    condition:
+      parameter: "LUFS Integrated"
+      operator: ">"
+      value: -13.0
+    and:
+      parameter: "Spectral Centroid"
+      operator: ">"
+      value: 4000.0
+    action:
+      type: "set_device_parameter"
+      target_track: 2
+      device_index: 1
+      parameter: "Filter Frequency"
+      value: 0.95  # Wide open
+    and:
+      type: "set_master_volume"
+      volume: 0.75  # Aggressive volume reduction
+    cooldown: 250
+
+  # Scenario 2: Quiet AND dark - gentle treatment
+  - name: "Quiet dark sound - gentle treatment"
+    priority: 14
+    condition:
+      parameter: "LUFS Integrated"
+      operator: "<"
+      value: -18.0
+    and:
+      parameter: "Spectral Centroid"
+      operator: "<"
+      value: 2000.0
+    action:
+      type: "set_device_parameter"
+      target_track: 2
+      device_index: 1
+      parameter: "Filter Frequency"
+      value: 0.55  # Semi-closed
+    and:
+      type: "set_master_volume"
+      volume: 0.90  # Moderate increase
+    cooldown: 300
+
+  # Scenario 3: High dynamics AND loud - strong compression
+  - name: "Loud dynamic peaks - strong limiting"
+    priority: 19  # High priority for peak protection
+    condition:
+      parameter: "Dynamic Range"
+      operator: ">"
+      value: 0.70
+    and:
+      parameter: "Peak Level"
+      operator: ">"
+      value: 0.92
+    action:
+      type: "set_device_parameter"
+      target_track: 3
+      device_index: 3
+      parameter: "Limiter Threshold"
+      value: 0.85  # Aggressive limiting
+    cooldown: 150  # Fast response
+
+  # === ALERTS ===
+  - name: "Stereo imbalance alert"
+    priority: 16
+    condition:
+      parameter: "Stereo Balance"
+      operator: ">"
+      value: 0.75  # Severe imbalance
+    or:
+      parameter: "Stereo Balance"
+      operator: "<"
+      value: 0.25
+    action:
+      type: "log"
+      message: "WARNING: Severe stereo imbalance: {value}"
+    cooldown: 1000
+
+  - name: "Near clipping alert"
+    priority: 20
+    condition:
+      parameter: "Peak Level"
+      operator: ">"
+      value: 0.98  # Very near clipping
+    action:
+      type: "set_master_volume"
+      volume: 0.80  # Emergency reduction
+    and:
+      type: "log"
+      message: "EMERGENCY: Peak {value} - reducing master volume"
+    cooldown: 100
+
+# Configuration notes:
+# - Combines multiple analysis types (loudness, spectral, dynamics)
+# - Demonstrates AND/OR operators for complex conditions
+# - Higher priority rules can fire multiple actions
+# - Scenario-based rules for specific audio situations
+# - Priority hierarchy: emergency (20) > scenarios (18-19) > loudness (15) > others
+# - Example of "combined actions" in single rule (Scenario 1, 2, 3)

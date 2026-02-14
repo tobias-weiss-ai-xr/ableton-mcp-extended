@@ -686,6 +686,146 @@ class AbletonMCP(ControlSurface):
                             result = self._delete_warp_marker(
                                 track_index, clip_index, marker_index
                             )
+                        elif command_type == "create_audio_track":
+                            index = params.get("index", -1)
+                            result = self._create_audio_track(index)
+                        elif command_type == "delete_track":
+                            track_index = params.get("track_index", 0)
+                            result = self._delete_track(track_index)
+                        elif command_type == "set_track_color":
+                            track_index = params.get("track_index", 0)
+                            color_index = params.get("color_index", 0)
+                            result = self._set_track_color(track_index, color_index)
+                        elif command_type == "set_track_fold":
+                            track_index = params.get("track_index", 0)
+                            folded = params.get("folded", True)
+                            result = self._set_track_fold(track_index, folded)
+                        elif command_type == "duplicate_track":
+                            track_index = params.get("track_index", 0)
+                            result = self._duplicate_track(track_index)
+                        elif command_type == "delete_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._delete_clip(track_index, clip_index)
+                        elif command_type == "duplicate_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._duplicate_clip(track_index, clip_index)
+                        elif command_type == "move_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            new_track_index = params.get("new_track_index", 0)
+                            new_clip_index = params.get("new_clip_index", 0)
+                            result = self._move_clip(
+                                track_index, clip_index, new_track_index, new_clip_index
+                            )
+                        elif command_type == "delete_notes_from_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            note_indices = params.get("note_indices", [])
+                            result = self._delete_notes_from_clip(
+                                track_index, clip_index, note_indices
+                            )
+                        elif command_type == "quantize_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            amount = params.get("amount", 1.0)
+                            result = self._quantize_clip(
+                                track_index, clip_index, amount
+                            )
+                        elif command_type == "transpose_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            semitones = params.get("semitones", 0)
+                            result = self._transpose_clip(
+                                track_index, clip_index, semitones
+                            )
+                        elif command_type == "set_clip_loop":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            loop_start = params.get("loop_start", 0.0)
+                            loop_length = params.get("loop_length", 4.0)
+                            result = self._set_clip_loop(
+                                track_index, clip_index, loop_start, loop_length
+                            )
+                        elif command_type == "set_clip_launch_mode":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            mode = params.get("mode", 0)
+                            result = self._set_clip_launch_mode(
+                                track_index, clip_index, mode
+                            )
+                        elif command_type == "create_scene":
+                            index = params.get("index", -1)
+                            result = self._create_scene(index)
+                        elif command_type == "delete_scene":
+                            scene_index = params.get("scene_index", 0)
+                            result = self._delete_scene(scene_index)
+                        elif command_type == "duplicate_scene":
+                            scene_index = params.get("scene_index", 0)
+                            result = self._duplicate_scene(scene_index)
+                        elif command_type == "set_scene_name":
+                            scene_index = params.get("scene_index", 0)
+                            name = params.get("name", "")
+                            result = self._set_scene_name(scene_index, name)
+                        elif command_type == "fire_scene":
+                            scene_index = params.get("scene_index", 0)
+                            result = self._fire_scene(scene_index)
+                        elif command_type == "set_time_signature":
+                            numerator = params.get("numerator", 4)
+                            denominator = params.get("denominator", 4)
+                            result = self._set_time_signature(numerator, denominator)
+                        elif command_type == "set_metronome":
+                            enabled = params.get("enabled", True)
+                            result = self._set_metronome(enabled)
+                        elif command_type == "start_recording":
+                            result = self._start_recording()
+                        elif command_type == "stop_recording":
+                            result = self._stop_recording()
+                        elif command_type == "set_track_monitoring_state":
+                            track_index = params.get("track_index", 0)
+                            monitoring_state = params.get("monitoring_state", 0)
+                            result = self._set_track_monitoring_state(
+                                track_index, monitoring_state
+                            )
+                        elif command_type == "add_automation_point":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            device_index = params.get("device_index", 0)
+                            parameter_index = params.get("parameter_index", 0)
+                            time_val = params.get("time", 0.0)
+                            value = params.get("value", 0.0)
+                            result = self._add_automation_point(
+                                track_index,
+                                clip_index,
+                                device_index,
+                                parameter_index,
+                                time_val,
+                                value,
+                            )
+                        elif command_type == "clear_automation":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            device_index = params.get("device_index", 0)
+                            parameter_index = params.get("parameter_index", 0)
+                            result = self._clear_automation(
+                                track_index, clip_index, device_index, parameter_index
+                            )
+                        elif command_type == "duplicate_device":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            result = self._duplicate_device(track_index, device_index)
+                        elif command_type == "delete_device":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            result = self._delete_device(track_index, device_index)
+                        elif command_type == "move_device":
+                            track_index = params.get("track_index", 0)
+                            device_index = params.get("device_index", 0)
+                            new_position = params.get("new_position", 0)
+                            result = self._move_device(
+                                track_index, device_index, new_position
+                            )
 
                         # Put result in queue
                         response_queue.put({"status": "success", "result": result})
@@ -744,15 +884,74 @@ class AbletonMCP(ControlSurface):
         return response
 
     def _execute_udp_command(self, command_json):
-        """Execute UDP command - placeholder for command routing"""
+        """Execute UDP command - fire-and-forget routing for high-frequency parameters"""
         command_type = command_json.get("type", "")
+        params = command_json.get("params", {})
 
-        # For now, just log that we received a UDP command
-        # Command routing will be implemented in later task
-        self.log_message(f"UDP: Executing {command_type} command")
+        try:
+            if command_type == "set_device_parameter":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                parameter_index = params.get("parameter_index", 0)
+                value = params.get("value", 0.0)
+                self._set_device_parameter(
+                    track_index, device_index, parameter_index, value
+                )
 
-        # Future: Add routing for UDP-allowed commands
-        # set_device_parameter, set_track_volume, set_track_mute, etc.
+            elif command_type == "set_track_volume":
+                track_index = params.get("track_index", 0)
+                volume = params.get("volume", 0.75)
+                self._set_track_volume(track_index, volume)
+
+            elif command_type == "set_track_pan":
+                track_index = params.get("track_index", 0)
+                pan = params.get("pan", 0.0)
+                self._set_track_pan(track_index, pan)
+
+            elif command_type == "set_track_mute":
+                track_index = params.get("track_index", 0)
+                mute = params.get("mute", False)
+                self._set_track_mute(track_index, mute)
+
+            elif command_type == "set_track_solo":
+                track_index = params.get("track_index", 0)
+                solo = params.get("solo", False)
+                self._set_track_solo(track_index, solo)
+
+            elif command_type == "set_track_arm":
+                track_index = params.get("track_index", 0)
+                arm = params.get("arm", False)
+                self._set_track_arm(track_index, arm)
+
+            elif command_type == "set_master_volume":
+                volume = params.get("volume", 0.75)
+                self._set_master_volume(volume)
+
+            elif command_type == "set_send_amount":
+                track_index = params.get("track_index", 0)
+                send_index = params.get("send_index", 0)
+                amount = params.get("amount", 0.0)
+                self._set_send_amount(track_index, send_index, amount)
+
+            elif command_type == "fire_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                self._fire_clip(track_index, clip_index)
+
+            elif command_type == "set_clip_launch_mode":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                mode = params.get("mode", 0)
+                self._set_clip_launch_mode(track_index, clip_index, mode)
+
+            else:
+                self.log_message(
+                    f"UDP: Unknown or unsupported command type: {command_type}"
+                )
+
+        except Exception as e:
+            # Fire-and-forget: log error but don't crash
+            self.log_message(f"UDP: Error executing {command_type}: {e}")
 
     # Command implementations
 

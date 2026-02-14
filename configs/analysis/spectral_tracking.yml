@@ -1,0 +1,79 @@
+# Spectral Tracking and Filter Control
+# This configuration demonstrates filter control based on spectral analysis
+# from Sound Analyser or Blue Cat's FreqAnalyst
+
+plugin:
+  name: "Sound Analyser"
+  track: 0
+  device: 0
+
+rules:
+  # Rule 1: Open filter when spectral centroid is high (bright sound)
+  - name: "High spectral centroid - open filter"
+    priority: 10
+    condition:
+      parameter: "Spectral Centroid"
+      operator: ">"
+      value: 4000.0  # Hz
+    action:
+      type: "set_device_parameter"
+      target_track: 2  # Synth pad track
+      device_index: 1
+      parameter: "Filter Frequency"
+      value: 0.90  # Normalized (open filter)
+    cooldown: 300
+
+  # Rule 2: Close filter when spectral centroid is low (dark sound)
+  - name: "Low spectral centroid - close filter"
+    priority: 10
+    condition:
+      parameter: "Spectral Centroid"
+      operator: "<"
+      value: 2000.0  # Hz
+    action:
+      type: "set_device_parameter"
+      target_track: 2  # Synth pad track
+      device_index: 1
+      parameter: "Filter Frequency"
+      value: 0.40  # Normalized (closed filter)
+    cooldown: 300
+
+  # Rule 3: Increase brightness with high spectral spread
+  - name: "High spectral spread - increase filter resonance"
+    priority: 8
+    condition:
+      parameter: "Spectral Spread"
+      operator: ">"
+      value: 3000.0
+    action:
+      type: "set_device_parameter"
+      target_track: 2
+      device_index: 1
+      parameter: "Filter Resonance"
+      value: 0.75
+    cooldown: 250
+
+  # Rule 4: Moderate filter for mid-range spectral content
+  - name: "Mid-range spectral content - moderate filter"
+    priority: 7
+    condition:
+      parameter: "Spectral Centroid"
+      operator: ">="
+      value: 2000.0
+    and:
+      parameter: "Spectral Centroid"
+      operator: "<="
+      value: 4000.0
+    action:
+      type: "set_device_parameter"
+      target_track: 2
+      device_index: 1
+      parameter: "Filter Frequency"
+      value: 0.65  # Mid position
+    cooldown: 400
+
+# Configuration notes:
+# - Spectral centroid indicates "brightness" of sound (higher = brighter)
+# - Useful for controlling filter sweeps and sound evolution
+# - Spectral spread indicates how "wide" the spectrum is
+# - Filter parameters must be normalized (0.0-1.0)

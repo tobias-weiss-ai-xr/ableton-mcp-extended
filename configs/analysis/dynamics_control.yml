@@ -1,0 +1,91 @@
+# Dynamics Control with Compressor/Limiter
+# This configuration demonstrates dynamics-based control using RMS and peak measurements
+# from Sound Analyser or Blue Cat's FreqAnalyst
+
+plugin:
+  name: "Sound Analyser"
+  track: 0
+  device: 0
+
+rules:
+  # Rule 1: Enable compression when RMS is high
+  - name: "High RMS - enable compression"
+    priority: 15
+    condition:
+      parameter: "RMS Level"
+      operator: ">"
+      value: 0.7  # Normalized RMS
+    action:
+      type: "set_device_parameter"
+      target_track: 3
+      device_index: 2
+      parameter: "Compressor Threshold"
+      value: 0.65  # Lower threshold = more compression
+    cooldown: 300
+
+  # Rule 2: Reduce compression when RMS is low
+  - name: "Low RMS - reduce compression"
+    priority: 12
+    condition:
+      parameter: "RMS Level"
+      operator: "<"
+      value: 0.4  # Normalized RMS
+    action:
+      type: "set_device_parameter"
+      target_track: 3
+      device_index: 2
+      parameter: "Compressor Threshold"
+      value: 0.85  # Higher threshold = less compression
+    cooldown: 300
+
+  # Rule 3: Limit peaks when peak level exceeds threshold
+  - name: "Peak limiting - reduce gain"
+    priority: 20  # Emergency priority
+    condition:
+      parameter: "Peak Level"
+      operator: ">"
+      value: 0.95  # Normalized peak
+    action:
+      type: "set_device_parameter"
+      target_track: 3
+      device_index: 3
+      parameter: "Limiter Threshold"
+      value: 0.90  # Aggressive limiting
+    cooldown: 100  # Fast response
+
+  # Rule 4: Adjust attack time based on dynamics
+  - name: "High dynamics - fast attack"
+    priority: 10
+    condition:
+      parameter: "Dynamic Range"
+      operator: ">"
+      value: 0.6  # High dynamic range
+    action:
+      type: "set_device_parameter"
+      target_track: 3
+      device_index: 2
+      parameter: "Compressor Attack"
+      value: 0.30  # Faster attack
+    cooldown: 400
+
+  # Rule 5: Slow attack for compressed material
+  - name: "Low dynamics - slow attack"
+    priority: 9
+    condition:
+      parameter: "Dynamic Range"
+      operator: "<"
+      value: 0.3  # Low dynamic range
+    action:
+      type: "set_device_parameter"
+      target_track: 3
+      device_index: 2
+      parameter: "Compressor Attack"
+      value: 0.70  # Slower attack
+    cooldown: 400
+
+# Configuration notes:
+# - RMS indicates average loudness over time
+# - Peak indicates instantaneous maximum level
+# - Dynamic range indicates difference between quiet and loud parts
+# - Compressor parameters: threshold (amount), attack (response speed)
+# - Limiter prevents clipping from peaks

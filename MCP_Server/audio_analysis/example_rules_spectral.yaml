@@ -1,0 +1,64 @@
+# Example Rule Configuration: Spectral-Based Clip Switching
+# This rule set demonstrates triggering clips based on spectral content
+
+# Rule Set Metadata
+id: spectral_switching_example
+name: "Spectral-Based Clip Switching"
+description: |
+  Trigger different clips based on spectral characteristics.
+  High-freq content -> trigger breakdown clip.
+  Low-freq dominance -> trigger bass-heavy clip.
+enabled: true
+
+# Rules
+rules:
+  # Rule 1: Trigger breakdown clip when high-frequency energy is high
+  - id: trigger_breakdown_clips
+    name: "Trigger breakdown clips on high-frequency energy"
+    description: |
+      When spectral centroid indicates high-frequency content (> 0.75),
+      trigger clips on tracks 0 and 1 for a breakdown section.
+    enabled: true
+    cooldown_seconds: 5.0  # Long cooldown to avoid rapid clip switching
+
+    # Conditions
+    conditions:
+      - parameter_index: 1  # Spectral centroid from analysis VST
+        operator: ">"
+        threshold: 0.75     # High-frequency dominance
+        parameter_name: "spectral_centroid"
+
+    # Actions
+    actions:
+      - type: trigger_clip
+        track_index: 0
+        clip_index: 2
+
+      - type: trigger_clip
+        track_index: 1
+        clip_index: 2
+
+  # Rule 2: Restore main clips when bass energy returns
+  - id: restore_main_clips
+    name: "Restore main clips on bass energy"
+    description: |
+      When low-frequency band is dominant (> 0.80), trigger main clips.
+    enabled: true
+    cooldown_seconds: 4.0
+
+    # Conditions
+    conditions:
+      - parameter_index: 10  # Low-frequency band (e.g., 60-120 Hz)
+        operator: ">"
+        threshold: 0.80      # Bass dominance
+        parameter_name: "low_band_energy"
+
+    # Actions
+    actions:
+      - type: trigger_clip
+        track_index: 0
+        clip_index: 0
+
+      - type: trigger_clip
+        track_index: 1
+        clip_index: 0

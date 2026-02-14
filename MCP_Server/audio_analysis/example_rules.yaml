@@ -1,0 +1,58 @@
+# Example Rule Configuration: Loudness-Based Track Control
+# This rule set demonstrates automatic gain reduction when audio exceeds thresholds
+
+# Rule Set Metadata
+id: loudness_control_example
+name: "Loudness-Based Track Control"
+description: |
+  Automatically reduce device parameters when loudness exceeds thresholds.
+  Prevents clipping and maintains consistent output levels.
+enabled: true
+
+# Rules
+rules:
+  # Rule 1: Reduce device parameter when momentary LUFS is too hot
+  - id: reduce_on_high_loudness
+    name: "Reduce device parameter on high loudness"
+    description: |
+      When momentary LUFS > -10 LUFS (normalized > 0.70), reduce device parameter
+      to 0.5 level to prevent clipping.
+    enabled: true
+    cooldown_seconds: 2.0  # Prevent rapid oscillation
+
+    # Conditions (ALL must be true)
+    conditions:
+      - parameter_index: 0  # Momentary LUFS from Youlean Loudness Meter
+        operator: ">="       # Greater than or equal
+        threshold: 0.70      # ~ -10 LUFS (normalized)
+        parameter_name: "momentary_lufs"
+
+    # Actions (executed when conditions met)
+    actions:
+      - type: set_parameter
+        track_index: 1
+        device_index: 0
+        parameter_index: 0   # First parameter on device
+        target_value: 0.50   # Reduce to 50%
+
+  # Rule 2: Restore device parameter when loudness returns to safe levels
+  - id: restore_on_safe_loudness
+    name: "Restore device parameter on safe loudness"
+    description: |
+      When momentary LUFS returns below -14 LUFS (normalized < 0.60),
+      restore device parameter to 0.8 level.
+    enabled: true
+    cooldown_seconds: 1.5
+
+    conditions:
+      - parameter_index: 0  # Momentary LUFS
+        operator: "<"        # Less than
+        threshold: 0.60      # ~ -14 LUFS (normalized)
+        parameter_name: "momentary_lufs"
+
+    actions:
+      - type: set_parameter
+        track_index: 1
+        device_index: 0
+        parameter_index: 0
+        target_value: 0.80   # Restore to 80%

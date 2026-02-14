@@ -1,0 +1,71 @@
+# LUFS-Based Automatic Volume Compressor
+# This configuration demonstrates responsive volume control based on LUFS measurements
+# from Youlean Loudness Meter or similar plugins
+
+plugin:
+  name: "Youlean Loudness Meter"
+  track: 0
+  device: 0
+
+rules:
+  # Rule 1: Reduce volume when LUFS exceeds -14 (loud audio)
+  - name: "Loud audio protection - reduce volume"
+    priority: 10
+    condition:
+      parameter: "LUFS Integrated"
+      operator: ">"
+      value: -14.0
+    action:
+      type: "set_track_volume"
+      target_track: 1
+      volume: 0.85  # Normalized value (0.0-1.0)
+    cooldown: 200  # Don't fire more than once per 200ms
+
+  # Rule 2: Increase volume when LUFS drops below -16 (quiet audio)
+  - name: "Quiet audio boost - increase volume"
+    priority: 9
+    condition:
+      parameter: "LUFS Integrated"
+      operator: "<"
+      value: -16.0
+    action:
+      type: "set_track_volume"
+      target_track: 1
+      volume: 0.90  # Slightly higher
+    cooldown: 200
+
+  # Rule 3: Emergency reduction for very loud audio (LUFS > -10)
+  - name: "Emergency loudness limiter"
+    priority: 20  # Higher priority, overrides others
+    condition:
+      parameter: "LUFS Integrated"
+      operator: ">"
+      value: -10.0
+    action:
+      type: "set_track_volume"
+      target_track: 1
+      volume: 0.70  # Significant reduction
+    cooldown: 100  # Fast response
+
+  # Rule 4: Normalize volume when LUFS in target range (-15 to -15.5)
+  - name: "Target LUFS range - normalize volume"
+    priority: 5
+    condition:
+      parameter: "LUFS Integrated"
+      operator: ">="
+      value: -15.5
+    and:
+      parameter: "LUFS Integrated"
+      operator: "<="
+      value: -15.0
+    action:
+      type: "set_track_volume"
+      target_track: 1
+      volume: 0.88  # Normal volume
+    cooldown: 500  # Slower update rate
+
+# Configuration notes:
+# - LUFS targets: -16 (EBU R128 standard for music), -14 for louder material
+# - Volume values are normalized (0.0 = silent, 1.0 = maximum)
+# - Cooldown prevents rapid volume pumping
+# - Higher priority rules override lower priority ones

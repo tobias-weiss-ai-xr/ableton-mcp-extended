@@ -1,0 +1,104 @@
+# All Parameters Monitoring Scenario
+# This configuration monitors all analysis parameters without taking control actions
+# Useful for understanding what parameters reveal about your audio
+
+plugin:
+  name: "Sound Analyser"
+  track: 0
+  device: 0
+
+rules:
+  # Rule 1: Monitor spectral characteristics
+  - name: "Spectral centroid tracking"
+    priority: 5
+    condition:
+      parameter: "Spectral Centroid"
+      operator: ">"
+      value: 0.0  # Always true, just logs
+    action:
+      type: "log"  # Log only, no control action
+      message: "Spectral Centroid: {value} Hz"
+    cooldown: 1000  # Log every second
+
+  # Rule 2: Monitor loudness metrics
+  - name: "LUFS monitoring"
+    priority: 5
+    condition:
+      parameter: "LUFS Integrated"
+      operator: "<"
+      value: 0.0  # Always true
+    action:
+      type: "log"
+      message: "LUFS: {value} dB"
+    cooldown: 1000
+
+  # Rule 3: Monitor dynamics
+  - name: "Dynamics monitoring"
+    priority: 5
+    condition:
+      parameter: "RMS Level"
+      operator: ">"
+      value: 0.0
+    action:
+      type: "log"
+      message: "RMS: {value}, Peak: {peak_value}"
+    cooldown: 1000
+
+  # Rule 4: Monitor frequency bands
+  - name: "Low frequency tracking"
+    priority: 4
+    condition:
+      parameter: "Low Band Level"
+      operator: ">"
+      value: 0.5  # Log when bass is prominent
+    action:
+      type: "log"
+      message: "Low Band: {value} (bass prominent)"
+    cooldown: 500
+
+  # Rule 5: Monitor high frequencies
+  - name: "High frequency tracking"
+    priority: 4
+    condition:
+      parameter: "High Band Level"
+      operator: ">"
+      value: 0.6  # Log when highs are prominent
+    action:
+      type: "log"
+      message: "High Band: {value} (highs prominent)"
+    cooldown: 500
+
+  # Rule 6: Stereo balance monitoring
+  - name: "Stereo imbalance detection"
+    priority: 6
+    condition:
+      parameter: "Stereo Balance"
+      operator: ">"
+      value: 0.7  # Right-heavy
+    or:
+      parameter: "Stereo Balance"
+      operator: "<"
+      value: 0.3  # Left-heavy
+    action:
+      type: "log"
+      message: "WARNING: Stereo imbalance detected: {value}"
+    cooldown: 2000
+
+  # Rule 7: Peak detection alert
+  - name: "Peak level alert"
+    priority: 10
+    condition:
+      parameter: "Peak Level"
+      operator: ">"
+      value: 0.95  # Near clipping
+    action:
+      type: "log"
+      message: "ALERT: Peak level {value} - possible clipping!"
+    cooldown: 500
+
+# Configuration notes:
+# - This is a monitoring-only configuration (no control actions)
+# - Uses "log" action type instead of parameter/volume actions
+# - All rules fire based on actual parameter values
+# - Different cooldown rates for different monitoring frequencies
+# - Useful for understanding how parameters correlate with audio content
