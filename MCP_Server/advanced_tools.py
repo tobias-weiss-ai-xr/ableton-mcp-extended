@@ -516,3 +516,194 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         except Exception as e:
             logger.error(f"Error deleting warp marker: {str(e)}")
             return f"Error deleting warp marker: {str(e)}"
+
+    @mcp.tool()
+    def batch_set_device_parameters(
+        ctx: Context, operations: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Set multiple device parameters in a single call.
+
+        Parameters:
+        - operations: List of dicts with track_index, device_index, parameter_index, value
+
+        Example:
+            [{"track_index": 0, "device_index": 0, "parameter_index": 2, "value": 0.5}, ...]
+        """
+        results = []
+        for op in operations:
+            try:
+                ableton = get_ableton_connection()
+                result = ableton.send_command(
+                    "set_device_parameter",
+                    {
+                        "track_index": op["track_index"],
+                        "device_index": op["device_index"],
+                        "parameter_index": op["parameter_index"],
+                        "value": op["value"],
+                    },
+                )
+                results.append({"success": True, **op})
+            except Exception as e:
+                results.append({"success": False, "error": str(e), **op})
+        return json.dumps(
+            {
+                "results": results,
+                "total": len(results),
+                "successful": sum(1 for r in results if r.get("success")),
+            },
+            indent=2,
+        )
+
+    @mcp.tool()
+    def batch_set_track_volumes(ctx: Context, volumes: Dict[str, float]) -> str:
+        """
+        Set volumes for multiple tracks in one call.
+
+        Parameters:
+        - volumes: Dict mapping track_index (as string) to volume (0.0-1.0)
+
+        Example: {"0": 0.8, "1": 0.6, "2": 0.7}
+        """
+        results = {}
+        for track_str, volume in volumes.items():
+            track_index = int(track_str)
+            try:
+                ableton = get_ableton_connection()
+                ableton.send_command(
+                    "set_track_volume", {"track_index": track_index, "volume": volume}
+                )
+                results[track_str] = {"success": True, "volume": volume}
+            except Exception as e:
+                results[track_str] = {"success": False, "error": str(e)}
+        return json.dumps(results, indent=2)
+
+    @mcp.tool()
+    def batch_fire_clips(ctx: Context, clips: List[Dict[str, int]]) -> str:
+        """
+        Fire multiple clips simultaneously.
+
+        Parameters:
+        - clips: List of dicts with track_index and clip_index
+
+        Example: [{"track_index": 0, "clip_index": 0}, {"track_index": 1, "clip_index": 2}]
+        """
+        results = []
+        for clip in clips:
+            try:
+                ableton = get_ableton_connection()
+                ableton.send_command(
+                    "fire_clip",
+                    {
+                        "track_index": clip["track_index"],
+                        "clip_index": clip["clip_index"],
+                    },
+                )
+                results.append({"success": True, **clip})
+            except Exception as e:
+                results.append({"success": False, "error": str(e), **clip})
+        return json.dumps({"results": results}, indent=2)
+
+    @mcp.tool()
+    def get_playing_clips(ctx: Context) -> str:
+        """
+        Get all currently playing clips across all tracks.
+
+        Returns list of playing clips with track/clip info and positions.
+        """
+        try:
+            ableton = get_ableton_connection()
+
+            # Get all tracks
+            tracks_result = ableton.send_command("get_all_tracks")
+            tracks = tracks_result.get("tracks", [])
+
+            playing_clips = []
+            for track in tracks:
+                track_idx = track.get("index")
+
+                # Get clips in track
+                clips_result = ableton.send_command(
+                    "get_all_clips_in_track", {"track_index": track_idx}
+                )
+                clips = clips_result.get("clips", [])
+
+                for clip in clips:
+                    if clip.get("is_playing"):
+                        playing_clips.append(
+                            {
+                                "track_index": track_idx,
+                                "track_name": track.get("name"),
+                                "clip_index": clip.get("index"),
+                                "clip_name": clip.get("name"),
+                                "position": clip.get("playing_position", 0),
+                            }
+                        )
+
+            return json.dumps(
+                {"playing_clips": playing_clips, "count": len(playing_clips)}, indent=2
+            )
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    @mcp.tool()
+    def setup_random_follow_actions(
+        ctx: Context,
+        track_index: int,
+        stay_probability: float = 0.6,
+        clip_range_start: int = 0,
+        clip_range_end: int = 7,
+    ) -> str:
+        """
+        Configure random follow actions for a track's clips.
+
+        Parameters:
+        - track_index: The track to configure
+        - stay_probability: Probability of staying on same clip (0.0-1.0, default 0.6)
+        - clip_range_start: First clip index to configure (default 0)
+        - clip_range_end: Last clip index to configure (default 7)
+
+        Creates evolving, non-repetitive patterns ideal for generative music.
+        """
+        import random
+
+        try:
+            ableton = get_ableton_connection()
+
+            clip_indices = list(range(clip_range_start, clip_range_end + 1))
+            configured = 0
+
+            for clip_index in clip_indices:
+                # Decide if this clip should have a follow action
+                if random.random() < stay_probability:
+                    # Stay on same clip - clear any existing follow action
+                    ableton.send_command(
+                        "set_clip_follow_action",
+                        {
+                            "track_index": track_index,
+                            "clip_index": clip_index,
+                            "action_slot": 0,
+                            "action_type": 0,  # None
+                        },
+                    )
+                else:
+                    # Jump to a different clip
+                    other_clips = [c for c in clip_indices if c != clip_index]
+                    if other_clips:
+                        target = random.choice(other_clips)
+                        ableton.send_command(
+                            "set_clip_follow_action",
+                            {
+                                "track_index": track_index,
+                                "clip_index": clip_index,
+                                "action_slot": 0,
+                                "action_type": 3,  # Play Other Clip
+                                "trigger_time": 1.0,
+                                "clip_index_target": target,
+                            },
+                        )
+                        configured += 1
+
+            return f"Configured {configured} random follow actions for track {track_index} (clips {clip_range_start}-{clip_range_end})"
+        except Exception as e:
+            return f"Error: {str(e)}"

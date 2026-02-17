@@ -376,6 +376,12 @@ class AbletonMCP(ControlSurface):
                 "set_loop",
                 "get_clip_notes",
                 "set_master_volume",
+                "set_track_volume",
+                "set_track_mute",
+                "set_track_solo",
+                "set_track_arm",
+                "set_track_pan",
+                "set_send_amount",
                 "get_master_track_info",
                 "get_return_tracks",
                 "get_all_tracks",
@@ -396,7 +402,13 @@ class AbletonMCP(ControlSurface):
                 "get_clip_warp_markers",
                 "add_warp_marker",
                 "delete_warp_marker",
+                "detect_clip_key",
                 "reload_script",
+                "get_global_quantization",
+                "set_global_quantization",
+                "get_link_status",
+                "set_link_enabled",
+                "set_link_start_stop_sync",
             ]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
@@ -434,6 +446,19 @@ class AbletonMCP(ControlSurface):
                         elif command_type == "set_tempo":
                             tempo = params.get("tempo", 120.0)
                             result = self._set_tempo(tempo)
+                        elif command_type == "get_global_quantization":
+                            result = self._get_global_quantization()
+                        elif command_type == "set_global_quantization":
+                            value = params.get("value", "1 Bar")
+                            result = self._set_global_quantization(value)
+                        elif command_type == "get_link_status":
+                            result = self._get_link_status()
+                        elif command_type == "set_link_enabled":
+                            enabled = params.get("enabled", True)
+                            result = self._set_link_enabled(enabled)
+                        elif command_type == "set_link_start_stop_sync":
+                            enabled = params.get("enabled", True)
+                            result = self._set_link_start_stop_sync(enabled)
                         elif command_type == "fire_clip":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -484,6 +509,20 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             arm = params.get("arm", False)
                             result = self._set_track_arm(track_index, arm)
+                        elif command_type == "set_send_amount":
+                            track_index = params.get("track_index", 0)
+                            send_index = params.get("send_index", 0)
+                            amount = params.get("amount", 0.5)
+                            result = self._set_send_amount(
+                                track_index, send_index, amount
+                            )
+                        elif command_type == "set_track_pan":
+                            track_index = params.get("track_index", 0)
+                            pan = params.get("pan", 0.0)
+                            result = self._set_track_pan(track_index, pan)
+                        elif command_type == "set_master_volume":
+                            volume = params.get("volume", 0.75)
+                            result = self._set_master_volume(volume)
                         elif command_type == "list_device_presets":
                             track_index = params.get("track_index", 0)
                             device_index = params.get("device_index", 0)
@@ -558,6 +597,10 @@ class AbletonMCP(ControlSurface):
                                 time_span,
                                 pitch_span,
                             )
+                        elif command_type == "detect_clip_key":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._detect_clip_key(track_index, clip_index)
                         elif command_type == "set_clip_follow_action":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -972,7 +1015,17 @@ class AbletonMCP(ControlSurface):
             }
             return result
         except Exception as e:
-            self.log_message("Error getting session info: " + str(e))
+            self.log_message("Error setting track pan: " + str(e))
+            raise
+
+    def _set_master_volume(self, volume):
+        """Set master track volume (0.0 to 1.0)"""
+        try:
+            self._song.master_track.mixer_device.volume.value = volume
+            result = {"volume": volume}
+            return result
+        except Exception as e:
+            self.log_message("Error setting master volume: " + str(e))
             raise
 
     def _get_track_info(self, track_index):
@@ -1177,6 +1230,69 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error setting tempo: " + str(e))
+            raise
+
+    def _get_global_quantization(self):
+        """Get the current global quantization setting"""
+        try:
+            # Ableton uses a float value for quantization
+            # 0 = None, 0.25 = 1/4, 0.5 = 1/2, 1 = 1 Bar, 2 = 2 Bars, 4 = 4 Bars
+            q_value = self._song.clip_trigger_quantization
+
+            # Map to human-readable string
+            q_map = {
+                0: "none",
+                0.25: "1/4",
+                0.5: "1/2",
+                1: "1 Bar",
+                2: "2 Bars",
+                4: "4 Bars",
+                8: "8 Bars",
+            }
+
+            q_string = q_map.get(q_value, str(q_value))
+
+            result = {
+                "quantization": q_string,
+                "quantize_value": q_value,
+            }
+            return result
+        except Exception as e:
+            self.log_message("Error getting global quantization: " + str(e))
+            raise
+
+    def _set_global_quantization(self, value):
+        """Set the global quantization for clip launching"""
+        try:
+            # Map string to Ableton quantization value
+            q_map = {
+                "none": 0,
+                "1/4": 0.25,
+                "1/2": 0.5,
+                "1 bar": 1,
+                "1 bars": 1,
+                "2 bars": 2,
+                "2 bar": 2,
+                "4 bars": 4,
+                "4 bar": 4,
+                "8 bars": 8,
+                "8 bar": 8,
+            }
+
+            q_value = q_map.get(value.lower())
+            if q_value is None:
+                raise Exception(f"Unknown quantization value: {value}")
+
+            self._song.clip_trigger_quantization = q_value
+
+            result = {
+                "quantization": value,
+                "quantize_value": q_value,
+                "success": True,
+            }
+            return result
+        except Exception as e:
+            self.log_message("Error setting global quantization: " + str(e))
             raise
 
     def _fire_clip(self, track_index, clip_index):
@@ -2353,11 +2469,10 @@ class AbletonMCP(ControlSurface):
 
             track = self._song.tracks[track_index]
 
-            if send_index < 0 or send_index >= len(self._song.return_tracks):
+            if send_index < 0 or send_index >= len(track.mixer_device.sends):
                 raise IndexError("Send index out of range")
 
-            send = self._song.return_tracks[send_index]
-            send.amount = amount
+            track.mixer_device.sends[send_index].value = amount
 
             result = {
                 "track_index": track_index,
@@ -2367,6 +2482,16 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error setting send amount: " + str(e))
+            raise
+
+    def _set_master_volume(self, volume):
+        """Set master track volume (normalized 0.0-1.0)"""
+        try:
+            self._song.master_track.mixer_device.volume.value = volume
+            result = {"volume": volume}
+            return result
+        except Exception as e:
+            self.log_message("Error setting master volume: " + str(e))
             raise
 
     def _toggle_device_bypass(self, track_index, device_index, enabled):
@@ -2562,6 +2687,168 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error getting clip notes: " + str(e))
+            raise
+
+    def _detect_clip_key(self, track_index, clip_index):
+        """Detect musical key from clip notes using pitch class analysis"""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            clip_slot = track.clip_slots[clip_index]
+            if not clip_slot.has_clip:
+                raise Exception("No clip in slot")
+            clip = clip_slot.clip
+
+            # Get all notes from clip
+            notes = []
+            if hasattr(clip, "notes"):
+                for note in clip.notes:
+                    notes.append(note)
+            elif hasattr(clip, "get_notes"):
+                notes_list = clip.get_notes(0, 0, 999999, 128)
+                if notes_list:
+                    notes = list(notes_list)
+
+            if not notes:
+                return {"error": "No notes in clip"}
+
+            # Count pitch classes (0-11 = C-B)
+            pitch_counts = {}
+            total_notes = 0
+            for note in notes:
+                if hasattr(note, "pitch"):
+                    pitch_class = note.pitch % 12
+                else:
+                    pitch_class = note[0] % 12
+                pitch_counts[pitch_class] = pitch_counts.get(pitch_class, 0) + 1
+                total_notes += 1
+
+            # Scale profiles for key detection (Krumhansl-Schmuckler)
+            # Major scale profile
+            major_profile = [
+                6.35,
+                2.23,
+                3.48,
+                2.33,
+                4.38,
+                4.09,
+                2.52,
+                5.19,
+                2.39,
+                3.66,
+                2.29,
+                2.88,
+            ]
+            # Minor scale profile
+            minor_profile = [
+                6.33,
+                2.68,
+                3.52,
+                5.38,
+                2.60,
+                3.53,
+                2.54,
+                4.75,
+                3.98,
+                2.69,
+                3.34,
+                3.17,
+            ]
+
+            note_names = [
+                "C",
+                "C#",
+                "D",
+                "D#",
+                "E",
+                "F",
+                "F#",
+                "G",
+                "G#",
+                "A",
+                "A#",
+                "B",
+            ]
+
+            best_key = None
+            best_mode = None
+            best_score = -1
+
+            # Test each possible root
+            for root in range(12):
+                # Calculate correlation with major profile
+                major_score = 0
+                minor_score = 0
+                for i in range(12):
+                    pitch_class = (root + i) % 12
+                    count = pitch_counts.get(pitch_class, 0)
+                    major_score += count * major_profile[i]
+                    minor_score += count * minor_profile[i]
+
+                if major_score > best_score:
+                    best_score = major_score
+                    best_key = root
+                    best_mode = "major"
+                if minor_score > best_score:
+                    best_score = minor_score
+                    best_key = root
+                    best_mode = "minor"
+
+            key_name = note_names[best_key]
+            if best_mode == "major":
+                key_full = key_name + " major"
+                # Camelot mapping for major keys (B)
+                camelot_map = {
+                    "C": "8B",
+                    "G": "9B",
+                    "D": "10B",
+                    "A": "11B",
+                    "E": "12B",
+                    "B": "1B",
+                    "F#": "2B",
+                    "C#": "3B",
+                    "G#": "4B",
+                    "D#": "5B",
+                    "A#": "6B",
+                    "F": "7B",
+                }
+            else:
+                key_full = key_name + " minor"
+                # Camelot mapping for minor keys (A)
+                camelot_map = {
+                    "A": "8A",
+                    "E": "9A",
+                    "B": "10A",
+                    "F#": "11A",
+                    "C#": "12A",
+                    "G#": "1A",
+                    "D#": "2A",
+                    "A#": "3A",
+                    "F": "4A",
+                    "C": "5A",
+                    "G": "6A",
+                    "D": "7A",
+                }
+
+            camelot = camelot_map.get(key_name, "8A")
+
+            result = {
+                "key": key_full,
+                "camelot": camelot,
+                "confidence": round(best_score / total_notes, 2)
+                if total_notes > 0
+                else 0,
+                "pitch_distribution": {
+                    note_names[k]: v for k, v in pitch_counts.items()
+                },
+                "total_notes": total_notes,
+            }
+            return result
+        except Exception as e:
+            self.log_message("Error detecting clip key: " + str(e))
             raise
 
     def _set_clip_follow_action(
@@ -3644,4 +3931,63 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error getting browser items at path: {0}".format(str(e)))
             self.log_message(traceback.format_exc())
+            raise
+
+    def _get_link_status(self):
+        """Get Ableton Link status"""
+        try:
+            # Ableton Link is accessed via song.link
+            link = self._song.link if hasattr(self._song, "link") else None
+
+            if link is None:
+                return {
+                    "link_available": False,
+                    "enabled": False,
+                    "start_stop_sync": False,
+                    "num_peers": 0,
+                }
+
+            result = {
+                "link_available": True,
+                "enabled": link.enabled if hasattr(link, "enabled") else False,
+                "start_stop_sync": link.start_stop_sync
+                if hasattr(link, "start_stop_sync")
+                else False,
+                "num_peers": link.num_peers if hasattr(link, "num_peers") else 0,
+            }
+            return result
+        except Exception as e:
+            self.log_message("Error getting Link status: " + str(e))
+            return {"error": str(e)}
+
+    def _set_link_enabled(self, enabled):
+        """Enable or disable Ableton Link"""
+        try:
+            if hasattr(self._song, "link") and self._song.link:
+                self._song.link.enabled = enabled
+                result = {
+                    "enabled": enabled,
+                    "success": True,
+                }
+                return result
+            else:
+                return {"error": "Link not available in this version of Ableton"}
+        except Exception as e:
+            self.log_message("Error setting Link enabled: " + str(e))
+            raise
+
+    def _set_link_start_stop_sync(self, enabled):
+        """Enable or disable Link start/stop sync"""
+        try:
+            if hasattr(self._song, "link") and self._song.link:
+                self._song.link.start_stop_sync = enabled
+                result = {
+                    "start_stop_sync": enabled,
+                    "success": True,
+                }
+                return result
+            else:
+                return {"error": "Link not available in this version of Ableton"}
+        except Exception as e:
+            self.log_message("Error setting Link start/stop sync: " + str(e))
             raise

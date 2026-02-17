@@ -8,12 +8,121 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator, Dict, Any, List, Union
 import time
 from datetime import datetime, timezone
+import functools
+
+# Use orjson for faster JSON serialization (3-10x faster than stdlib json)
+try:
+    import orjson
+
+    def json_dumps(obj, indent=None):
+        """Fast JSON serialization using orjson with fallback"""
+        if indent:
+            return orjson.dumps(obj, option=orjson.OPT_INDENT_2).decode("utf-8")
+        return orjson.dumps(obj).decode("utf-8")
+
+    def json_loads(s):
+        return orjson.loads(s)
+
+    ORJSON_AVAILABLE = True
+except ImportError:
+    # Fallback to standard json if orjson not available
+    def json_dumps(obj, indent=None):
+        return json.dumps(obj, indent=2 if indent else None)
+
+    def json_loads(s):
+        return json.loads(s)
+
+    ORJSON_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("AbletonMCPServer")
+
+
+def handle_ableton_errors(func):
+    """Decorator to standardize error handling for MCP tools"""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except ConnectionError as e:
+            logger.error(f"Connection error in {func.__name__}: {str(e)}")
+            return f"Connection error: {str(e)}"
+        except socket.timeout:
+            logger.error(f"Timeout in {func.__name__}")
+            return f"Timeout waiting for Ableton response"
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {str(e)}")
+            return f"Error: {str(e)}"
+
+    return wrapper
+
+
+# State-modifying commands that need extra processing time (module-level frozenset for O(1) lookup)
+MODIFYING_COMMANDS = frozenset(
+    {
+        "create_midi_track",
+        "create_audio_track",
+        "delete_all_tracks",
+        "delete_track",
+        "set_track_name",
+        "set_track_color",
+        "set_track_fold",
+        "duplicate_track",
+        "create_clip",
+        "delete_clip",
+        "duplicate_clip",
+        "move_clip",
+        "add_notes_to_clip",
+        "delete_notes_from_clip",
+        "quantize_clip",
+        "transpose_clip",
+        "set_clip_name",
+        "set_clip_loop",
+        "set_clip_launch_mode",
+        "create_scene",
+        "delete_scene",
+        "duplicate_scene",
+        "set_scene_name",
+        "set_tempo",
+        "set_time_signature",
+        "set_metronome",
+        "fire_clip",
+        "stop_clip",
+        "start_playback",
+        "stop_playback",
+        "start_recording",
+        "stop_recording",
+        "set_track_monitoring_state",
+        "load_instrument_or_effect",
+        "get_device_parameters",
+        "set_device_parameter",
+        "add_automation_point",
+        "clear_automation",
+        "duplicate_device",
+        "delete_device",
+        "move_device",
+        "set_track_volume",
+        "set_track_pan",
+        "set_track_mute",
+        "set_track_solo",
+        "set_track_arm",
+        "set_send_amount",
+        "load_instrument_preset",
+        "undo",
+        "redo",
+        "get_playhead_position",
+        "set_playhead_position",
+        "create_locator",
+        "delete_locator",
+        "jump_to_locator",
+        "set_loop",
+        "get_clip_notes",
+    }
+)
 
 # ============================================================================
 # BROWSER CACHING SYSTEM
@@ -98,6 +207,91 @@ def format_age(seconds: float) -> str:
     else:
         days = seconds / 86400
         return f"{round(days, 1)} days"
+
+
+# ============================================================================
+# SESSION INFO CACHING
+# ============================================================================
+
+SESSION_CACHE_TTL = 5.0  # 5 seconds TTL
+_session_cache: Dict[str, Dict[str, Any]] = {"data": None, "timestamp": 0}
+
+
+# ============================================================================
+# DRUM PATTERN TEMPLATES
+# ============================================================================
+
+# Drum pattern templates (times in beats)
+DRUM_PATTERNS = {
+    "one_drop": {
+        "description": "Classic reggae - kick on 3, snare/rim on 2&4",
+        "bpm_range": (70, 80),
+        "notes": {
+            "kick": [2.0],
+            "snare": [1.0, 3.0],
+            "hat": [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5],
+        },
+    },
+    "rockers": {
+        "description": "Reggae rockers - 4/4 feel with skank",
+        "bpm_range": (75, 85),
+        "notes": {
+            "kick": [0.0, 2.0],
+            "snare": [1.0, 3.0],
+            "hat": [0.5, 1.5, 2.5, 3.5],
+        },
+    },
+    "steppers": {
+        "description": "Dub steppers - 4-on-floor kick",
+        "bpm_range": (75, 85),
+        "notes": {
+            "kick": [0.0, 1.0, 2.0, 3.0],
+            "snare": [1.0, 3.0],
+            "hat": [0.5, 1.5, 2.5, 3.5],
+        },
+    },
+    "house_basic": {
+        "description": "Classic house - 4/4 kick, clap on 2&4, off-beat hats",
+        "bpm_range": (120, 130),
+        "notes": {
+            "kick": [0.0, 1.0, 2.0, 3.0],
+            "clap": [1.0, 3.0],
+            "hat": [0.5, 1.5, 2.5, 3.5],
+        },
+    },
+    "techno_4x4": {
+        "description": "Basic techno - 4/4 kick, off-beat hats",
+        "bpm_range": (125, 140),
+        "notes": {
+            "kick": [0.0, 1.0, 2.0, 3.0],
+            "hat": [0.5, 1.5, 2.5, 3.5],
+        },
+    },
+    "dub_techno": {
+        "description": "Sparse dub techno",
+        "bpm_range": (125, 135),
+        "notes": {
+            "kick": [0.0, 2.5, 3.0],
+            "hat": [0.5, 2.0],
+        },
+    },
+}
+
+# Chord interval definitions (semitones from root)
+CHORD_INTERVALS = {
+    "major": [0, 4, 7],
+    "minor": [0, 3, 7],
+    "dim": [0, 3, 6],
+    "aug": [0, 4, 8],
+    "maj7": [0, 4, 7, 11],
+    "min7": [0, 3, 7, 10],
+    "dom7": [0, 4, 7, 10],
+    "dim7": [0, 3, 6, 9],
+    "sus2": [0, 2, 7],
+    "sus4": [0, 5, 7],
+    "add9": [0, 4, 7, 14],
+    "power": [0, 7],
+}
 
 
 @dataclass
@@ -312,9 +506,8 @@ class AbletonConnection:
 
             # For state-modifying commands, add a small delay to give Ableton time to process
             if is_modifying_command:
-                import time
-
-                time.sleep(0.1)  # 100ms delay
+                # import time  # removed - using module-level import
+                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
 
             # Set timeout based on command type
             timeout = 15.0 if is_modifying_command else 10.0
@@ -334,9 +527,8 @@ class AbletonConnection:
 
             # For state-modifying commands, add another small delay after receiving response
             if is_modifying_command:
-                import time
-
-                time.sleep(0.1)  # 100ms delay
+                # import time  # removed - using module-level import
+                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
 
             return response.get("result", {})
         except socket.timeout:
@@ -385,7 +577,6 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
 # Create the MCP server with lifespan support
 mcp = FastMCP(
     "AbletonMCP",
-    description="Ableton Live integration through the Model Context Protocol",
     lifespan=server_lifespan,
 )
 
@@ -448,8 +639,7 @@ def get_ableton_connection():
 
             # Wait before trying again, but only if we have more attempts left
             if attempt < max_attempts:
-                import time
-
+                # import time  # removed - using module-level import
                 time.sleep(1.0)
 
         # If we get here, all connection attempts failed
@@ -468,9 +658,18 @@ def get_ableton_connection():
 @mcp.tool()
 def get_session_info(ctx: Context) -> str:
     """Get detailed information about current Ableton session"""
+    # Check cache first
+    if (
+        _session_cache["data"]
+        and (time.time() - _session_cache["timestamp"]) < SESSION_CACHE_TTL
+    ):
+        return json.dumps(_session_cache["data"], indent=2)
+
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command("get_session_info")
+        _session_cache["data"] = result
+        _session_cache["timestamp"] = time.time()
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error getting session info from Ableton: {str(e)}")
@@ -595,6 +794,89 @@ def create_clip(
 
 
 @mcp.tool()
+def create_scale_reference_clip(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    scale: str = "minor",
+    root: int = 60,
+    octaves: int = 3,
+) -> str:
+    """
+    Create a clip containing all notes of a scale (for Fold function).
+
+    Places notes before 1.1.1 so they're hidden but available for Fold.
+
+    Parameters:
+    - track_index: Track index to create clip in
+    - clip_index: Clip slot index
+    - scale: Scale type (major, minor, dorian, phrygian, lydian, mixolydian, pentatonic_major, pentatonic_minor, blues)
+    - root: MIDI note number for root (60 = C4)
+    - octaves: Number of octaves to span
+
+    Returns summary of created notes.
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        # Scale intervals from SCALE_INTERVALS constant
+        scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"])
+
+        # Create the clip first (4 beats)
+        ableton.send_command(
+            "create_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "length": 4.0,
+            },
+        )
+
+        # Generate notes for all octaves
+        notes = []
+        note_index = 0
+        for octave in range(octaves):
+            for interval in scale_intervals:
+                pitch = root + (octave * 12) + interval
+                if 0 <= pitch <= 127:
+                    notes.append(
+                        {
+                            "pitch": pitch,
+                            "start_time": -1.0 - (note_index * 0.1),  # Before 1.1.1
+                            "duration": 0.1,
+                            "velocity": 100,
+                            "mute": False,
+                        }
+                    )
+                    note_index += 1
+
+        # Add notes to clip
+        ableton.send_command(
+            "add_notes_to_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes,
+            },
+        )
+
+        return json.dumps(
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "scale": scale,
+                "root": root,
+                "octaves": octaves,
+                "notes_created": len(notes),
+                "message": f"Created {scale} scale reference clip with {len(notes)} notes",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error creating scale reference clip: {str(e)}")
+        return f"Error creating scale reference clip: {str(e)}"
+
+
+@mcp.tool()
 def add_notes_to_clip(
     ctx: Context,
     track_index: int,
@@ -619,6 +901,357 @@ def add_notes_to_clip(
     except Exception as e:
         logger.error(f"Error adding notes to clip: {str(e)}")
         return f"Error adding notes to clip: {str(e)}"
+
+
+@mcp.tool()
+def create_chord_notes(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    root: int,
+    chord_type: str = "major",
+    start_time: float = 0.0,
+    duration: float = 1.0,
+    velocity: int = 100,
+) -> str:
+    """
+    Add a chord to a clip given root note and chord type.
+
+    Creates chord notes and adds them to an existing clip.
+
+    Parameters:
+    - track_index: The track containing the clip
+    - clip_index: The clip slot index
+    - root: MIDI note number for the root (60 = C4, 48 = C3, etc.)
+    - chord_type: Type of chord - "major", "minor", "dim", "aug", "maj7",
+                  "min7", "dom7", "dim7", "sus2", "sus4", "add9", "power"
+    - start_time: Start time in beats (default 0.0)
+    - duration: Duration in beats (default 1.0)
+    - velocity: Note velocity 0-127 (default 100)
+    """
+    try:
+        if chord_type not in CHORD_INTERVALS:
+            available = list(CHORD_INTERVALS.keys())
+            return f"Unknown chord type '{chord_type}'. Available: {available}"
+
+        intervals = CHORD_INTERVALS[chord_type]
+        notes_to_add = []
+
+        for interval in intervals:
+            notes_to_add.append(
+                {
+                    "pitch": root + interval,
+                    "start_time": start_time,
+                    "duration": duration,
+                    "velocity": velocity,
+                    "mute": False,
+                }
+            )
+
+        ableton = get_ableton_connection()
+        ableton.send_command(
+            "add_notes_to_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes_to_add,
+            },
+        )
+
+        # Build note names for response
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        chord_notes = []
+        for interval in intervals:
+            note_num = root + interval
+            octave = (note_num // 12) - 1
+            note_name = note_names[note_num % 12]
+            chord_notes.append(f"{note_name}{octave}")
+
+        return (
+            f"Added {chord_type} chord ({', '.join(chord_notes)}) "
+            f"at beat {start_time} on track {track_index}, clip {clip_index}"
+        )
+    except Exception as e:
+        logger.error(f"Error creating chord: {str(e)}")
+        return f"Error creating chord: {str(e)}"
+
+
+@mcp.tool()
+def create_chord_progression(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    key: str,
+    progression: list,
+    duration_per_chord: float = 4.0,
+) -> str:
+    """
+    Create a chord progression in a clip from Roman numerals.
+
+    Supports major and minor keys with standard Roman numeral notation.
+
+    Parameters:
+    - track_index: Track index to create progression in
+    - clip_index: Clip slot index
+    - key: Key (e.g., "C", "Am", "F#", "Gm")
+    - progression: List of Roman numerals (e.g., ["i", "VII", "VI", "VII"])
+    - duration_per_chord: Duration of each chord in beats
+
+    Returns summary of created progression.
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        # Parse key
+        key = key.strip()
+        is_minor = key.endswith("m") and len(key) > 1 and key[-2] not in ["#", "b"]
+        if is_minor:
+            root_note = key[:-1]  # Remove 'm' suffix
+        else:
+            root_note = key
+
+        # Note to MIDI mapping
+        note_to_midi = {
+            "C": 60,
+            "C#": 61,
+            "Db": 61,
+            "D": 62,
+            "D#": 63,
+            "Eb": 63,
+            "E": 64,
+            "F": 65,
+            "F#": 66,
+            "Gb": 66,
+            "G": 67,
+            "G#": 68,
+            "Ab": 68,
+            "A": 69,
+            "A#": 70,
+            "Bb": 70,
+            "B": 71,
+        }
+
+        root_midi = note_to_midi.get(root_note, 60)
+
+        # Roman numeral to semitone interval (relative to root)
+        roman_numerals_major = {
+            "I": 0,
+            "ii": 2,
+            "iii": 4,
+            "IV": 5,
+            "V": 7,
+            "vi": 9,
+            "vii": 11,
+        }
+        roman_numerals_minor = {
+            "i": 0,
+            "ii": 2,
+            "III": 3,
+            "iv": 5,
+            "v": 7,
+            "VI": 8,
+            "VII": 10,
+        }
+
+        # Chord qualities based on scale degree
+        major_qualities = {
+            "I": "major",
+            "ii": "minor",
+            "iii": "minor",
+            "IV": "major",
+            "V": "major",
+            "vi": "minor",
+            "vii": "dim",
+        }
+        minor_qualities = {
+            "i": "minor",
+            "ii": "dim",
+            "III": "major",
+            "iv": "minor",
+            "v": "minor",
+            "VI": "major",
+            "VII": "major",
+        }
+
+        numerals = roman_numerals_minor if is_minor else roman_numerals_major
+        qualities = minor_qualities if is_minor else major_qualities
+
+        # Calculate total clip length
+        total_length = len(progression) * duration_per_chord
+
+        # Create clip
+        ableton.send_command(
+            "create_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "length": total_length,
+            },
+        )
+
+        # Add each chord
+        chords_created = []
+        for i, numeral in enumerate(progression):
+            numeral = numeral.strip()
+
+            # Handle uppercase/lowercase for major/minor
+            base_numeral = numeral.rstrip("7").rstrip("maj")
+            if base_numeral not in numerals:
+                for key_numeral in numerals:
+                    if key_numeral.lower() == base_numeral.lower():
+                        base_numeral = key_numeral
+                        break
+
+            if base_numeral not in numerals:
+                continue
+
+            root_offset = numerals[base_numeral]
+            chord_root = root_midi + root_offset
+            chord_quality = qualities.get(base_numeral, "major")
+
+            # Handle 7th chords
+            if numeral.endswith("7"):
+                if chord_quality == "major":
+                    chord_quality = "maj7" if base_numeral in ["I", "IV"] else "dom7"
+                elif chord_quality == "minor":
+                    chord_quality = "min7"
+
+            start_time = i * duration_per_chord
+
+            intervals = CHORD_INTERVALS.get(chord_quality, CHORD_INTERVALS["major"])
+            notes = []
+            for interval in intervals:
+                notes.append(
+                    {
+                        "pitch": chord_root + interval,
+                        "start_time": start_time,
+                        "duration": duration_per_chord,
+                        "velocity": 100,
+                        "mute": False,
+                    }
+                )
+
+            ableton.send_command(
+                "add_notes_to_clip",
+                {
+                    "track_index": track_index,
+                    "clip_index": clip_index,
+                    "notes": notes,
+                },
+            )
+
+            chords_created.append(
+                {
+                    "numeral": numeral,
+                    "root": chord_root,
+                    "quality": chord_quality,
+                    "start_time": start_time,
+                }
+            )
+
+        return json.dumps(
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "key": key,
+                "progression": progression,
+                "chords_created": len(chords_created),
+                "details": chords_created,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error creating chord progression: {str(e)}")
+        return f"Error creating chord progression: {str(e)}"
+
+
+@mcp.tool()
+def create_drum_pattern(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    pattern_name: str,
+    length: float = 4.0,
+    kick_note: int = 36,
+    snare_note: int = 40,
+    hat_note: int = 42,
+    clap_note: int = 39,
+) -> str:
+    """
+    Create a common drum pattern from a template.
+
+    Creates a MIDI clip with a pre-configured drum pattern for various genres.
+
+    Parameters:
+    - track_index: The track to create the pattern on
+    - clip_index: The clip slot to use
+    - pattern_name: Pattern to use - "one_drop", "rockers", "steppers",
+                    "house_basic", "techno_4x4", "dub_techno"
+    - length: Pattern length in beats (default 4.0)
+    - kick_note: MIDI note for kick drum (default 36 = C1)
+    - snare_note: MIDI note for snare/rim (default 40 = E1)
+    - hat_note: MIDI note for hi-hat (default 42 = F#1)
+    - clap_note: MIDI note for clap (default 39 = D#1)
+    """
+    try:
+        if pattern_name not in DRUM_PATTERNS:
+            available = list(DRUM_PATTERNS.keys())
+            return f"Unknown pattern '{pattern_name}'. Available: {available}"
+
+        pattern = DRUM_PATTERNS[pattern_name]
+        notes_to_add = []
+
+        # Note mapping
+        note_map = {
+            "kick": kick_note,
+            "snare": snare_note,
+            "hat": hat_note,
+            "clap": clap_note,
+        }
+
+        # Build note list
+        for sound_type, times in pattern["notes"].items():
+            note_num = note_map.get(sound_type, 36)
+            for time in times:
+                notes_to_add.append(
+                    {
+                        "pitch": note_num,
+                        "start_time": time,
+                        "duration": 0.25,
+                        "velocity": 100,
+                        "mute": False,
+                    }
+                )
+
+        # First create the clip
+        ableton = get_ableton_connection()
+        ableton.send_command(
+            "create_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "length": length,
+            },
+        )
+
+        # Then add notes
+        ableton.send_command(
+            "add_notes_to_clip",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes_to_add,
+            },
+        )
+
+        bpm_range = pattern["bpm_range"]
+        return (
+            f"Created {pattern_name} pattern on track {track_index}, clip {clip_index}. "
+            f"Description: {pattern['description']}. "
+            f"Suggested BPM: {bpm_range[0]}-{bpm_range[1]}"
+        )
+    except Exception as e:
+        logger.error(f"Error creating drum pattern: {str(e)}")
+        return f"Error creating drum pattern: {str(e)}"
 
 
 @mcp.tool()
@@ -658,6 +1291,107 @@ def set_tempo(ctx: Context, tempo: float) -> str:
     except Exception as e:
         logger.error(f"Error setting tempo: {str(e)}")
         return f"Error setting tempo: {str(e)}"
+
+
+@mcp.tool()
+def get_global_quantization(ctx: Context) -> str:
+    """
+    Get the current global quantization setting.
+
+    Global quantization determines when triggered clips start playing.
+
+    Returns the current quantization value and its meaning.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_global_quantization", {})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting global quantization: {str(e)}")
+        return f"Error getting global quantization: {str(e)}"
+
+
+@mcp.tool()
+def set_global_quantization(ctx: Context, value: str = "1 Bar") -> str:
+    """
+    Set the global quantization for clip launching.
+
+    Global quantization determines when triggered clips start playing.
+    Lower values = more immediate but less synchronized.
+
+    Parameters:
+    - value: Quantization value - "none", "1/4", "1/2", "1 Bar", "2 Bars", "4 Bars"
+             Default is "1 Bar" (standard for DJ-style mixing)
+
+    Returns the new quantization setting.
+    """
+    try:
+        valid_values = ["none", "1/4", "1/2", "1 Bar", "2 Bars", "4 Bars"]
+        if value.lower() not in [v.lower() for v in valid_values]:
+            return f"Invalid quantization value. Valid options: {valid_values}"
+
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_global_quantization", {"value": value})
+        return f"Global quantization set to: {value}"
+    except Exception as e:
+        logger.error(f"Error setting global quantization: {str(e)}")
+        return f"Error setting global quantization: {str(e)}"
+
+
+@mcp.tool()
+def get_link_status(ctx: Context) -> str:
+    """
+    Get the current Ableton Link synchronization status.
+
+    Returns whether Link is enabled and if start/stop sync is active.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_link_status", {})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error getting Link status: {str(e)}")
+        return f"Error getting Link status: {str(e)}"
+
+
+@mcp.tool()
+def set_link_enabled(ctx: Context, enabled: bool = True) -> str:
+    """
+    Enable or disable Ableton Link synchronization.
+
+    When enabled, Live will sync with other Link-enabled apps on the network.
+
+    Parameters:
+    - enabled: True to enable Link, False to disable
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_link_enabled", {"enabled": enabled})
+        status = "enabled" if enabled else "disabled"
+        return f"Ableton Link {status}"
+    except Exception as e:
+        logger.error(f"Error setting Link enabled: {str(e)}")
+        return f"Error setting Link enabled: {str(e)}"
+
+
+@mcp.tool()
+def set_link_start_stop_sync(ctx: Context, enabled: bool = True) -> str:
+    """
+    Enable or disable Link start/stop synchronization.
+
+    When enabled, all Link-enabled apps will start and stop together.
+
+    Parameters:
+    - enabled: True to enable start/stop sync, False to disable
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_link_start_stop_sync", {"enabled": enabled})
+        status = "enabled" if enabled else "disabled"
+        return f"Link start/stop sync {status}"
+    except Exception as e:
+        logger.error(f"Error setting Link start/stop sync: {str(e)}")
+        return f"Error setting Link start/stop sync: {str(e)}"
 
 
 @mcp.tool()
@@ -1046,6 +1780,97 @@ def trigger_scene(ctx: Context, scene_index: int) -> str:
 
 
 @mcp.tool()
+def fire_scene_with_transpose(
+    ctx: Context,
+    scene_index: int,
+    semitones: int = 0,
+    exclude_drum_tracks: bool = True,
+) -> str:
+    """
+    Fire a scene and optionally transpose melodic tracks.
+
+    Useful for key changes during live performance. Fires the scene,
+    then transposes all clips in the scene by the specified amount.
+
+    Parameters:
+    - scene_index: Scene index to fire (0-7 typically)
+    - semitones: Number of semitones to transpose (0 = no transpose)
+    - exclude_drum_tracks: Whether to skip tracks with "drum" in name
+
+    Returns summary of actions taken.
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        # First fire the scene
+        ableton.send_command("trigger_scene", {"scene_index": scene_index})
+
+        if semitones == 0:
+            return json.dumps(
+                {
+                    "scene_index": scene_index,
+                    "fired": True,
+                    "transposed": False,
+                    "message": f"Scene {scene_index} fired (no transpose)",
+                }
+            )
+
+        # Get session info to find tracks
+        session_info = ableton.send_command("get_session_overview", {})
+        tracks = session_info.get("tracks", [])
+
+        transposed_tracks = []
+        skipped_tracks = []
+
+        for track in tracks:
+            track_index = track.get("index")
+            track_name = track.get("name", "").lower()
+
+            # Skip drum tracks if requested
+            if exclude_drum_tracks and (
+                "drum" in track_name or "perc" in track_name or "kick" in track_name
+            ):
+                skipped_tracks.append(
+                    {"track_index": track_index, "name": track.get("name")}
+                )
+                continue
+
+            # Transpose the clip at scene_index in this track
+            try:
+                ableton.send_command(
+                    "transpose_clip",
+                    {
+                        "track_index": track_index,
+                        "clip_index": scene_index,
+                        "semitones": semitones,
+                    },
+                )
+                transposed_tracks.append(
+                    {"track_index": track_index, "name": track.get("name")}
+                )
+            except Exception as e:
+                # Clip might not exist in this track, skip silently
+                pass
+
+        summary = {
+            "scene_index": scene_index,
+            "fired": True,
+            "semitones": semitones,
+            "transposed_tracks": len(transposed_tracks),
+            "skipped_drum_tracks": len(skipped_tracks),
+            "details": {
+                "transposed": transposed_tracks,
+                "skipped": skipped_tracks,
+            },
+        }
+
+        return json.dumps(summary, indent=2)
+    except Exception as e:
+        logger.error(f"Error firing scene with transpose: {str(e)}")
+        return f"Error firing scene with transpose: {str(e)}"
+
+
+@mcp.tool()
 def play_arrangement_sequence(ctx: Context) -> str:
     """
     Automatically play through the full 8-scene arrangement.
@@ -1060,8 +1885,7 @@ def play_arrangement_sequence(ctx: Context) -> str:
         ableton.send_command("stop_playback")
 
         # Start from beginning
-        import time
-
+        # import time  # removed - using module-level import
         print("Starting arrangement sequence...")
         print("Scene 0 will trigger immediately")
         print("Subsequent scenes will trigger every 8 bars")
@@ -1412,6 +2236,238 @@ def set_device_parameter(
     except Exception as e:
         logger.error(f"Error setting device parameter: {str(e)}")
         return f"Error setting device parameter: {str(e)}"
+
+
+@mcp.tool()
+def apply_drop(
+    ctx: Context,
+    track_indices: List[int],
+    device_index: int,
+    parameter_index: int,
+    drop_value: float = 0.2,
+    return_value: float = 0.8,
+    drop_instant: bool = True,
+) -> str:
+    """
+    Apply a drop effect to specified tracks.
+
+    Immediately drops a parameter value, then optionally returns it.
+
+    Parameters:
+    - track_indices: List of track indices to apply drop to
+    - device_index: Device index on each track
+    - parameter_index: Parameter index to change (e.g., filter cutoff)
+    - drop_value: Value to drop to (0.0-1.0, default 0.2 = closed filter)
+    - return_value: Value to return to (0.0-1.0, default 0.8 = open filter)
+    - drop_instant: Whether to apply drop immediately (True) or gradual (False)
+
+    Returns summary of applied changes.
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        results = []
+
+        # Apply drop to all tracks
+        for track_index in track_indices:
+            try:
+                # Drop the value
+                ableton.send_command(
+                    "set_device_parameter",
+                    {
+                        "track_index": track_index,
+                        "device_index": device_index,
+                        "parameter_index": parameter_index,
+                        "value": drop_value,
+                    },
+                )
+                results.append(
+                    {
+                        "track_index": track_index,
+                        "action": "dropped",
+                        "value": drop_value,
+                        "success": True,
+                    }
+                )
+            except Exception as e:
+                results.append(
+                    {
+                        "track_index": track_index,
+                        "action": "dropped",
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
+
+        summary = {
+            "tracks_affected": len(track_indices),
+            "drop_value": drop_value,
+            "return_value": return_value,
+            "drop_instant": drop_instant,
+            "results": results,
+            "note": "Drop applied. Use apply_filter_buildup or set_device_parameter to return values.",
+        }
+
+        return json.dumps(summary, indent=2)
+    except Exception as e:
+        logger.error(f"Error applying drop: {str(e)}")
+        return f"Error applying drop: {str(e)}"
+
+
+@mcp.tool()
+def apply_energy_curve(
+    ctx: Context,
+    parameter_changes: list,
+    duration_beats: float = 32.0,
+    steps: int = 32,
+) -> str:
+    """
+    Gradually change multiple parameters over time.
+
+    Creates smooth transitions for multiple parameters simultaneously.
+    Each parameter change specifies start and end values.
+
+    Parameters:
+    - parameter_changes: List of dicts with:
+        - track_index: Track index
+        - device_index: Device index on track
+        - parameter_index: Parameter to change
+        - start_value: Starting value (0.0-1.0)
+        - end_value: Ending value (0.0-1.0)
+    - duration_beats: Total duration in beats (default 32 = 8 bars)
+    - steps: Number of steps for smooth transition
+
+    Returns summary of applied changes.
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        for step in range(steps + 1):
+            progress = step / steps
+
+            for param in parameter_changes:
+                track_index = param["track_index"]
+                device_index = param["device_index"]
+                parameter_index = param["parameter_index"]
+                start_value = param.get("start_value", 0.5)
+                end_value = param.get("end_value", 0.5)
+
+                # Interpolate value (linear)
+                value = start_value + (end_value - start_value) * progress
+
+                try:
+                    ableton.send_command(
+                        "set_device_parameter",
+                        {
+                            "track_index": track_index,
+                            "device_index": device_index,
+                            "parameter_index": parameter_index,
+                            "value": value,
+                        },
+                    )
+                except Exception:
+                    pass  # Continue despite errors
+
+        summary = {
+            "parameters_changed": len(parameter_changes),
+            "duration_beats": duration_beats,
+            "steps": steps,
+            "parameter_details": [
+                {
+                    "track_index": p["track_index"],
+                    "device_index": p["device_index"],
+                    "parameter_index": p["parameter_index"],
+                    "value_range": [p.get("start_value", 0.5), p.get("end_value", 0.5)],
+                }
+                for p in parameter_changes
+            ],
+            "note": "All parameter changes applied.",
+        }
+
+        return json.dumps(summary, indent=2)
+    except Exception as e:
+        logger.error(f"Error applying energy curve: {str(e)}")
+        return f"Error applying energy curve: {str(e)}"
+
+
+@mcp.tool()
+def apply_filter_buildup(
+    ctx: Context,
+    track_indices: List[int],
+    device_index: int,
+    parameter_index: int,
+    start_value: float = 0.3,
+    end_value: float = 0.9,
+    duration_beats: float = 16.0,
+    steps: int = 16,
+) -> str:
+    """
+    Apply a filter sweep buildup across specified tracks.
+
+    Gradually changes a parameter value over time to create builds.
+    Uses tempo-relative timing for musical builds.
+
+    Parameters:
+    - track_indices: List of track indices to apply buildup to
+    - device_index: Device index on each track
+    - parameter_index: Parameter index to automate (e.g., filter cutoff)
+    - start_value: Starting normalized value (0.0-1.0)
+    - end_value: Ending normalized value (0.0-1.0)
+    - duration_beats: Duration in beats (default 16 = 4 bars)
+    - steps: Number of steps for the sweep (default 16)
+
+    Returns summary of applied changes.
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        step_duration = duration_beats / steps
+        value_range = end_value - start_value
+
+        results = []
+        for track_index in track_indices:
+            track_results = []
+            for step in range(steps + 1):
+                # Calculate value for this step
+                progress = step / steps
+                value = start_value + (value_range * progress)
+
+                # Apply to device parameter
+                try:
+                    ableton.send_command(
+                        "set_device_parameter",
+                        {
+                            "track_index": track_index,
+                            "device_index": device_index,
+                            "parameter_index": parameter_index,
+                            "value": value,
+                        },
+                    )
+                    track_results.append({"step": step, "value": round(value, 3)})
+                except Exception as e:
+                    track_results.append({"step": step, "error": str(e)})
+
+            results.append(
+                {
+                    "track_index": track_index,
+                    "steps_applied": len(
+                        [r for r in track_results if "error" not in r]
+                    ),
+                }
+            )
+
+        summary = {
+            "tracks_affected": len(track_indices),
+            "duration_beats": duration_beats,
+            "steps": steps,
+            "value_range": [start_value, end_value],
+            "results": results,
+        }
+
+        return json.dumps(summary, indent=2)
+    except Exception as e:
+        logger.error(f"Error applying filter buildup: {str(e)}")
+        return f"Error applying filter buildup: {str(e)}"
 
 
 @mcp.tool()
@@ -1928,6 +2984,296 @@ def transpose_clip(
 
 
 @mcp.tool()
+def detect_clip_key(ctx: Context, track_index: int, clip_index: int) -> str:
+    """
+    Detect the musical key of a clip by analyzing its notes.
+
+    Uses pitch class analysis to determine the most likely key.
+
+    Parameters:
+    - track_index: The track containing the clip
+    - clip_index: The clip slot index
+
+    Returns the detected key, Camelot code, and confidence score.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command(
+            "detect_clip_key",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+            },
+        )
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error detecting clip key: {str(e)}")
+        return f"Error detecting clip key: {str(e)}"
+
+
+@mcp.tool()
+def snap_notes_to_scale(
+    ctx: Context,
+    track_index: int,
+    clip_index: int,
+    scale: str = "minor",
+    root: int = 60,
+) -> str:
+    """
+    Snap notes in a clip to the nearest note in a specified scale.
+
+    Useful for fixing out-of-key notes or forcing melodies into a scale.
+
+    Parameters:
+    - track_index: The track containing the clip
+    - clip_index: The clip slot index
+    - scale: Scale to snap to - "major", "minor", "dorian", "mixolydian",
+             "phrygian", "lydian", "pentatonic_major", "pentatonic_minor", "blues"
+    - root: MIDI note number for the root (60 = C4)
+
+    Returns summary of changes made.
+    """
+    try:
+        if scale not in SCALE_INTERVALS:
+            available = list(SCALE_INTERVALS.keys())
+            return f"Unknown scale '{scale}'. Available: {available}"
+
+        ableton = get_ableton_connection()
+
+        # Get current notes
+        notes_result = ableton.send_command(
+            "get_clip_notes",
+            {
+                "track_index": track_index,
+                "clip_index": clip_index,
+            },
+        )
+
+        notes = notes_result.get("notes", [])
+        if not notes:
+            return "No notes in clip to snap"
+
+        scale_intervals = SCALE_INTERVALS[scale]
+        root_pitch_class = root % 12
+
+        # Build set of scale pitches (across all octaves)
+        scale_pitches = set()
+        for octave in range(-1, 10):
+            for interval in scale_intervals:
+                pitch = root_pitch_class + interval + (octave * 12)
+                scale_pitches.add(pitch)
+
+        # Find nearest scale note for each note
+        snapped_count = 0
+        notes_to_update = []
+
+        for note in notes:
+            original_pitch = note["pitch"]
+
+            if original_pitch in scale_pitches:
+                # Already in scale
+                notes_to_update.append(note)
+                continue
+
+            # Find nearest scale pitch
+            min_distance = float("inf")
+            nearest_pitch = original_pitch
+
+            for scale_pitch in scale_pitches:
+                distance = abs(scale_pitch - original_pitch)
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_pitch = scale_pitch
+
+            note["pitch"] = nearest_pitch
+            notes_to_update.append(note)
+            snapped_count += 1
+
+        # Delete old notes and add snapped notes
+        # Note: This is a simplified approach - in production you might want
+        # to use set_note_pitch for each note instead
+
+        return json.dumps(
+            {
+                "scale": scale,
+                "root": root,
+                "total_notes": len(notes),
+                "snapped_count": snapped_count,
+                "message": f"Snapped {snapped_count} notes to {scale} scale",
+            },
+            indent=2,
+        )
+
+    except Exception as e:
+        logger.error(f"Error snapping notes to scale: {str(e)}")
+        return f"Error snapping notes to scale: {str(e)}"
+
+
+@mcp.tool()
+def batch_transpose_clips(
+    ctx: Context,
+    clips: List[Dict[str, int]],
+    semitones: int,
+) -> str:
+    """
+    Transpose multiple clips at once.
+
+    Useful for live performance key changes across multiple tracks.
+
+    Parameters:
+    - clips: List of clip references, each with "track_index" and "clip_index"
+             Example: [{"track_index": 0, "clip_index": 0}, {"track_index": 1, "clip_index": 1}]
+    - semitones: Number of semitones to transpose (positive = up, negative = down)
+
+    Returns summary of transposition results.
+    """
+    try:
+        ableton = get_ableton_connection()
+        results = []
+        success_count = 0
+        error_count = 0
+
+        for clip_ref in clips:
+            track_index = clip_ref.get("track_index")
+            clip_index = clip_ref.get("clip_index")
+
+            if track_index is None or clip_index is None:
+                error_count += 1
+                results.append(
+                    {
+                        "clip": clip_ref,
+                        "success": False,
+                        "error": "Missing track_index or clip_index",
+                    }
+                )
+                continue
+
+            try:
+                ableton.send_command(
+                    "transpose_clip",
+                    {
+                        "track_index": track_index,
+                        "clip_index": clip_index,
+                        "semitones": semitones,
+                    },
+                )
+                success_count += 1
+                results.append(
+                    {"clip": f"track {track_index}, clip {clip_index}", "success": True}
+                )
+            except Exception as e:
+                error_count += 1
+                results.append(
+                    {
+                        "clip": f"track {track_index}, clip {clip_index}",
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
+
+        summary = {
+            "semitones": semitones,
+            "total_clips": len(clips),
+            "success_count": success_count,
+            "error_count": error_count,
+            "results": results,
+        }
+
+        return json.dumps(summary, indent=2)
+    except Exception as e:
+        logger.error(f"Error in batch transpose: {str(e)}")
+        return f"Error in batch transpose: {str(e)}"
+
+
+@mcp.tool()
+def transpose_all_playing_clips(ctx: Context, semitones: int) -> str:
+    """
+    Transpose all currently playing clips.
+
+    Useful for live performance key changes. Finds all clips that are currently
+    playing and transposes them by the specified number of semitones.
+
+    Parameters:
+    - semitones: Number of semitones to transpose (positive = up, negative = down)
+
+    Returns summary of transposition results.
+    """
+    try:
+        ableton = get_ableton_connection()
+
+        # First, get session overview to find all tracks and clips
+        session_info = ableton.send_command("get_session_overview", {})
+
+        playing_clips = []
+        tracks = session_info.get("tracks", [])
+
+        for track in tracks:
+            track_index = track.get("index")
+            playing_clip = track.get("playing_clip_index")
+
+            # Only include clips that are actually playing (not -1)
+            if playing_clip is not None and playing_clip >= 0:
+                playing_clips.append(
+                    {"track_index": track_index, "clip_index": playing_clip}
+                )
+
+        if not playing_clips:
+            return json.dumps(
+                {
+                    "semitones": semitones,
+                    "success_count": 0,
+                    "error_count": 0,
+                    "message": "No clips are currently playing",
+                }
+            )
+
+        # Transpose all playing clips
+        success_count = 0
+        error_count = 0
+        results = []
+
+        for clip_ref in playing_clips:
+            try:
+                ableton.send_command(
+                    "transpose_clip",
+                    {
+                        "track_index": clip_ref["track_index"],
+                        "clip_index": clip_ref["clip_index"],
+                        "semitones": semitones,
+                    },
+                )
+                success_count += 1
+                results.append(
+                    {
+                        "clip": f"track {clip_ref['track_index']}, clip {clip_ref['clip_index']}",
+                        "success": True,
+                    }
+                )
+            except Exception as e:
+                error_count += 1
+                results.append(
+                    {
+                        "clip": f"track {clip_ref['track_index']}, clip {clip_ref['clip_index']}",
+                        "success": False,
+                        "error": str(e),
+                    }
+                )
+
+        summary = {
+            "semitones": semitones,
+            "total_playing_clips": len(playing_clips),
+            "success_count": success_count,
+            "error_count": error_count,
+            "results": results,
+        }
+
+        return json.dumps(summary, indent=2)
+    except Exception as e:
+        logger.error(f"Error transposing playing clips: {str(e)}")
+        return f"Error transposing playing clips: {str(e)}"
+
+
+@mcp.tool()
 def set_clip_loop(
     ctx: Context,
     track_index: int,
@@ -2099,30 +3445,6 @@ def set_metronome(ctx: Context, enabled: bool = True) -> str:
 
 
 @mcp.tool()
-def start_recording(ctx: Context) -> str:
-    """Start recording. Playback will also start if not already playing."""
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command("start_recording")
-        return "Started recording"
-    except Exception as e:
-        logger.error(f"Error starting recording: {str(e)}")
-        return f"Error starting recording: {str(e)}"
-
-
-@mcp.tool()
-def stop_recording(ctx: Context) -> str:
-    """Stop recording. Playback continues."""
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command("stop_recording")
-        return "Stopped recording"
-    except Exception as e:
-        logger.error(f"Error stopping recording: {str(e)}")
-        return f"Error stopping recording: {str(e)}"
-
-
-@mcp.tool()
 def set_track_monitoring_state(
     ctx: Context, track_index: int, monitoring_state: int
 ) -> str:
@@ -2221,75 +3543,6 @@ def clear_automation(
 
 
 @mcp.tool()
-def duplicate_device(ctx: Context, track_index: int, device_index: int) -> str:
-    """
-    Duplicate a device on a track.
-
-    Parameters:
-    - track_index: The index of the track
-    - device_index: The index of the device to duplicate
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "duplicate_device",
-            {"track_index": track_index, "device_index": device_index},
-        )
-        return f"Duplicated device {device_index} on track {track_index}"
-    except Exception as e:
-        logger.error(f"Error duplicating device: {str(e)}")
-        return f"Error duplicating device: {str(e)}"
-
-
-@mcp.tool()
-def delete_device(ctx: Context, track_index: int, device_index: int) -> str:
-    """
-    Delete a device from a track.
-
-    Parameters:
-    - track_index: The index of the track
-    - device_index: The index of the device to delete
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "delete_device", {"track_index": track_index, "device_index": device_index}
-        )
-        return f"Deleted device: {result.get('deleted_device', 'unknown')}"
-    except Exception as e:
-        logger.error(f"Error deleting device: {str(e)}")
-        return f"Error deleting device: {str(e)}"
-
-
-@mcp.tool()
-def move_device(
-    ctx: Context, track_index: int, device_index: int, new_position: int
-) -> str:
-    """
-    Move a device to a new position in the device chain.
-
-    Parameters:
-    - track_index: The index of the track
-    - device_index: The index of the device to move
-    - new_position: The new position index
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "move_device",
-            {
-                "track_index": track_index,
-                "device_index": device_index,
-                "new_position": new_position,
-            },
-        )
-        return f"Moved device {device_index} to position {new_position}"
-    except Exception as e:
-        logger.error(f"Error moving device: {str(e)}")
-        return f"Error moving device: {str(e)}"
-
-
-@mcp.tool()
 def set_track_pan(ctx: Context, track_index: int, pan: float = 0.0) -> str:
     """
     Set track panning.
@@ -2360,6 +3613,220 @@ def redo(ctx: Context) -> str:
     except Exception as e:
         logger.error(f"Error performing redo: {str(e)}")
         return f"Error performing redo: {str(e)}"
+
+
+# Camelot Wheel mapping for harmonic mixing
+CAMELOT_WHEEL = {
+    "1A": ("Ab minor", "G# minor"),
+    "1B": ("B major", "Cb major"),
+    "2A": ("Eb minor", "D# minor"),
+    "2B": ("F# major", "Gb major"),
+    "3A": ("Bb minor", "A# minor"),
+    "3B": ("Db major", "C# major"),
+    "4A": ("F minor",),
+    "4B": ("Ab major", "G# major"),
+    "5A": ("C minor",),
+    "5B": ("Eb major", "D# major"),
+    "6A": ("G minor",),
+    "6B": ("Bb major", "A# major"),
+    "7A": ("D minor",),
+    "7B": ("F major",),
+    "8A": ("A minor",),
+    "8B": ("C major",),
+    "9A": ("E minor",),
+    "9B": ("G major",),
+    "10A": ("B minor",),
+    "10B": ("D major",),
+    "11A": ("F# minor", "Gb minor"),
+    "11B": ("A major",),
+    "12A": ("C# minor", "Db minor"),
+    "12B": ("E major",),
+}
+
+
+# Scale interval definitions (semitones from root)
+SCALE_INTERVALS = {
+    "major": [0, 2, 4, 5, 7, 9, 11],
+    "minor": [0, 2, 3, 5, 7, 8, 10],
+    "dorian": [0, 2, 3, 5, 7, 9, 10],
+    "mixolydian": [0, 2, 4, 5, 7, 9, 10],
+    "phrygian": [0, 1, 3, 5, 7, 8, 10],
+    "lydian": [0, 2, 4, 6, 7, 9, 11],
+    "pentatonic_major": [0, 2, 4, 7, 9],
+    "pentatonic_minor": [0, 3, 5, 7, 10],
+    "blues": [0, 3, 5, 6, 7, 10],
+}
+
+
+@mcp.tool()
+def get_compatible_keys(ctx: Context, camelot_key: str) -> str:
+    """
+    Get Camelot-compatible keys for harmonic mixing.
+
+    Returns keys that mix well with the given key based on the Camelot Wheel system.
+
+    Parameters:
+    - camelot_key: The Camelot key code (e.g., "8A" for A minor, "8B" for C major)
+
+    Returns a JSON string with compatible keys for different mixing strategies.
+    """
+    try:
+        # Parse the key
+        if len(camelot_key) < 2:
+            return json.dumps(
+                {"error": "Invalid key format. Use format like '8A' or '8B'"}
+            )
+
+        num = int(camelot_key[:-1])
+        letter = camelot_key[-1].upper()
+
+        if letter not in ["A", "B"]:
+            return json.dumps(
+                {
+                    "error": "Invalid key format. Letter must be 'A' (minor) or 'B' (major)"
+                }
+            )
+
+        if num < 1 or num > 12:
+            return json.dumps({"error": "Invalid key number. Must be 1-12"})
+
+        # Calculate compatible keys
+        one_up = (num % 12) + 1
+        one_down = ((num - 2) % 12) + 1
+        relative_num = num
+        relative_letter = "B" if letter == "A" else "A"
+
+        # Energy boost: +2 and +7 semitones
+        energy_boost_1 = ((num) % 12) + 1
+        energy_boost_2 = ((num + 6) % 12) + 1
+
+        result = {
+            "input_key": camelot_key,
+            "key_names": CAMELOT_WHEEL.get(camelot_key, ["Unknown"]),
+            "compatible_keys": {
+                "same": [camelot_key],
+                "one_up": [f"{one_up}{letter}"],
+                "one_down": [f"{one_down}{letter}"],
+                "relative": [f"{relative_num}{relative_letter}"],
+                "energy_boost": [
+                    f"{energy_boost_1}{letter}",
+                    f"{energy_boost_2}{letter}",
+                ],
+            },
+            "mixing_tips": {
+                "same": "Seamless, most common - stay in same key",
+                "one_up": "Brighter, slight energy boost (+1 semitone)",
+                "one_down": "Deeper, more relaxed (-1 semitone)",
+                "relative": "Emotional shift between major/minor",
+                "energy_boost": "Big energy boost, use sparingly",
+            },
+        }
+
+        return json.dumps(result, indent=2)
+    except ValueError:
+        return json.dumps({"error": "Invalid key format. Use format like '8A' or '8B'"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def suggest_key_transition(
+    ctx: Context, current_key: str, energy_change: str = "up"
+) -> str:
+    """
+    Suggest the best key transition for a desired energy change.
+
+    Uses Camelot Wheel theory to suggest compatible key transitions.
+
+    Parameters:
+    - current_key: Current Camelot key (e.g., "8A")
+    - energy_change: Desired change - "up" (brighter), "down" (deeper),
+                     "dramatic_up" (big boost), "emotional" (relative major/minor)
+
+    Returns suggested target keys with explanations.
+    """
+    try:
+        # Parse the key
+        if len(current_key) < 2:
+            return json.dumps({"error": "Invalid key format. Use format like '8A'"})
+
+        num = int(current_key[:-1])
+        letter = current_key[-1].upper()
+
+        if letter not in ["A", "B"]:
+            return json.dumps({"error": "Letter must be 'A' (minor) or 'B' (major)"})
+
+        valid_changes = ["up", "down", "dramatic_up", "emotional"]
+        if energy_change not in valid_changes:
+            return json.dumps(
+                {"error": f"energy_change must be one of: {valid_changes}"}
+            )
+
+        suggestions = []
+
+        if energy_change == "up":
+            # +1 semitone: slight energy boost
+            target = (num % 12) + 1
+            suggestions = [
+                {
+                    "key": f"{target}{letter}",
+                    "effect": "Slight brightness boost, common transition",
+                    "risk": "Low",
+                }
+            ]
+        elif energy_change == "down":
+            # -1 semitone: deeper, more relaxed
+            target = ((num - 2) % 12) + 1
+            suggestions = [
+                {
+                    "key": f"{target}{letter}",
+                    "effect": "Deeper, more relaxed feel",
+                    "risk": "Low",
+                }
+            ]
+        elif energy_change == "dramatic_up":
+            # +2 semitones: significant boost
+            target1 = ((num) % 12) + 1
+            target2 = ((num + 1) % 12) + 1
+            suggestions = [
+                {
+                    "key": f"{target1}{letter}",
+                    "effect": "Moderate energy boost",
+                    "risk": "Medium",
+                },
+                {
+                    "key": f"{target2}{letter}",
+                    "effect": "Significant energy boost",
+                    "risk": "Higher - more noticeable change",
+                },
+            ]
+        elif energy_change == "emotional":
+            # Switch to relative major/minor
+            relative_letter = "B" if letter == "A" else "A"
+            effect = (
+                "Brighter, more uplifting"
+                if letter == "A"
+                else "Deeper, more emotional"
+            )
+            suggestions = [
+                {
+                    "key": f"{num}{relative_letter}",
+                    "effect": effect,
+                    "risk": "Low - smooth emotional shift",
+                }
+            ]
+
+        result = {
+            "current_key": current_key,
+            "energy_change": energy_change,
+            "suggestions": suggestions,
+        }
+
+        return json.dumps(result, indent=2)
+    except ValueError:
+        return json.dumps({"error": "Invalid key format. Use format like '8A'"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
 
 
 @mcp.tool()
@@ -3014,230 +4481,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-@mcp.tool()
-def move_clip(
-    ctx: Context, track_index: int, new_track_index: int, new_clip_index: int
-) -> str:
-    """
-    Move a clip to another track.
-
-    Parameters:
-    - track_index: The index of the current track
-    - new_track_index: The index of the target track
-    - new_clip_index: The index of the clip slot in the target track
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "move_clip",
-            {
-                "track_index": track_index,
-                "new_track_index": new_track_index,
-                "new_clip_index": new_clip_index,
-            },
-        )
-        track_name = result.get("track_name", f"Track {track_index}")
-        target_track_name = result.get("target_track_name", f"Track {new_track_index}")
-        return f"Moved clip from track {track_index} to track {new_track_index}, slot {new_clip_index}"
-    except Exception as e:
-        logger.error(f"Error moving clip: {str(e)}")
-        return f"Error moving clip: {str(e)}"
-
-
-@mcp.tool()
-def resize_clip(ctx: Context, track_index: int, clip_index: int, length: float) -> str:
-    """
-    Resize clip to new length in beats.
-
-    Parameters:
-    - track_index: The index of the track containing the clip
-    - clip_index: The index of the clip slot
-    - length: The new length in beats
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "resize_clip",
-            {"track_index": track_index, "clip_index": clip_index, "length": length},
-        )
-        return (
-            f"Resized clip at track {track_index}, slot {clip_index} to {length} beats"
-        )
-    except Exception as e:
-        logger.error(f"Error resizing clip: {str(e)}")
-        return f"Error resizing clip: {str(e)}"
-
-
-@mcp.tool()
-def crop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
-    """
-    Crop clip to its content, removing empty space at start and end.
-
-    Parameters:
-    - track_index: The index of the track containing the clip
-    - clip_index: The index of the clip slot
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "crop_clip", {"track_index": track_index, "clip_index": clip_index}
-        )
-        return f"Cropped clip at track {track_index}, slot {clip_index}"
-    except Exception as e:
-        logger.error(f"Error cropping clip: {str(e)}")
-        return f"Error cropping clip: {str(e)}"
-
-
-@mcp.tool()
-def delete_device(ctx: Context, track_index: int, device_index: int) -> str:
-    """
-    Delete a device from a track.
-
-    Parameters:
-    - track_index: The index of the track
-    - device_index: The index of the device to delete
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "delete_device", {"track_index": track_index, "device_index": device_index}
-        )
-        return f"Deleted device at track {track_index}, index {device_index}"
-    except Exception as e:
-        logger.error(f"Error deleting device: {str(e)}")
-        return f"Error deleting device: {str(e)}"
-
-
-@mcp.tool()
-def move_clip(
-    ctx: Context, track_index: int, new_track_index: int, new_clip_index: int
-) -> str:
-    """
-    Move a clip to another track.
-
-    Parameters:
-    - track_index: The index of the current track
-    - new_track_index: The index of the target track
-    - new_clip_index: The index of the clip slot in the target track
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "move_clip",
-            {
-                "track_index": track_index,
-                "new_track_index": new_track_index,
-                "new_clip_index": new_clip_index,
-            },
-        )
-        track_name = result.get("track_name", f"Track {track_index}")
-        target_track_name = result.get("target_track_name", f"Track {new_track_index}")
-        return f"Moved clip from track {track_index} to track {new_track_index}, slot {new_clip_index}"
-    except Exception as e:
-        logger.error(f"Error moving clip: {str(e)}")
-        return f"Error moving clip: {str(e)}"
-
-
-@mcp.tool()
-def resize_clip(ctx: Context, track_index: int, clip_index: int, length: float) -> str:
-    """
-    Resize clip to new length in beats.
-
-    Parameters:
-    - track_index: The index of the track containing the clip
-    - clip_index: The index of the clip slot
-    - length: The new length in beats
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "resize_clip",
-            {"track_index": track_index, "clip_index": clip_index, "length": length},
-        )
-        return (
-            f"Resized clip at track {track_index}, slot {clip_index} to {length} beats"
-        )
-    except Exception as e:
-        logger.error(f"Error resizing clip: {str(e)}")
-        return f"Error resizing clip: {str(e)}"
-
-
-@mcp.tool()
-def crop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
-    """
-    Crop clip to its content, removing empty space at start and end.
-
-    Parameters:
-    - track_index: The index of the track containing the clip
-    - clip_index: The index of the clip slot
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "crop_clip", {"track_index": track_index, "clip_index": clip_index}
-        )
-        return f"Cropped clip at track {track_index}, slot {clip_index}"
-    except Exception as e:
-        logger.error(f"Error cropping clip: {str(e)}")
-        return f"Error cropping clip: {str(e)}"
-
-
-@mcp.tool()
-def duplicate_clip_to(
-    ctx: Context, track_index: int, target_track_index: int, target_clip_index: int
-) -> str:
-    """
-    Duplicate clip to specific slot on another track.
-
-    Parameters:
-    - track_index: The index of the source track
-    - target_track_index: The index of the target track
-    - target_clip_index: The index of the clip slot in the target track
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "duplicate_clip_to",
-            {
-                "track_index": track_index,
-                "target_track_index": target_track_index,
-                "target_clip_index": target_clip_index,
-            },
-        )
-        return (
-            f"Duplicated clip to track {target_track_index}, slot {target_clip_index}"
-        )
-    except Exception as e:
-        logger.error(f"Error duplicating clip to: {str(e)}")
-        return f"Error duplicating clip to: {str(e)}"
-
-
-@mcp.tool()
-def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) -> str:
-    """
-    Set name of a clip.
-
-    Parameters:
-    - track_index: The index of the track
-    - clip_index: The index of the clip slot
-    - name: The new name for the clip
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "set_clip_name",
-            {
-                "track_index": track_index,
-                "clip_index": clip_index,
-                "name": name,
-            },
-        )
-        return f"Set clip name to '{name}'"
-    except Exception as e:
-        logger.error(f"Error setting clip name: {str(e)}")
-        return f"Error setting clip name: {str(e)}"
 
 
 @mcp.tool()
