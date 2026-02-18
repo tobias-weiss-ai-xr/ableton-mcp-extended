@@ -860,17 +860,9 @@ def create_scale_reference_clip(
             },
         )
 
-        return json.dumps(
-            {
-                "track_index": track_index,
-                "clip_index": clip_index,
-                "scale": scale,
-                "root": root,
-                "octaves": octaves,
-                "notes_created": len(notes),
-                "message": f"Created {scale} scale reference clip with {len(notes)} notes",
-            }
-        )
+        # Return a lightweight summary instead of full JSON payload
+        notes_created = len(notes)
+        return f"Scale reference clip created: track {track_index}, clip {clip_index}, scale={scale}, root={root}, octaves={octaves}, notes={notes_created}"
     except Exception as e:
         logger.error(f"Error creating scale reference clip: {str(e)}")
         return f"Error creating scale reference clip: {str(e)}"
@@ -1149,16 +1141,9 @@ def create_chord_progression(
                 }
             )
 
-        return json.dumps(
-            {
-                "track_index": track_index,
-                "clip_index": clip_index,
-                "key": key,
-                "progression": progression,
-                "chords_created": len(chords_created),
-                "details": chords_created,
-            }
-        )
+        # Return a concise summary instead of full JSON payload
+        total_chords = len(chords_created)
+        return f"Chord progression created: track {track_index}, clip {clip_index}, key={key}, chords={total_chords}"
     except Exception as e:
         logger.error(f"Error creating chord progression: {str(e)}")
         return f"Error creating chord progression: {str(e)}"
@@ -2384,7 +2369,8 @@ def apply_energy_curve(
             "note": "All parameter changes applied.",
         }
 
-        return json.dumps(summary, indent=2)
+        # Return a concise summary string for MCP tooling
+        return f"Energy curve applied: {summary['parameters_changed']} changes over {duration_beats} beats in {steps} steps"
     except Exception as e:
         logger.error(f"Error applying energy curve: {str(e)}")
         return f"Error applying energy curve: {str(e)}"

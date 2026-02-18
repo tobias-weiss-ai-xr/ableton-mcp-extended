@@ -339,6 +339,7 @@ class AbletonMCP(ControlSurface):
                 "duplicate_scene",
                 "set_scene_name",
                 "fire_scene",
+                "trigger_scene",
                 "set_tempo",
                 "set_time_signature",
                 "set_metronome",
@@ -395,6 +396,10 @@ class AbletonMCP(ControlSurface):
                 "mix_clip",
                 "stretch_clip",
                 "crop_clip",
+                "detect_clip_key",
+                "snap_notes_to_scale",
+                "create_scale_reference_clip",
+                "create_chord_progression",
                 "duplicate_clip_to",
                 "group_tracks",
                 "ungroup_tracks",
@@ -409,6 +414,7 @@ class AbletonMCP(ControlSurface):
                 "get_link_status",
                 "set_link_enabled",
                 "set_link_start_stop_sync",
+                "apply_energy_curve",
             ]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
@@ -459,6 +465,49 @@ class AbletonMCP(ControlSurface):
                         elif command_type == "set_link_start_stop_sync":
                             enabled = params.get("enabled", True)
                             result = self._set_link_start_stop_sync(enabled)
+                        elif command_type == "apply_energy_curve":
+                            parameter_changes = params.get("parameter_changes", [])
+                            duration_beats = params.get("duration_beats", 4.0)
+                            steps = params.get("steps", 8)
+                            result = self._apply_energy_curve(
+                                parameter_changes, duration_beats, steps
+                            )
+                        elif command_type == "detect_clip_key":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._detect_clip_key(track_index, clip_index)
+                        elif command_type == "snap_notes_to_scale":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            scale = params.get("scale", "minor")
+                            root = params.get("root", 60)
+                            result = self._snap_notes_to_scale(
+                                track_index, clip_index, scale, root
+                            )
+                        elif command_type == "create_scale_reference_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            scale = params.get("scale", "minor")
+                            root = params.get("root", 60)
+                            octaves = params.get("octaves", 3)
+                            result = self._create_scale_reference_clip(
+                                track_index, clip_index, scale, root, octaves
+                            )
+                        elif command_type == "create_chord_progression":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            key = params.get("key", "C")
+                            progression = params.get(
+                                "progression", ["I", "V", "vi", "IV"]
+                            )
+                            duration_per_chord = params.get("duration_per_chord", 4.0)
+                            result = self._create_chord_progression(
+                                track_index,
+                                clip_index,
+                                key,
+                                progression,
+                                duration_per_chord,
+                            )
                         elif command_type == "fire_clip":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -812,6 +861,10 @@ class AbletonMCP(ControlSurface):
                             name = params.get("name", "")
                             result = self._set_scene_name(scene_index, name)
                         elif command_type == "fire_scene":
+                            scene_index = params.get("scene_index", 0)
+                            result = self._fire_scene(scene_index)
+                        elif command_type == "trigger_scene":
+                            # Alias for fire_scene
                             scene_index = params.get("scene_index", 0)
                             result = self._fire_scene(scene_index)
                         elif command_type == "set_time_signature":
@@ -2586,8 +2639,13 @@ class AbletonMCP(ControlSurface):
         try:
             time = self._song.get_current_beats_song_time()
             time.bars = bar
-            time.beats = beat
+            time.beats = 1  # Start at beat 1 of the bar (1-indexed in Ableton)
             self._song.create_locator(time)
+            # Set name if provided
+            if name:
+                locators = self._song.locators
+                if locators:
+                    locators[-1].name = name
             result = {"created": True, "bar": bar, "name": name}
             return result
         except Exception as e:
@@ -2630,6 +2688,96 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error setting loop: " + str(e))
+            raise
+
+    def _apply_energy_curve(self, parameter_changes, duration_beats=4.0, steps=8):
+        """Apply a smooth energy curve by linearly interpolating multiple device parameters.
+
+        The function schedules a sequence of small parameter updates on the main thread
+        so Ableton Live remains responsive. Each entry in parameter_changes should contain:
+        - track_index
+        - device_index
+        - parameter_index
+        - start_value
+        - end_value
+
+        This method stores the changes and then steps through them, linearly interpolating
+        from start_value to end_value across the provided number of steps. The actual timing
+        (in beats) is approximated by dividing the total duration by the number of steps and
+        scheduling each step accordingly via schedule_message for non-blocking operation.
+        """
+        try:
+            # Normalize inputs
+            if parameter_changes is None:
+                parameter_changes = []
+
+            # Prepare internal state for the scheduled steps
+            self._energy_curve_active = True
+            self._energy_curve_changes = []
+            for ch in parameter_changes:
+                self._energy_curve_changes.append(
+                    {
+                        "track_index": int(ch.get("track_index", 0)),
+                        "device_index": int(ch.get("device_index", 0)),
+                        "parameter_index": int(ch.get("parameter_index", 0)),
+                        "start_value": float(ch.get("start_value", 0.0)),
+                        "end_value": float(ch.get("end_value", 1.0)),
+                    }
+                )
+
+            total_steps = max(1, int(steps))
+            self._energy_curve_steps_total = total_steps
+            self._energy_curve_duration_beats = float(duration_beats)
+            self._energy_curve_step = 0
+
+            # Convenience: guard against division by zero when total_steps == 1
+            def _step_factory(step_index):
+                # Capture step_index in default arg
+                def _step():
+                    try:
+                        # If there are no changes, stop
+                        if not getattr(self, "_energy_curve_changes", None):
+                            self._energy_curve_active = False
+                            return
+
+                        total = self._energy_curve_steps_total
+                        frac = 0.0 if total <= 1 else (step_index / float(total - 1))
+
+                        # Apply interpolation for each change
+                        for ch in self._energy_curve_changes:
+                            s = ch["start_value"]
+                            e = ch["end_value"]
+                            val = s + (e - s) * frac
+                            self._set_device_parameter(
+                                ch["track_index"],
+                                ch["device_index"],
+                                ch["parameter_index"],
+                                val,
+                            )
+
+                        # Schedule next step if needed
+                        if step_index + 1 < total:
+                            self._energy_curve_step = step_index + 1
+                            self.schedule_message(0, _step_factory(step_index + 1))
+                        else:
+                            # Finished
+                            self._energy_curve_active = False
+                            self._energy_curve_changes = []
+                    except Exception as e:
+                        self.log_message("Error during energy curve step: " + str(e))
+                        self._energy_curve_active = False
+
+                return _step
+
+            # Kick off the first step
+            if total_steps > 0:
+                self.schedule_message(0, _step_factory(0))
+
+            # Immediate summary string (actual changes happen in background steps)
+            m_changes = len(self._energy_curve_changes)
+            return f"Energy curve scheduled: {m_changes} changes over {duration_beats} beats in {total_steps} steps"
+        except Exception as e:
+            self.log_message("Error scheduling energy curve: " + str(e))
             raise
 
     def _get_clip_notes(
@@ -3888,10 +4036,316 @@ class AbletonMCP(ControlSurface):
 
                 if not found:
                     return {
-                        "path": path,
-                        "error": "Path part '{0}' not found".format(part),
-                        "items": [],
-                    }
+            "path": path,
+            "error": "Path part '{0}' not found".format(part),
+            "items": [],
+        }
+
+    def _detect_clip_key(self, track_index, clip_index):
+        """
+        Detect the musical key of a clip by analyzing its notes.
+        Uses the Krumhansl-Schmuckler algorithm for key detection.
+        
+        Returns: {"key": "A minor", "camelot": "8A", "confidence": 0.85}
+        """
+        try:
+            track = self._song.tracks[track_index]
+            clip_slot = track.clip_slots[clip_index]
+            
+            if not clip_slot.has_clip:
+                return {"error": "No clip in slot"}
+            
+            clip = clip_slot.clip
+            notes = clip.get_notes(0, 0, 999999, 128)
+            
+            # Extract pitch classes (MIDI note % 12)
+            pitch_class_counts = [0] * 12
+            for note in notes:
+                pitch_class = note[0] % 12
+                pitch_class_counts[pitch_class] += 1
+            
+            # Key profiles (Krumhansl-Schmuckler)
+            major_profile = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+            minor_profile = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+            
+            # Correlation scores for all keys
+            correlation_scores = []
+            keys = [
+                "C major", "C# major", "D major", "Eb major", "E major", "F major", 
+                "F# major", "G major", "Ab major", "A major", "Bb major", "B major",
+                "A minor", "Bb minor", "B minor", "C minor", "C# minor", "D minor", 
+                "Eb minor", "E minor", "F minor", "F# minor", "G minor", "G# minor"
+            ]
+            
+            # Calculate correlation for each key
+            for key_idx in range(24):
+                profile = major_profile if key_idx < 12 else minor_profile
+                key_offset = key_idx % 12
+                
+                # Rotate the profile to match the key
+                rotated_profile = profile[key_offset:] + profile[:key_offset]
+                if key_idx >= 12:
+                    rotated_profile = rotated_profile[::-1]  # Minor is descending
+                
+                # Calculate correlation
+                correlation = 0.0
+                total_notes = sum(pitch_class_counts)
+                if total_notes > 0:
+                    for pc in range(12):
+                        correlation += (pitch_class_counts[pc] / total_notes) * rotated_profile[pc]
+                
+                correlation_scores.append(correlation)
+            
+            # Find the key with the highest correlation
+            best_idx = correlation_scores.index(max(correlation_scores))
+            best_key = keys[best_idx]
+            best_score = correlation_scores[best_idx]
+            
+            # Map to Camelot notation
+            CAMELOT_WHEEL = {
+                "C major": "8B", "G major": "9B", "D major": "10B", "A major": "11B", 
+                "E major": "12B", "B major": "1B", "F# major": "2B", "Db major": "3B",
+                "Ab major": "4B", "Eb major": "5B", "Bb major": "6B", "F major": "7B",
+                "A minor": "8A", "E minor": "9A", "B minor": "10A", "F# minor": "11A",
+                "C# minor": "12A", "G# minor": "1A", "Eb minor": "2A", "Bb minor": "3A",
+                "F minor": "4A", "C minor": "5A", "G minor": "6A", "D minor": "7A"
+            }
+            
+            camelot_code = CAMELOT_WHEEL.get(best_key, "1A")
+            
+            return {
+                "key": best_key,
+                "camelot": camelot_code,
+                "confidence": float(best_score),
+                "note_count": len(notes)
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _snap_notes_to_scale(self, track_index, clip_index, scale="minor", root=60):
+        """
+        Snap out-of-key notes to the nearest note in a specified scale.
+        
+        Returns: {"message": "Snapped X notes to A minor scale"}
+        """
+        try:
+            track = self._song.tracks[track_index]
+            clip_slot = track.clip_slots[clip_index]
+            
+            if not clip_slot.has_clip:
+                return {"error": "No clip in slot"}
+            
+            clip = clip_slot.clip
+            notes = list(clip.get_notes(0, 0, 999999, 128))
+            
+            # Scale intervals
+            SCALE_INTERVALS = {
+                "major": [0, 2, 4, 5, 7, 9, 11],
+                "minor": [0, 2, 3, 5, 7, 8, 10],
+                "dorian": [0, 2, 3, 5, 7, 9, 10],
+                "phrygian": [0, 1, 3, 5, 7, 8, 10],
+                "lydian": [0, 2, 4, 6, 7, 9, 11],
+                "mixolydian": [0, 2, 4, 5, 7, 9, 10],
+                "pentatonic_major": [0, 2, 4, 7, 9],
+                "pentatonic_minor": [0, 3, 5, 7, 10],
+                "blues": [0, 3, 5, 6, 7, 10],
+            }
+            
+            scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"])
+            
+            # Generate all notes in the scale
+            scale_notes = []
+            for octave in range(10):
+                for interval in scale_intervals:
+                    note = root + (octave * 12) + interval
+                    if 0 <= note <= 127:
+                        scale_notes.append(note)
+            
+            # Snap each note to the nearest scale note
+            snapped_count = 0
+            new_notes = []
+            
+            for note in notes:
+                pitch = note[0]
+                if pitch not in scale_notes:
+                    # Find nearest scale note
+                    nearest_note = min(scale_notes, key=lambda x: abs(x - pitch))
+                    new_notes.append((nearest_note, note[1], note[2], note[3], note[4]))
+                    snapped_count += 1
+                else:
+                    new_notes.append(note)
+            
+            # Update the clip
+            if snapped_count > 0:
+                clip.remove_notes(0, 0, 999999, 128)
+                clip.set_notes(tuple(new_notes))
+            
+            return {
+                "message": f"Snapped {snapped_count} notes to {scale} scale (root={root})"
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _create_scale_reference_clip(self, track_index, clip_index, scale="minor", root=60, octaves=3):
+        """
+        Create a clip containing all notes of a scale (for Fold function).
+        Places notes before 1.1.1 so they're hidden but available for Fold.
+        
+        Returns: {"message": "Created C minor scale reference clip with 21 notes"}
+        """
+        try:
+            track = self._song.tracks[track_index]
+            clip_slot = track.clip_slots[clip_index]
+            
+            # Create clip
+            clip_slot.create_clip(4.0)
+            
+            if not clip_slot.has_clip:
+                return {"error": "Failed to create clip"}
+            
+            clip = clip_slot.clip
+            
+            # Scale intervals
+            SCALE_INTERVALS = {
+                "major": [0, 2, 4, 5, 7, 9, 11],
+                "minor": [0, 2, 3, 5, 7, 8, 10],
+                "dorian": [0, 2, 3, 5, 7, 9, 10],
+                "phrygian": [0, 1, 3, 5, 7, 8, 10],
+                "lydian": [0, 2, 4, 6, 7, 9, 11],
+                "mixolydian": [0, 2, 4, 5, 7, 9, 10],
+                "pentatonic_major": [0, 2, 4, 7, 9],
+                "pentatonic_minor": [0, 3, 5, 7, 10],
+                "blues": [0, 3, 5, 6, 7, 10],
+            }
+            
+            scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"])
+            
+            # Generate notes
+            notes = []
+            note_index = 0
+            for octave in range(octaves):
+                for interval in scale_intervals:
+                    pitch = root + (octave * 12) + interval
+                    if 0 <= pitch <= 127:
+                        notes.append({
+                            "pitch": pitch,
+                            "start_time": -1.0 - (note_index * 0.1),  # Before 1.1.1
+                            "duration": 0.1,
+                            "velocity": 100,
+                            "mute": False,
+                        })
+                        note_index += 1
+            
+            # Add notes to clip
+            result = self._add_notes_to_clip(track_index, clip_index, notes)
+            
+            return {
+                "message": f"Created {scale} scale reference clip (root={root}, octaves={octaves}) with {len(notes)} notes",
+                "notes_added": len(notes)
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _create_chord_progression(self, track_index, clip_index, key="C", progression=["I", "V", "vi", "IV"], duration_per_chord=4.0):
+        """
+        Create a chord progression in a clip from Roman numerals.
+        
+        Returns: {"message": "Created C major chord progression with 4 chords"}
+        """
+        try:
+            # Map key to root note and mode
+            KEY_ROOTS = {
+                "C": 60, "C#": 61, "Db": 61, "D": 62, "D#": 63, "Eb": 63,
+                "E": 64, "F": 65, "F#": 66, "Gb": 66, "G": 67, "G#": 68,
+                "Ab": 68, "A": 69, "A#": 70, "Bb": 70, "B": 71,
+                "Am": 57, "A#m": 58, "Bbm": 58, "Bm": 59, "Cm": 60, "C#m": 61,
+                "Dbm": 61, "Dm": 62, "D#m": 63, "Ebm": 63, "Em": 64, "Fm": 65,
+                "F#m": 66, "Gbm": 66, "Gm": 67, "G#m": 68,
+            }
+            
+            root_note = KEY_ROOTS.get(key, 60)
+            is_minor = "m" in key.lower()
+            
+            # Chord intervals
+            CHORD_INTERVALS = {
+                "major": [0, 4, 7],
+                "minor": [0, 3, 7],
+                "dim": [0, 3, 6],
+                "aug": [0, 4, 8],
+                "maj7": [0, 4, 7, 11],
+                "min7": [0, 3, 7, 10],
+                "dom7": [0, 4, 7, 10],
+            }
+            
+            # Scale intervals
+            SCALE_INTERVALS = {
+                "major": [0, 2, 4, 5, 7, 9, 11],
+                "minor": [0, 2, 3, 5, 7, 8, 10],
+            }
+            
+            scale_intervals = SCALE_INTERVALS["minor"] if is_minor else SCALE_INTERVALS["major"]
+            
+            # Map Roman numerals to scale degrees
+            ROMAN_TO_DEGREE = {
+                "I": 1, "i": 1,
+                "II": 2, "ii": 2,
+                "III": 3, "iii": 3,
+                "IV": 4, "iv": 4,
+                "V": 5, "v": 5,
+                "VI": 6, "vi": 6,
+                "VII": 7, "vii": 7,
+            }
+            
+            # Build chords
+            track = self._song.tracks[track_index]
+            clip_slot = track.clip_slots[clip_index]
+            
+            # Create clip
+            clip_slot.create_clip(duration_per_chord * len(progression))
+            
+            if not clip_slot.has_clip:
+                return {"error": "Failed to create clip"}
+            
+            clip = clip_slot.clip
+            all_notes = []
+            
+            for chord_idx, roman in enumerate(progression):
+                degree = ROMAN_TO_DEGREE.get(roman, 1)
+                if degree < 1 or degree > 7:
+                    continue
+                
+                # Get root note for the chord
+                scale_note = root_note + scale_intervals[degree - 1]
+                
+                # Determine chord type (major/minor)
+                chord_type = "minor" if is_minor and degree in [2, 3, 6, 7] else "major"
+                chord_type = "dim" if degree == 7 and is_minor else chord_type
+                
+                # Get chord intervals
+                intervals = CHORD_INTERVALS.get(chord_type, CHORD_INTERVALS["major"])
+                
+                # Add chord notes
+                for interval in intervals:
+                    pitch = scale_note + interval
+                    if 0 <= pitch <= 127:
+                        all_notes.append({
+                            "pitch": pitch,
+                            "start_time": chord_idx * duration_per_chord,
+                            "duration": duration_per_chord,
+                            "velocity": 100,
+                            "mute": False,
+                        })
+            
+            # Add notes to clip
+            result = self._add_notes_to_clip(track_index, clip_index, all_notes)
+            
+            return {
+                "message": f"Created chord progression in {key} with {len(progression)} chords",
+                "chords_created": len(progression),
+                "notes_added": len(all_notes)
+            }
+        except Exception as e:
+            return {"error": str(e)}
 
             # Get items at the current path
             items = []
@@ -3991,3 +4445,77 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error setting Link start/stop sync: " + str(e))
             raise
+
+    def _apply_energy_curve(self, parameter_changes, duration_beats=4.0, steps=8):
+        """
+        Gradually change multiple parameters over time.
+
+        Creates smooth transitions for multiple parameters simultaneously.
+        Each parameter change specifies start and end values.
+
+        Parameters:
+        - parameter_changes: List of dicts with track_index, device_index, parameter_index, start_value, end_value
+        - duration_beats: Total duration in beats (default 4.0)
+        - steps: Number of steps for smooth transition (default 8)
+
+        Returns summary of applied changes.
+        """
+        try:
+            # Store the changes for scheduled execution
+            self._energy_curve_state = {
+                "parameter_changes": parameter_changes,
+                "steps": steps,
+                "current_step": 0,
+                "duration_beats": duration_beats,
+            }
+
+            # Schedule the first step
+            self._schedule_energy_curve_step()
+
+            # Return summary immediately
+            return {
+                "message": f"Energy curve scheduled: {len(parameter_changes)} changes over {duration_beats} beats in {steps} steps"
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
+    def _schedule_energy_curve_step(self):
+        """Schedule a single step of the energy curve on the main thread."""
+        if not hasattr(self, "_energy_curve_state") or not self._energy_curve_state:
+            return
+
+        state = self._energy_curve_state
+        if state["current_step"] > state["steps"]:
+            # Energy curve complete
+            self._energy_curve_state = None
+            return
+
+        # Calculate progress (0.0 to 1.0)
+        progress = state["current_step"] / state["steps"]
+
+        # Apply interpolated values for all parameters
+        for param in state["parameter_changes"]:
+            track_index = param["track_index"]
+            device_index = param["device_index"]
+            parameter_index = param["parameter_index"]
+            start_value = param.get("start_value", 0.5)
+            end_value = param.get("end_value", 0.5)
+
+            # Linear interpolation
+            value = start_value + (end_value - start_value) * progress
+
+            # Apply the parameter change
+            self._set_device_parameter(
+                track_index, device_index, parameter_index, value
+            )
+
+        # Increment step counter
+        state["current_step"] += 1
+
+        # Schedule next step (approximate beat-based timing)
+        # In a real implementation, this would sync with Ableton's beat clock
+        if state["current_step"] <= state["steps"]:
+            delay = (
+                state["duration_beats"] / state["steps"]
+            ) * 480  # 480 ticks per beat
+            self.schedule_message(int(delay), self._schedule_energy_curve_step)
