@@ -217,3 +217,70 @@ HiHat: |X-X-|X---|X-X-|X---|X-X-|X---|X-X-|X---|
 - **Dual-server performance**: UDP is 100-250x faster than TCP for parameter updates, but TCP is required for 30 critical operations
 - **Cache directories**: .pytest_cache, .ruff_cache, __pycache__, .sisyphus - can be safely excluded from analysis
 - **Large files**: MCP_Server/server.py (4,234 lines), AbletonMCP_Remote_Script/__init__.py (3,622 lines)
+
+## SESSION SETUP WORKFLOW (CRITICAL)
+When creating a new Ableton session from scratch, ALWAYS follow this order:
+
+### Step 1: Clean Slate
+```
+delete_all_tracks()  # Remove ALL tracks to ensure no audio tracks remain
+```
+
+### Step 2: Create MIDI Tracks
+```
+create_midi_track(0)  # Drums
+create_midi_track(1)  # Bass
+create_midi_track(2)  # Rhythm/Keys
+create_midi_track(3)  # Melody/Horns
+```
+
+### Step 3: Name Tracks
+```
+set_track_name(0, "Drums")
+set_track_name(1, "Bass")
+set_track_name(2, "Rhythm_Skank")
+set_track_name(3, "Horns_Melody")
+```
+
+### Step 4: Load Instruments (CRITICAL - DO NOT SKIP)
+```
+# Drums - Load Drum Rack first
+load_instrument_or_effect(0, "query:Drums#Drum%20Rack")
+
+# Bass - Load bass synth
+load_instrument_or_effect(1, "query:Synths#Bass")
+
+# Rhythm - Load electric piano or similar
+load_instrument_or_effect(2, "query:Synths#Electric")
+
+# Melody - Load synth for leads/horns
+load_instrument_or_effect(3, "query:Synths#Operator")
+```
+
+### Step 5: Set Tempo
+```
+set_tempo(75)  # Dub reggae: 70-85 BPM
+```
+
+### Step 6: Create Patterns
+```
+# Now you can create clips with actual sound!
+create_drum_pattern(0, 0, "one_drop", 4)
+create_clip(1, 0, 4)
+add_notes_to_clip(1, 0, [...])
+```
+
+### Common Mistakes to AVOID:
+1. **NOT deleting tracks first** - Audio tracks cannot have MIDI clips created
+2. **NOT loading instruments** - MIDI notes won't make any sound without an instrument
+3. **Creating clips before loading instruments** - Wastes time, clips will be silent
+4. **Loading empty Drum Rack** - Drum Rack is just a container! You MUST load a drum kit into it:
+   ```
+   # WRONG - empty drum rack (no sounds!)
+   load_instrument_or_effect(0, "query:Drums#Drum%20Rack")
+   
+   # CORRECT - load an actual drum kit
+   load_instrument_or_effect(0, "query:Drums#FileId_58622")  # 32 Pad Kit Jazz
+   # OR use the load_drum_kit command:
+   load_drum_kit(0, "Drums/Drum Rack", "drums/acoustic/kit1")
+   ```

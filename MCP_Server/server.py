@@ -41,6 +41,53 @@ logging.basicConfig(
 logger = logging.getLogger("AbletonMCPServer")
 
 
+# SAFEGUARD: Never disable instruments
+# Device index 0 is always the instrument (first device on a track)
+# Parameter index 0 is always "Device On" (1=enabled, 0=disabled)
+# This helper prevents accidental instrument disabling during automation
+
+INSTRUMENT_DEVICE_INDEX = 0  # First device is always the instrument
+DEVICE_ON_PARAMETER_INDEX = 0  # Parameter 0 is "Device On"
+
+
+def is_instrument_disable_attempt(
+    device_index: int, parameter_index: int, value: float
+) -> bool:
+    """
+    Check if a parameter change would disable an instrument.
+
+    Returns True if this would set Device On = 0 on the instrument device.
+    """
+    return (
+        device_index == INSTRUMENT_DEVICE_INDEX
+        and parameter_index == DEVICE_ON_PARAMETER_INDEX
+        and value < 0.5  # Device On uses 0=off, 1=on
+    )
+
+
+def validate_parameter_change(
+    device_index: int, parameter_index: int, value: float, context: str = ""
+) -> tuple[bool, str]:
+    """
+    Validate a parameter change is safe.
+
+    Returns (is_valid, error_message).
+    Blocks attempts to disable instruments.
+    """
+    if is_instrument_disable_attempt(device_index, parameter_index, value):
+        error_msg = (
+            f"BLOCKED: Attempt to disable instrument! "
+            f"(device_index={device_index}, parameter_index={parameter_index}, value={value}). "
+            f"Device On parameter (index 0) on instruments (device 0) cannot be disabled. "
+            f"Use device_index >= 1 for effect automation."
+        )
+        if context:
+            error_msg = f"[{context}] {error_msg}"
+        logger.warning(error_msg)
+        return False, error_msg
+    return True, ""
+
+
 def handle_ableton_errors(func):
     """Decorator to standardize error handling for MCP tools"""
 
@@ -2205,6 +2252,13 @@ def set_device_parameter(
     - parameter_index: The index of the parameter to set
     - value: The normalized value to set (0.0 to 1.0)
     """
+    # SAFEGUARD: Never disable instruments
+    is_valid, error_msg = validate_parameter_change(
+        device_index, parameter_index, value, "set_device_parameter"
+    )
+    if not is_valid:
+        return error_msg
+
     try:
         ableton = get_ableton_connection()
         result = ableton.send_command(
@@ -2248,6 +2302,16 @@ def apply_drop(
 
     Returns summary of applied changes.
     """
+    # SAFEGUARD: Never disable instruments via drop automation
+    if device_index == 0 and parameter_index == 0:
+        logger.warning(
+            f"SAFEGUARD: Blocked instrument disable attempt in apply_drop (device_index={device_index}, parameter_index={parameter_index})"
+        )
+        return json.dumps(
+            {"blocked": True, "reason": "instrument disable attempted and blocked"},
+            indent=2,
+        )
+
     try:
         ableton = get_ableton_connection()
 
@@ -2340,6 +2404,16 @@ def apply_energy_curve(
                 # Interpolate value (linear)
                 value = start_value + (end_value - start_value) * progress
 
+                # SAFEGUARD: Prevent instrument disable during energy curve
+                if device_index == 0 and parameter_index == 0:
+                    try:
+                        logger.warning(
+                            f"SAFEGUARD: Skipping instrument disable attempt in apply_energy_curve (device_index={device_index}, parameter_index={parameter_index}, value={value})"
+                        )
+                    except Exception:
+                        pass
+                    continue
+
                 try:
                     ableton.send_command(
                         "set_device_parameter",
@@ -2404,6 +2478,16 @@ def apply_filter_buildup(
 
     Returns summary of applied changes.
     """
+    # SAFEGUARD: Never disable instruments via filter buildup (except Track 0 Drums)
+    if device_index == 0 and parameter_index == 0 and track_index != 0:
+        logger.warning(
+            f"SAFEGUARD: Blocked instrument disable attempt in apply_filter_buildup (device_index={device_index}, parameter_index={parameter_index})"
+        )
+        return json.dumps(
+            {"blocked": True, "reason": "instrument disable attempted and blocked"},
+            indent=2,
+        )
+
     try:
         ableton = get_ableton_connection()
 
@@ -5461,3 +5545,147 @@ def load_preset_bank(
         }
         logger.error(f"Error in load_preset_bank: {str(e)}")
         return json.dumps(error_result, indent=2)
+
+
+@mcp.tool()
+def generate_chord_name(ctx: Context, root_note: int, intervals: List[int]) -> str:
+    """
+    Generate chord name from root note and intervals.
+
+    Parameters:
+    - root_note: MIDI root note (0-127, e.g., 60 = C4)
+    - intervals: List of semitone intervals (e.g., [0, 4, 7] for major triad)
+
+    Returns:
+    - Chord name (e.g., "Cmaj", "Amin7", "D5")
+    """
+    try:
+        from music_theory.chord import generate_chord_name
+
+        result = generate_chord_name(root_note, intervals)
+        return result
+    except Exception as e:
+        logger.error(f"Error generating chord name: {str(e)}")
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def analyze_progression(ctx: Context, progression: List[str]) -> str:
+    """
+    Analyze chord progression for key and style.
+
+    Parameters:
+    - progression: List of Roman numerals (e.g., ["i", "VII", "VI", "V"])
+
+    Returns:
+    - Dict as JSON string with keys: {"valid": bool, "key": str, "style": str, "error": optional[str]}
+    """
+    try:
+        from music_theory.progression import analyze_progression
+
+        result = analyze_progression(progression)
+        return json.dumps(result)
+    except Exception as e:
+        logger.error(f"Error analyzing progression: {str(e)}")
+        return json.dumps({"valid": False, "error": str(e)})
+
+
+@mcp.tool()
+def generate_voicing(
+    ctx: Context, root_note: int, chord_quality: str, voicing_type: str
+) -> str:
+    """
+    Generate voiced chord notes.
+
+    Parameters:
+    - root_note: MIDI root note (0-127, e.g., 60 = C4)
+    - chord_quality: Chord quality (e.g., "maj", "min7", "5")
+    - voicing_type: Voicing type (e.g., "root", "drop_2", "7_3_5")
+
+    Returns:
+    - List of MIDI note numbers as JSON string
+    """
+    try:
+        from music_theory.voicing import generate_voicing
+
+        result = generate_voicing(root_note, chord_quality, voicing_type)
+        return json.dumps(result)
+    except Exception as e:
+        logger.error(f"Error generating voicing: {str(e)}")
+        return json.dumps([])
+
+
+@mcp.tool()
+def arpeggiate_chord(
+    ctx: Context,
+    midi_notes: List[int],
+    rate: str = "1/8",
+    direction: str = "up",
+    swing: float = 0.0,
+    repeats: int = 1,
+) -> str:
+    """
+    Arpeggiate chord into rhythmic strum pattern.
+
+    Parameters:
+    - midi_notes: List of MIDI note numbers (voicing order preserved)
+    - rate: Note density: "1/4", "1/8", "1/16", "1/32", "triplet"
+    - direction: Pattern direction: "up", "down", "random"
+    - swing: Swing percentage (0-1.0)
+    - repeats: Number of repeats (1 = play once)
+
+    Returns:
+    - List of notes with timing envelope as JSON string:
+      [{"pitch": int, "start_time": float, "duration": float}, ...]
+    """
+    try:
+        from music_theory.arpeggiator import arpeggiate_chord
+
+        result = arpeggiate_chord(midi_notes, rate, direction, swing, repeats)
+        return json.dumps(result)
+    except Exception as e:
+        logger.error(f"Error arpeggiating chord: {str(e)}")
+        return json.dumps([])
+
+
+@mcp.tool()
+def get_grid_layout(ctx: Context, device: str, layout_type: str, **kwargs) -> str:
+    """
+    Get grid layout for MIDI controller.
+
+    Parameters:
+    - device: "Push", "Launchpad", "APC"
+    - layout_type: "camelot", "chromatic", "drum"
+    - kwargs:
+      - key: For camelot (e.g., "8A")
+      - root: For chromatic (MIDI root note, default 60)
+      - kit: For drum ("techno", "house")
+
+    Returns:
+    - Grid cells as JSON string:
+      [
+        [{"label": str, "color": str, "midi_note": int}, ...],
+        ...
+      ]
+    """
+    try:
+        from music_theory.grid import (
+            generate_camelot_grid,
+            generate_chromatic_grid,
+            generate_drum_grid,
+        )
+
+        layout_func = {
+            "camelot": generate_camelot_grid,
+            "chromatic": generate_chromatic_grid,
+            "drum": generate_drum_grid,
+        }.get(layout_type.lower())
+
+        if not layout_func:
+            return json.dumps({"error": f"Unknown layout type: {layout_type}"})
+
+        result = layout_func(device, **kwargs)
+        return json.dumps(result)
+    except Exception as e:
+        logger.error(f"Error generating grid layout: {str(e)}")
+        return json.dumps([])
