@@ -3680,9 +3680,21 @@ class AbletonMCP(ControlSurface):
 
             return result
         except Exception as e:
-            self.log_message("Error getting browser item: " + str(e))
+self.log_message("Error getting browser item: " + str(e))
             self.log_message(traceback.format_exc())
             raise
+
+    def _load_instrument_or_effect(self, track_index, uri):
+        """
+        Load an instrument or effect onto a track by its URI.
+        
+        This is a wrapper for _load_browser_item to maintain compatibility.
+        
+        Parameters:
+        - track_index: The track to load onto
+        - uri: The URI of the instrument or effect
+        """
+        return self._load_browser_item(track_index, uri)
 
     def _load_browser_item(self, track_index, item_uri):
         """Load a browser item onto a track by its URI"""

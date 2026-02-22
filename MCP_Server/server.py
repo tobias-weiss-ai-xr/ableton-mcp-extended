@@ -324,6 +324,11 @@ DRUM_PATTERNS = {
     },
 }
 
+# Default Drum Rack configuration (used by create_drum_pattern)
+DEFAULT_DRUM_RACK_URI = "query:Drums"  # Loads complete drum kit with samples
+DEFAULT_DRUM_KIT_PATH = "drums/acoustic"  # Fallback path (not used with query:Drums)
+
+
 # Chord interval definitions (semitones from root)
 CHORD_INTERVALS = {
     "major": [0, 4, 7],
@@ -1251,8 +1256,42 @@ def create_drum_pattern(
                         "duration": 0.25,
                         "velocity": 100,
                         "mute": False,
-                    }
+                    })
+
+        # Auto-load Drum Rack and drum kit if track has no device
+        # This fixes the issue where create_drum_pattern creates empty Drum Racks
+        ableton = get_ableton_connection()
+        track_info = ableton.send_command("get_track_info", {"track_index": track_index})
+        devices = track_info.get("devices", [])
+        
+        if not devices or len(devices) == 0:
+            # Track has no device - load default Drum Rack with drum kit
+            logger.info(f"Track {track_index} has no device - loading default Drum Rack and drum kit")
+            
+            # Step 1: Load the drum rack
+            ableton.send_command(
+                "load_browser_item",
+                {"track_index": track_index, "item_uri": DEFAULT_DRUM_RACK_URI}
+            )
+            
+            # Step 2: Get the drum kit items at the default path
+            kit_result = ableton.send_command(
+                "get_browser_items_at_path", {"path": DEFAULT_DRUM_KIT_PATH}
+            )
+            
+            # Step 3: Find a loadable drum kit
+            kit_items = kit_result.get("items", [])
+            loadable_kits = [item for item in kit_items if item.get("is_loadable", False)]
+            
+            if loadable_kits:
+                # Step 4: Load the first loadable kit
+                kit_uri = loadable_kits[0].get("uri")
+                ableton.send_command(
+                    "load_browser_item",
+                    {"track_index": track_index, "item_uri": kit_uri}
                 )
+            else:
+                logger.warning(f"No loadable drum kits found at '{DEFAULT_DRUM_KIT_PATH}'")
 
         # First create the clip
         ableton = get_ableton_connection()
