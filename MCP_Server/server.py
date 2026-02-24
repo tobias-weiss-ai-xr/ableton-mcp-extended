@@ -1,3 +1,12 @@
+# ===== AUDIO EFFECTS CONSTANTS =====
+# Default URIs for common audio effects (Reverb, Delay, EQ, Compressor)
+# These map to Ableton's built-in devices in the audio_effects category
+EFFECT_URIS = {
+    "Reverb": "query:Audio/Effects/Reverb",
+    "Delay": "query:Audio/Effects/Delay",
+    "EQ": "query:Audio/Effects/EQ",
+    "Compressor": "query:Audio/Effects/Compressor",
+}
 # ableton_mcp_server.py
 from mcp.server.fastmcp import FastMCP, Context
 import socket
@@ -58,6 +67,23 @@ def is_instrument_disable_attempt(
 
     Returns True if this would set Device On = 0 on the instrument device.
     """
+
+
+# ===== UDP ELIGIBLE COMMANDS (UPDATED FOR AUDIO) =====
+# Commands suitable for UDP fire-and-forget parameter updates
+UDP_ELIGIBLE_COMMANDS = frozenset([
+    "set_device_parameter",
+    "set_track_volume",
+    "set_track_pan",
+    "set_track_mute",
+    "set_track_solo",
+    "set_track_arm",
+    "set_clip_launch_mode",
+    "fire_clip",
+    "set_master_volume",
+    "set_audio_effect_parameter",  # NEW - UDP-eligible
+    "set_parameters_bulk",        # NEW - UDP-eligible
+])
     return (
         device_index == INSTRUMENT_DEVICE_INDEX
         and parameter_index == DEVICE_ON_PARAMETER_INDEX
@@ -698,6 +724,161 @@ def get_ableton_connection():
         if _ableton_connection is None:
             logger.error("Failed to connect to Ableton after multiple attempts")
             raise Exception(
+
+
+# =============================================
+# AUDIO EFFECT MANAGEMENT COMMANDS (TCP)
+# =============================================
+
+@mcp.tool("load_audio_effect")
+async def load_audio_effect(ctx: Context, track_index: int, effect_type: str, uri: str = "", position: int = -1, preset_name: str = "") -> str:
+    """
+    Load an audio effect (Reverb, Delay, EQ, Compressor) onto a track via high-level API.
+    
+    Maps effect_type to URI if no URI provided. Optionally applies a preset after loading.
+    
+    Parameters:
+    - track_index: Index of track to load effect on
+    - effect_type: Type of effect (Reverb, Delay, EQ, Compressor)
+    - uri: Optional URI for specific effect (overrides effect_type URI)
+    - position: Device chain position (-1 = end)
+    - preset_name: Optional preset to apply after loading
+    
+    Returns:
+    - JSON string: {"loaded": true|false, "device_index": int, "device_name": "..."}
+    """
+    try:
+        # Map effect_type to URI if none provided
+        if not uri and effect_type in EFFECT_URIS:
+            uri = EFFECT_URIS[effect_type]
+        elif not uri:
+            return json.dumps({"error": f"No URI provided and effect_type '{effect_type}' not mapped"})
+            
+        # Load the effect via existing browser-item loading path
+        response = await load_browser_item(ctx, track_index, uri, position)
+        result = json.loads(response)
+        
+        if not result.get("loaded", False):
+            return json.dumps({"error": f"Failed to load {effect_type} effect", "details": result})
+            
+        device_index = result.get("device_index", -1)
+        
+        # Apply preset if requested
+        if preset_name and device_index > -1:
+            preset_response = await load_instrument_preset(ctx, track_index, device_index, preset_name)
+            preset_result = json.loads(preset_response)
+            if not preset_result.get("success", False):
+                return json.dumps({
+                    "loaded": True,
+                    "device_index": device_index,
+                    "device_name": result.get("device_name", effect_type),
+                    "preset_warning": f"Failed to apply preset: {preset_result.get('error', 'Unknown error')}"
+                })
+        
+        # Return successful loading info
+        return json.dumps({
+            "loaded": True,
+            "device_index": device_index,
+            "device_name": result.get("device_name", effect_type)
+        })
+
+    
+    except Exception as err:
+        return json.dumps({
+            "error": f"Failed to load audio effect: {str(err)}",
+            "details": traceback.format_exc()
+        })
+
+
+@mcp.tool("set_audio_effect_parameter")
+async def set_audio_effect_parameter(ctx: Context, track_index: int, device_index: int, parameter_index: int, value: float) -> str:
+    """
+    Set a parameter on an audio effect device (UDP-eligible).
+    
+    Acts as a thin wrapper over set_device_parameter with bound checking.
+    
+    Parameters:
+    - track_index: Index of track containing the effect
+    - device_index: Index of effect device on track
+    - parameter_index: Index of parameter to set
+    - value: Normalized parameter value (0.0-1.0)
+    
+    Returns:
+    - JSON confirmation of success/failure
+    """
+    # Value range validation (ensure 0.0-1.0)
+    if not 0.0 <= value <= 1.0:
+        value = max(0.0, min(1.0, value))  # Clamp to safe bounds
+    
+    # Delegate to existing set_device_parameter logic
+    return await set_device_parameter(ctx, track_index, device_index, parameter_index, value)
+
+
+@mcp.tool("set_parameters_bulk")
+@mcp.tool("set_parameters_bulk")
+async def set_parameters_bulk(ctx: Context, track_index: int, device_index: int, updates: list) -> str:
+    """
+    Bulk-set multiple parameter values on a device (UDP-eligible).
+    
+    Parameters:
+    - track_index: Index of track
+    - device_index: Index of device on track
+    - updates: List of parameter updates [{parameter_index: int, value: float}]
+    
+    Returns:
+    - JSON summary of updates {updated: int, errors: int, results: list}
+    """
+    update_count = 0
+    error_messages = []
+    results = []
+    
+    # Validate updates structure
+    if not isinstance(updates, list):
+        return json.dumps({"error": "updates must be a list"})
+    
+    # Validate each update
+    for update in updates:
+        if not isinstance(update, dict):
+            error_messages.append(f"Invalid update: {str(update)} - not a dictionary")
+            continue
+            
+        # Ensure all required keys are present
+        required_keys = ["parameter_index", "value"]
+        missing_keys = [key for key in required_keys if key not in update]
+        if missing_keys:
+            error_messages.append(f"Missing keys for update {str(update)}: {', '.join(missing_keys)}")
+            continue
+            
+        # Validate parameter index
+        param_index = update.get("parameter_index")
+        if not isinstance(param_index, int) or param_index < 0:
+            error_messages.append(f"Invalid parameter index {str(param_index)} for update {str(update)}")
+            continue
+        
+        # Validate value
+        value = update.get("value")
+        if not 0.0 <= value <= 1.0:
+            value = max(0.0, min(1.0, value))  # Clamp to bounds
+            results.append({"parameter_index": param_index, "result": "clamped", "original_value": value, "clamped_value": value})
+        
+        try:
+            # Apply each update using existing set_device_parameter
+            result = json.loads(await set_device_parameter(ctx, track_index, device_index, param_index, value))
+            if result.get("success", True):
+                update_count += 1
+                results.append({"parameter_index": param_index, "result": "success", "value": value})
+            else:
+                error_messages.append(f"Parameter {param_index}: {result.get('message', 'update failed')}")
+        except Exception as err:
+            error_messages.append(f"Parameter {param_index}: {str(err)}")
+    
+    # Return summary of results
+    return json.dumps({
+        "updated": update_count,
+        "errors": len(error_messages),
+        "results": results,
+        "error_messages": error_messages
+    })
                 "Could not connect to Ableton. Make sure the Remote Script is running."
             )
 
@@ -3847,6 +4028,7 @@ def suggest_key_transition(
 
     Uses Camelot Wheel theory to suggest compatible key transitions.
 
+        return json.dumps(compatible_keys)
     Parameters:
     - current_key: Current Camelot key (e.g., "8A")
     - energy_change: Desired change - "up" (brighter), "down" (deeper),
@@ -3998,6 +4180,102 @@ def jump_to_locator(ctx: Context, locator_index: int) -> str:
 def set_loop(ctx: Context, start_bar: int, end_bar: int, enabled: bool = True) -> str:
     """
     Set arrangement loop region.
+
+
+# =============================================
+# UDP HANDLERS (AUDIO EFFECTS SUPPORT)
+# =============================================
+
+async def _handle_udp_set_audio_effect_parameter(self, command):
+    """
+    UDP handler for set_audio_effect_parameter.
+    
+    Extracts fields from command and delegates to safe internal setter.
+    """
+    params = command.get("params", {})
+    try:
+        track_index = int(params.get("track_index", -1))
+        device_index = int(params.get("device_index", -1))
+        parameter_index = int(params.get("parameter_index", -1))
+        value = float(params.get("value", 0.0))
+        
+        if not 0 <= value <= 1.0:
+            value = max(0.0, min(1.0, value))  # Clamp bounds for safety
+            
+        # Safely execute via main thread for thread safety
+        await self._set_device_parameter(track_index, device_index, parameter_index, value)
+        
+    except (ValueError, KeyError) as err:
+        logger.error(f"UDP set_audio_effect_parameter validation failed: {str(err)}")
+
+
+async def _handle_udp_set_parameters_bulk(self, command):
+    """
+    """
+    UDP handler for set_parameters_bulk.
+    
+    Glorified loop over updates, calling _set_device_parameter for each.
+    """
+    params = command.get("params", {})
+    try:
+        track_index = int(params.get("track_index", -1))
+        device_index = int(params.get("device_index", -1))
+        updates = params.get("updates", [])
+        
+        # Validate updates as list
+        if not isinstance(updates, list):
+            logger.warning("UDP set_parameters_bulk: updates not a list")
+            return
+        
+        # Process each update in the bulk
+        for update in updates:
+            try:
+                parameter_index = int(update.get("parameter_index", -1))
+                value = float(update.get("value", 0.0))
+                
+                if not 0.0 <= value <= 1.0:
+                    value = max(0.0, min(1.0, value))
+                
+                # Safe UDP invocation (no response required)
+                await self._set_device_parameter(track_index, device_index, parameter_index, value)
+                
+            except (ValueError, KeyError) as update_err:
+                logger.error(f"UDP set_parameters_bulk update failed: {str(update_err)}")
+    
+    except (ValueError, KeyError) as err:
+        logger.error(f"UDP set_parameters_bulk validation failed: {str(err)}")
+
+
+    """
+    """
+    params = command.get("params", {})
+    try:
+        track_index = int(params.get("track_index", -1))
+        device_index = int(params.get("device_index", -1))
+        updates = params.get("updates", [])
+        
+        # Validate updates as list
+        if not isinstance(updates, list):
+            logger.warning("UDP set_parameters_bulk: updates not a list")
+            return
+        
+        # Process each update in the bulk
+        for update in updates:
+            try:
+                parameter_index = int(update.get("parameter_index", -1))
+                value = float(update.get("value", 0.0))
+                
+                if not 0.0 <= value <= 1.0:
+                    value = max(0.0, min(1.0, value))
+                
+                # Safe UDP invocation (no response required)
+                await self._set_device_parameter(track_index, device_index, parameter_index, value)
+                
+            except (ValueError, KeyError) as update_err:
+                logger.error(f"UDP set_parameters_bulk update failed: {str(update_err)}")
+    
+    except (ValueError, KeyError) as err:
+        logger.error(f"UDP set_parameters_bulk validation failed: {str(err)}")
 
     Parameters:
     - start_bar: Loop start bar

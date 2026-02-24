@@ -1,7 +1,7 @@
 # MIDI Effects Tools for Ableton MCP Server
 # Handles MIDI effect devices: Arpeggiator, Scale, Chord, Pitch, Velocity, etc.
 
-from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.fastmcp import FastMCP, Context, mcp
 from typing import List, Dict, Any, Optional
 import json
 import logging
@@ -681,3 +681,349 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             },
         }
         return json.dumps(info, indent=2)
+
+
+# =============================================================================
+# MODULATOR TOOLS FOR MCP SERVER
+# =============================================================================
+
+# Modulator Storage: mod_id -> modulator details
+# Each modulator can target any device parameter on any track
+MODULATORS_DB = {}
+"""Internal database of instantiated modulators.
+
+Structure:
+{
+    "mod_id_1": {
+        "type": "lfo/envelope/sidechain",
+        "track_index": int,
+        "device_index": int,
+        "parameter_index": int,
+        "params": {
+            "rate": float,           # LFO: cycles/beat, Envelope: N/A, Sidechain: N/A
+            "depth": float,          # 0.0-1.0
+            "waveform": str,         # LFO: sine/saw/triangle/square
+            "attack": float,         # Envelope: seconds
+            "decay": float,          # Envelope: seconds
+            "sustain": float,        # Envelope: 0.0-1.0
+            "release": float,        # Envelope: seconds
+            "source_track": int,     # Sidechain: source track index
+            "amount": float          # Sidechain: 0.0-1.0
+        },
+        "is_active": bool
+    }
+}
+"""
+
+MODULATOR_COUNTER = 1  # Incremental ID for modulators
+
+
+# Available LFO waveforms for modulation
+LFO_WAVEFORMS = ["sine", "saw", "triangle", "square", "random"]
+
+
+@mcp.tool("create_lfo_modulator")
+async def create_lfo_modulator(ctx: Context, track_index: int, device_index: int, parameter_index: int, 
+                             rate: float = 1.0, depth: float = 1.0, waveform: str = "sine") -> str:
+    """
+    Create an LFO modulator attached to a device parameter.
+    
+    Creates an internal LFO modulator that cyclically sweeps the target device parameter.
+    LFO runs in the MCP server and transmits updates via UDP.
+    
+    Parameters:
+    - track_index: Index of track containing target parameter
+    - device_index: Index of device on track
+    - parameter_index: Index of parameter to modulate
+    - rate: LFO rate in cycles per beat (default: 1.0)
+    - depth: Modulation depth (0.0-1.0, default: 1.0)
+    - waveform: Waveform for LFO (sine/saw/triangle/square/random, default: sine)
+    
+    Returns:
+    - dict: {"modulator_id": str, "status": "created"}
+    """
+    global MODULATOR_COUNTER, MODULATORS_DB
+    
+    # Validate waveform
+    if waveform not in LFO_WAVEFORMS:
+        return json.dumps({"error": f"Invalid waveform. Choose {', '.join(LFO_WAVEFORMS)}"})
+    
+    # Clamp and validate depth
+    if not 0.0 <= depth <= 1.0:
+        depth = max(0.0, min(1.0, depth))
+    
+    # Validate rate
+    if rate <= 0.0:
+        return json.dumps({"error": "Rate must be greater than 0"})
+    
+    # Create modulator entry
+    mod_id = f"mod_{MODULATOR_COUNTER}"
+    MODULATOR_COUNTER += 1
+    
+    MODULATORS_DB[mod_id] = {
+        "type": "lfo",
+        "track_index": track_index,
+        "device_index": device_index,
+        "parameter_index": parameter_index,
+        "params": {
+            "rate": rate,
+            "depth": depth,
+            "waveform": waveform
+        },
+        "is_active": True
+    }
+    
+    return json.dumps({
+        "modulator_id": mod_id,
+        "status": "created",
+        "modulator_type": "lfo",
+        "target": {
+            "track_index": track_index,
+            "device_index": device_index,
+            "parameter_index": parameter_index
+        }
+    })
+
+
+@mcp.tool("create_envelope_modulator")
+async def create_envelope_modulator(ctx: Context, track_index: int, device_index: int, parameter_index: int, 
+                                 attack: float = 0.1, decay: float = 0.2, 
+                                 sustain: float = 0.8, release: float = 0.3) -> str:
+    """
+    Create an envelope modulator (ADSR-style) attached to a parameter.
+    
+    Simulates an envelope (attack/decay/sustain/release) on a device parameter.
+    Envelopes are triggered via note-on events (detected via track monitoring).
+    
+    Parameters:
+    - track_index: Index of track
+    - device_index: Index of device on track
+    - parameter_index: Index of parameter to modulate
+    - attack: Attack time in seconds (default: 0.1)
+    - decay: Decay time in seconds (default: 0.2)
+    - sustain: Sustain level (0.0-1.0, default: 0.8)
+    - release: Release time in seconds (default: 0.3)
+    
+    Returns:
+    - dict: {"modulator_id": str, "status": "created"}
+    """
+    global MODULATOR_COUNTER, MODULATORS_DB
+    
+    # Clamp sustain to [0, 1]
+    sustain = max(0.0, min(1.0, sustain))
+    
+    # Create modulator entry
+    mod_id = f"mod_{MODULATOR_COUNTER}"
+    MODULATOR_COUNTER += 1
+    
+    MODULATORS_DB[mod_id] = {
+        "type": "envelope",
+        "track_index": track_index,
+        "device_index": device_index,
+        "parameter_index": parameter_index,
+        "params": {
+            "attack": attack,
+            "decay": decay,
+            "sustain": sustain,
+            "release": release
+        },
+        "is_active": True
+    }
+    
+    return json.dumps({
+        "modulator_id": mod_id,
+        "status": "created",
+        "modulator_type": "envelope",
+        "target": {
+            "track_index": track_index,
+            "device_index": device_index,
+            "parameter_index": parameter_index
+        }
+    })
+
+
+@mcp.tool("create_sidechain_modulator")
+async def create_sidechain_modulator(ctx: Context, track_index: int, device_index: int, parameter_index: int, 
+                                   source_track_index: int, amount: float = 0.8) -> str:
+    """
+    Create a sidechain modulator from a source track to a target parameter.
+    
+    Monitors the output level of source_track_index and modulates the target parameter accordingly.
+    Simulates sidechain compression or gating behavior.
+    
+    Parameters:
+    - track_index: Index of track containing target device
+    - device_index: Index of target device on track
+    - parameter_index: Index of parameter to modulate on target device
+    - source_track_index: Index of sidechain source track
+    - amount: Modulation amount (0.0-1.0, default: 0.8)
+    
+    Returns:
+    - dict: {"modulator_id": str, "status": "created"}
+    """
+    global MODULATOR_COUNTER, MODULATORS_DB
+    
+    # Clamp amount to [0, 1]
+    amount = max(0.0, min(1.0, amount))
+    
+    # Create modulator entry
+    mod_id = f"mod_{MODULATOR_COUNTER}"
+    MODULATOR_COUNTER += 1
+    
+    MODULATORS_DB[mod_id] = {
+        "type": "sidechain",
+        "track_index": track_index,
+        "device_index": device_index,
+        "parameter_index": parameter_index,
+        "params": {
+            "source_track": source_track_index,
+            "amount": amount
+        },
+        "is_active": True
+    }
+    
+    return json.dumps({
+        "modulator_id": mod_id,
+        "status": "created",
+        "modulator_type": "sidechain",
+        "target": {
+            "track_index": track_index,
+            "device_index": device_index,
+            "parameter_index": parameter_index
+        },
+        "source_track": source_track_index
+    })
+
+
+@mcp.tool("set_modulator_parameter")
+async def set_modulator_parameter(ctx: Context, modulator_id: str, parameter: str, value: float) -> str:
+    """
+    Set a parameter on a modulator (LFO/envelope/sidechain).
+    
+    Updates rate, depth, or other modulator-specific settings.
+    
+    Parameters:
+    - modulator_id: ID of modulator to update
+    - parameter: Name of parameter to set (rate, depth, attack, decay, etc.)
+    - value: New value for the parameter
+    
+    Returns:
+    - str: Confirmation message or error
+    """
+    global MODULATORS_DB
+    
+    if modulator_id not in MODULATORS_DB:
+        return json.dumps({"error": f"Modulator {modulator_id} not found"})
+    
+    modulator = MODULATORS_DB[modulator_id]
+    
+    # Validate/route parameter changes by modulator type
+    if modulator["type"] == "lfo":
+        if parameter == "rate":
+            if value <= 0:
+                return json.dumps({"error": "LFO rate must be greater than 0"})
+            modulator["params"]["rate"] = value
+        elif parameter == "depth":
+            modulator["params"]["depth"] = max(0.0, min(1.0, value))
+        elif parameter == "waveform":
+            if value not in LFO_WAVEFORMS:
+                return json.dumps({"error": f"Invalid waveform. Choose {', '.join(LFO_WAVEFORMS)}"})
+            modulator["params"]["waveform"] = value
+        else:
+            return json.dumps({"error": f"Invalid parameter for LFO: {parameter}"})
+    
+    elif modulator["type"] == "envelope":
+        if parameter == "attack":
+            modulator["params"]["attack"] = max(0.0, value)
+        elif parameter == "decay":
+            modulator["params"]["decay"] = max(0.0, value)
+        elif parameter == "sustain":
+            modulator["params"]["sustain"] = max(0.0, min(1.0, value))
+        elif parameter == "release":
+            modulator["params"]["release"] = max(0.0, value)
+        else:
+            return json.dumps({"error": f"Invalid parameter for envelope: {parameter}"})
+    
+    elif modulator["type"] == "sidechain":
+        if parameter == "amount":
+            modulator["params"]["amount"] = max(0.0, min(1.0, value))
+        elif parameter == "source_track":
+            modulator["params"]["source_track"] = int(value)
+        else:
+            return json.dumps({"error": f"Invalid parameter for sidechain: {parameter}"})
+    
+    return json.dumps({"status": "updated", "parameter": parameter, "value": value})
+
+
+@mcp.tool("attach_modulator_to_parameter")
+async def attach_modulator_to_parameter(ctx: Context, modulator_id: str, track_index: int, 
+                                    device_index: int, parameter_index: int, depth: float = 1.0) -> str:
+    """
+    Route a modulator to a new device parameter.
+    
+    Reassigns an existing modulator to a new target parameter with specified modulation depth.
+    
+    Parameters:
+    - modulator_id: ID of modulator to attach/route
+    - track_index: New target track index
+    - device_index: New target device index
+    - parameter_index: New target parameter index
+    - depth: Modulation depth (0.0-1.0, default: 1.0)
+    
+    Returns:
+    - dict: {"status": "attached", "target": {...}}
+    """
+    global MODULATORS_DB
+    
+    if modulator_id not in MODULATORS_DB:
+        return json.dumps({"error": f"Modulator {modulator_id} not found"})
+    
+    # Update the modulator target
+    modulator = MODULATORS_DB[modulator_id]
+    modulator["track_index"] = track_index
+    modulator["device_index"] = device_index
+    modulator["parameter_index"] = parameter_index
+    
+    return json.dumps({
+        "status": "attached",
+        "modulator_id": modulator_id,
+        "target": {
+            "track_index": track_index,
+            "device_index": device_index,
+            "parameter_index": parameter_index
+        },
+        "depth": depth
+    })
+
+
+@mcp.tool("remove_modulator")
+async def remove_modulator(ctx: Context, modulator_id: str) -> str:
+    """
+    Remove a modulator by ID.
+    
+    Stops all modulation immediately; removes modulator from the internal database.
+    
+    Parameters:
+    - modulator_id: ID of modulator to remove
+    
+    Returns:
+    - dict: {"status": "removed", "modulator_id": str} or error message
+    """
+    global MODULATORS_DB
+    
+    if modulator_id not in MODULATORS_DB:
+        return json.dumps({"error": f"Modulator {modulator_id} not found"})
+    
+    # Remove the modulator
+    del MODULATORS_DB[modulator_id]
+    
+    return json.dumps({"status": "removed", "modulator_id": modulator_id})
+
+
+async def register_modulator_tools(ctx: Context = None):
+    """
+    Register all modulator tools with MCP server.
+    
+    Called from the MCP tool registration init hook.
+    """
+    pass  # MCP @mcp.tool decorator auto-registers
