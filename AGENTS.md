@@ -12,23 +12,40 @@ Control Ableton Live via AI assistants using Model Context Protocol. Python-base
 ./
 ├── MCP_Server/              # Core MCP server (108 TCP + 9 UDP commands)
 ├── AbletonMCP_Remote_Script/ # Ableton Remote Script (socket server)
-├── dub_techno_2h/           # 2-hour automation project
+├── sets/                    # Project-specific setups
+│   ├── dub_techno_2h/       # 2-hour dub techno automation
+│   ├── reggae/              # Reggae/dub projects
+│   └── generative/          # Generative music scripts
 ├── scripts/                  # Utilities and tests
-├── tests/                     # Test suite
-├── elevenlabs_mcp/            # Voice generation integration
-└── max_devices/               # Max for Live audio export device
+│   ├── test/                # Test scripts
+│   ├── util/                # Utility scripts
+│   ├── drum_tools/          # Drum-related utilities
+│   ├── automation/          # General automation scripts
+│   └── analysis/            # Analysis tools
+├── tests/                    # Integration test suite
+├── docs/                     # Documentation
+│   ├── archive/             # Archived status files
+│   └── vst-plugins/         # VST documentation
+├── elevenlabs_mcp/           # Voice generation integration
+├── max_devices/              # Max for Live audio export device
+├── music_theory/             # Music theory utilities
+├── configs/                  # Configuration files
+└── skills/                   # OpenCode skills
 ```
 
 ## WHERE TO LOOK
-| Task                  | Location                         |
-|-----------------------|----------------------------------|
-| Protocol handlers      | MCP_Server/server.py              |
-| Remote Script API    | AbletonMCP_Remote_Script/__init__.py |
-| Automation scripts    | dub_techno_2h/                 |
-| Test utilities       | scripts/ (test/, util/, analysis/) |
-| Integration tests     | tests/integration/                  |
-| Voice generation      | elevenlabs_mcp/                   |
-| Audio export          | max_devices/                      |
+| Task                  | Location                                    |
+|-----------------------|---------------------------------------------|
+| Protocol handlers     | MCP_Server/server.py                         |
+| Remote Script API     | AbletonMCP_Remote_Script/__init__.py         |
+| 2h dub techno scripts | sets/dub_techno_2h/                          |
+| Drum utilities        | scripts/drum_tools/                          |
+| Test utilities        | scripts/test/                                |
+| General utilities     | scripts/util/                                |
+| Integration tests     | tests/integration/                           |
+| Voice generation      | elevenlabs_mcp/                              |
+| Audio export          | max_devices/                                 |
+| Documentation         | docs/                                        |
 
 ## CONVENTIONS
 - **Parameter normalization**: All device/track parameters use 0.0-1.0 normalized values
