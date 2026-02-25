@@ -1,0 +1,17 @@
+rules:
+  - name: "auto_tempo_limit_high"
+    condition:
+      type: bpm_gt
+      value: 140
+    action:
+      type: set_tempo
+      value: 140
+
+  - name: "energy_boost_low_loudness"
+    condition:
+      type: loudness_lt
+      value: -20
+    action:
+      type: set_track_volume
+      track_index: 0
+      value: 0.8
