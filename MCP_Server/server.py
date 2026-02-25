@@ -19,10 +19,14 @@ import time
 from datetime import datetime, timezone
 import functools
 
+# Audio Analysis imports
+from .audio_analysis import AudioAnalyzer, AudioAnalyzerConfig
+
+# Global audio analyzer instance
+_audio_analyzer: AudioAnalyzer | None = None
+
 # Use orjson for faster JSON serialization (3-10x faster than stdlib json)
 try:
-    import orjson
-
     def json_dumps(obj, indent=None):
         """Fast JSON serialization using orjson with fallback"""
         if indent:
@@ -6005,4 +6009,4 @@ def get_grid_layout(ctx: Context, device: str, layout_type: str, **kwargs) -> st
         return json.dumps(result)
     except Exception as e:
         logger.error(f"Error generating grid layout: {str(e)}")
-        return json.dumps([])
+    return json.dumps([])
