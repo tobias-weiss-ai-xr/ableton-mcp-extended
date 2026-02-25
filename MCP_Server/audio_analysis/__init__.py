@@ -56,10 +56,29 @@ from .rules import (
     RuleEngine,
 )
 
+from .polling import (
+    ParameterConfig,
+    ParameterSnapshot,
+    CircularBuffer,
+    AudioAnalysisPoller,
+    MultiPluginPoller,
+)
+from .rules import (
+    Operator,
+    Condition,
+    Action,
+    Rule,
+    RuleSet,
+    RuleEngine,
+)
 from .control_loop import (
     AudioAnalysisController,
     run_with_graceful_shutdown,
 )
+
+# Real-time audio analysis
+from .config import AudioAnalyzerConfig
+from .analyzer import AudioAnalyzer
 
 __all__ = [
     # Polling
@@ -78,6 +97,8 @@ __all__ = [
     # Control Loop
     "AudioAnalysisController",
     "run_with_graceful_shutdown",
+    # Real-time audio analysis
+    "AudioAnalyzerConfig",
+    "AudioAnalyzer",
 ]
-
 __version__ = "1.0.0"
