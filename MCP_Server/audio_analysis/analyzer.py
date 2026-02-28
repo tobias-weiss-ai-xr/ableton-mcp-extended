@@ -74,6 +74,9 @@ class AudioAnalyzer:
             self._meter = _pyln.Meter(self.config.sample_rate)  # type: ignore
         else:
             self._meter = None
+        # Callback counter (for diagnostics)
+        self._callback_count = 0
+
 
     def _find_vb_cable_index(self) -> Optional[int]:
         """Find VB-Cable INPUT device (CABLE Output)."""
@@ -92,8 +95,9 @@ class AudioAnalyzer:
         if self._running:
             return True
 
-        # Find VB-Cable device
-        self._device_index = self._find_vb_cable_index()
+        # Find VB-Cable device if not already set
+        if self._device_index is None:
+            self._device_index = self._find_vb_cable_index()
         if self._device_index is None:
             print("VB-Audio Cable not found. Install from: https://vb-audio.com/Cable/")
             return False
@@ -122,6 +126,11 @@ class AudioAnalyzer:
         except Exception as e:
             print(f"Failed to start audio stream: {e}")
             return False
+            self._running = True
+            return True
+        except Exception as e:
+            print(f"Failed to start audio stream: {e}")
+            return False
 
     def stop(self) -> None:
         """Stop audio capture."""
@@ -140,6 +149,7 @@ class AudioAnalyzer:
         """Sounddevice callback for audio processing."""
         if status:
             pass  # Handle overflow/underflow silently
+        self._callback_count += 1  # Diagnostic counter
 
         samples = indata[:, 0].astype(np.float32)
 

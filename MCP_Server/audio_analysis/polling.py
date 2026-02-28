@@ -38,6 +38,7 @@ class ParameterSnapshot:
     timestamp: float  # Unix timestamp
     values: Dict[int, float]  # Normalized values by param index
     raw_values: Dict[int, float]  # Raw values by param index
+    analysis: Optional[Dict[str, Any]] = None  # Optional audio analysis data
 
 
 class CircularBuffer:
@@ -118,6 +119,7 @@ class AudioAnalysisPoller:
         self.update_interval = 1.0 / update_rate_hz
         self.buffer = CircularBuffer(max_size=buffer_size)
         self.mcp_client = mcp_client
+        self.analysis_provider = None
 
         # State
         self.running = False
@@ -142,6 +144,10 @@ class AudioAnalysisPoller:
         if callback in self.callbacks:
             self.callbacks.remove(callback)
             logger.debug(f"Removed callback: {callback.__name__}")
+
+    def set_analysis_provider(self, provider) -> None:
+        """Set an external audio analysis provider (e.g., AudioAnalyzer) to enrich snapshots."""
+        self.analysis_provider = provider
 
     def start(self):
         """Start polling thread"""
@@ -261,9 +267,21 @@ class AudioAnalysisPoller:
                 else:
                     logger.warning(f"Parameter index {index} not available from device")
 
-            # Create snapshot
+            # Create snapshot with optional analysis data (if analyzer bound)
+            analysis = None
+            provider = getattr(self, "analysis_provider", None)
+            if provider is not None:
+                try:
+                    provided = provider.get_analysis()
+                    if isinstance(provided, dict):
+                        analysis = provided
+                except Exception:
+                    analysis = None
             snapshot = ParameterSnapshot(
-                timestamp=time.time(), values=normalized_values, raw_values=raw_values
+                timestamp=time.time(),
+                values=normalized_values,
+                raw_values=raw_values,
+                analysis=analysis,
             )
 
             return snapshot

@@ -53,6 +53,7 @@ class Condition:
     operator: Operator  # Comparison operator
     threshold: float  # Threshold value (in normalized 0.0-1.0 range)
     parameter_name: str = ""  # Optional parameter name for readability
+    condition_type: Optional[str] = None  # Optional audio/advanced condition type
 
     def evaluate(self, values: Dict[int, float]) -> bool:
         """Evaluate this condition against parameter values.
@@ -84,15 +85,132 @@ class Condition:
             elif self.operator == Operator.NEQ:
                 return abs(value - self.threshold) >= 1e-6
             elif self.operator == Operator.IN:
-                return value in self.threshold  # threshold is a list
+                # Only support list-like thresholds for IN/NOT_IN; otherwise, default to False
+                if isinstance(self.threshold, (list, tuple, set)):
+                    return value in self.threshold
+                return False
             elif self.operator == Operator.NOT_IN:
-                return value not in self.threshold
+                if isinstance(self.threshold, (list, tuple, set)):
+                    return value not in self.threshold
+                return False
             else:
                 logger.error(f"Unknown operator: {self.operator}")
                 return False
         except (TypeError, AttributeError) as e:
             logger.error(f"Error evaluating condition: {e}")
             return False
+
+
+# =============================================================================
+# AUDIO ANALYSIS CONDITIONS (Task 8 - Auto-DJ Integration)
+# =============================================================================
+
+
+class AudioConditionType(Enum):
+    """Types of audio analysis conditions for Auto-DJ."""
+
+    BPM_GT = "bpm_gt"  # BPM greater than threshold
+    BPM_LT = "bpm_lt"  # BPM less than threshold
+    BPM_GTE = "bpm_gte"  # BPM greater than or equal
+    BPM_LTE = "bpm_lte"  # BPM less than or equal
+    KEY_EQ = "key_eq"  # Key equals threshold (string)
+    KEY_IN = "key_in"  # Key in list of keys
+    LOUDNESS_LT = "loudness_lt"  # LUFS less than threshold
+    LOUDNESS_GT = "loudness_gt"  # LUFS greater than threshold
+    SPECTRAL_CENTROID_GT = "spectral_centroid_gt"  # Spectral centroid greater than
+    SPECTRAL_CENTROID_LT = "spectral_centroid_lt"  # Spectral centroid less than
+    RMS_GT = "rms_gt"  # RMS level greater than
+    RMS_LT = "rms_lt"  # RMS level less than
+    BEAT_DETECTED = "beat_detected"  # Beat detected (boolean)
+
+
+@dataclass
+class AudioAnalysisCondition:
+    """A condition that evaluates against real-time audio analysis data.
+
+    Used for Auto-DJ rules that respond to BPM, key, loudness, etc.
+    """
+
+    condition_type: str  # One of AudioConditionType values
+    threshold: Union[float, str, List[str]]  # Numeric or string (for key)
+    description: str = ""  # Human-readable description
+
+    def evaluate(self, analysis: Dict[str, Any]) -> bool:
+        """Evaluate this condition against audio analysis data.
+
+        Args:
+            analysis: Dict from AudioAnalyzer.get_analysis() containing:
+                - bpm: float (0-300)
+                - key: str (e.g., "C", "Am", "F#")
+                - loudness_lufs: float (typically -60 to 0)
+                - spectral_centroid: float (Hz)
+                - rms: float (0.0-1.0)
+                - beat: bool
+
+        Returns:
+            True if condition is satisfied, False otherwise
+        """
+        try:
+            cond_type = self.condition_type.lower()
+
+            # BPM conditions
+            if cond_type == "bpm_gt":
+                return float(analysis.get("bpm", 0)) > float(self.threshold)
+            elif cond_type == "bpm_lt":
+                return float(analysis.get("bpm", 300)) < float(self.threshold)
+            elif cond_type == "bpm_gte":
+                return float(analysis.get("bpm", 0)) >= float(self.threshold)
+            elif cond_type == "bpm_lte":
+                return float(analysis.get("bpm", 300)) <= float(self.threshold)
+
+            # Key conditions
+            elif cond_type == "key_eq":
+                current_key = str(analysis.get("key", "")).upper()
+                return current_key == str(self.threshold).upper()
+            elif cond_type == "key_in":
+                current_key = str(analysis.get("key", "")).upper()
+                if isinstance(self.threshold, (list, tuple)):
+                    return current_key in [k.upper() for k in self.threshold]
+                return False
+
+            # Loudness conditions (LUFS, typically negative)
+            elif cond_type == "loudness_lt":
+                return float(analysis.get("loudness_lufs", -100)) < float(self.threshold)
+            elif cond_type == "loudness_gt":
+                return float(analysis.get("loudness_lufs", -100)) > float(self.threshold)
+
+            # Spectral centroid conditions (Hz)
+            elif cond_type == "spectral_centroid_gt":
+                return float(analysis.get("spectral_centroid", 0)) > float(self.threshold)
+            elif cond_type == "spectral_centroid_lt":
+                return float(analysis.get("spectral_centroid", float("inf"))) < float(self.threshold)
+
+            # RMS conditions
+            elif cond_type == "rms_gt":
+                return float(analysis.get("rms", 0)) > float(self.threshold)
+            elif cond_type == "rms_lt":
+                return float(analysis.get("rms", 1.0)) < float(self.threshold)
+
+            # Beat detection
+            elif cond_type == "beat_detected":
+                return bool(analysis.get("beat", False))
+
+            else:
+                logger.warning(f"Unknown audio condition type: {cond_type}")
+                return False
+
+        except (TypeError, ValueError) as e:
+            logger.error(f"Error evaluating audio condition: {e}")
+            return False
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AudioAnalysisCondition":
+        """Create AudioAnalysisCondition from dictionary (YAML parsing)."""
+        return cls(
+            condition_type=data["type"],
+            threshold=data.get("threshold", 0),
+            description=data.get("description", ""),
+        )
 
 
 @dataclass
@@ -189,6 +307,7 @@ class Rule:
         0.0  # Minimum time between triggers (prevents oscillation)
     )
     description: str = ""  # Optional description
+    audio_conditions: List[AudioAnalysisCondition] = field(default_factory=list)  # Audio analysis conditions
     last_triggered: float = 0.0  # Timestamp of last trigger (internal state)
     trigger_count: int = 0  # Number of times triggered (internal state)
 
@@ -236,6 +355,39 @@ class Rule:
         self.trigger_count += 1
         logger.info(f"Rule '{self.id}' triggered (count: {self.trigger_count})")
 
+    def evaluate_audio(self, analysis: Dict[str, Any]) -> bool:
+        """Evaluate audio conditions against audio analysis data.
+
+        Args:
+            analysis: Dict from AudioAnalyzer.get_analysis()
+
+        Returns:
+            True if all audio conditions are satisfied and cooldown is met
+        """
+        if not self.enabled:
+            return False
+
+        if not self.can_trigger():
+            logger.debug(f"Rule '{self.id}' on cooldown. Skipping.")
+            return False
+
+        # If no audio conditions, return True (pass-through)
+        if not self.audio_conditions:
+            return True
+
+        # Evaluate all audio conditions (AND logic)
+        for condition in self.audio_conditions:
+            if not condition.evaluate(analysis):
+                logger.debug(
+                    f"Rule '{self.id}' audio condition failed: "
+                    f"{condition.condition_type} vs {condition.threshold}"
+                )
+                return False
+
+        logger.info(f"Rule '{self.id}' audio conditions satisfied.")
+        return True
+
+
 
 @dataclass
 class RuleSet:
@@ -265,6 +417,26 @@ class RuleSet:
                 triggered_rules.append(rule)
 
         return triggered_rules
+
+    def evaluate_audio_all(self, analysis: Dict[str, Any]) -> List[Rule]:
+        """Evaluate all rules against audio analysis data.
+
+        Args:
+            analysis: Dict from AudioAnalyzer.get_analysis()
+
+        Returns:
+            List of rules that should trigger based on audio conditions
+        """
+        if not self.enabled:
+            return []
+
+        triggered_rules = []
+        for rule in self.rules:
+            if rule.evaluate_audio(analysis):
+                triggered_rules.append(rule)
+
+        return triggered_rules
+
 
     def get_rule(self, rule_id: str) -> Optional[Rule]:
         """Get a rule by ID."""
@@ -400,6 +572,7 @@ class RuleEngine:
             op_str = cond_data.get("operator", ">=")
             threshold = cond_data.get("threshold")
             param_name = cond_data.get("parameter_name", "")
+            cond_type = cond_data.get("type")
 
             try:
                 operator = Operator(op_str)
@@ -414,19 +587,21 @@ class RuleEngine:
                 operator=operator,
                 threshold=threshold,
                 parameter_name=param_name,
+                condition_type=cond_type,
             )
             conditions.append(condition)
 
-        # Parse actions
-        actions = []
-        for act_data in data.get("actions", []):
-            action = Action.from_dict(act_data)
-            actions.append(action)
+        # Parse audio conditions (for Auto-DJ)
+        audio_conditions = []
+        for audio_cond_data in data.get("audio_conditions", []):
+            audio_cond = AudioAnalysisCondition.from_dict(audio_cond_data)
+            audio_conditions.append(audio_cond)
 
         return Rule(
             id=rule_id,
             name=name,
             conditions=conditions,
+            audio_conditions=audio_conditions,
             actions=actions,
             enabled=enabled,
             cooldown_seconds=cooldown,
@@ -483,6 +658,39 @@ class RuleEngine:
         self.stats["total_action_executions"] += len(executed)
 
         return executed
+
+    def evaluate_audio(self, analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Evaluate all loaded rule sets against audio analysis data.
+
+        This method is called by AudioAnalyzer when new analysis is available.
+
+        Args:
+            analysis: Dict from AudioAnalyzer.get_analysis()
+
+        Returns:
+            List of action dictionaries that were executed
+        """
+        self.stats["total_evaluations"] += 1
+
+        all_triggered_rules = []
+
+        # Check all rule sets for audio conditions
+        for ruleset in self.rule_sets:
+            triggered = ruleset.evaluate_audio_all(analysis)
+            all_triggered_rules.extend(triggered)
+
+        if not all_triggered_rules:
+            return []
+
+        # Execute actions for triggered rules
+        executed = self._execute_triggered_rules(all_triggered_rules)
+
+        # Update statistics
+        self.stats["total_triggers"] += len(all_triggered_rules)
+        self.stats["total_action_executions"] += len(executed)
+
+        return executed
+
 
     def _execute_triggered_rules(
         self, triggered_rules: List[Rule]

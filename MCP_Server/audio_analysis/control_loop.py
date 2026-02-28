@@ -19,6 +19,7 @@ from typing import Optional, List, Dict, Any, Callable
 from pathlib import Path
 
 from .polling import AudioAnalysisPoller, ParameterConfig, ParameterSnapshot
+from .analyzer import AudioAnalyzer
 from .rules import RuleEngine, RuleSet
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,8 @@ class AudioAnalysisController:
             buffer_size=buffer_size,
             mcp_client=mcp_client,
         )
+        # Optional audio analysis engine integration
+        self.audio_analyzer = AudioAnalyzer()
 
         self.engine = RuleEngine(mcp_client=mcp_client)
 
@@ -157,6 +160,13 @@ class AudioAnalysisController:
         self._interrupted = False
 
         logger.info("Starting audio analysis control loop...")
+        # Start the audio analysis engine and attach to poller for enriched snapshots
+        try:
+            if self.audio_analyzer is not None:
+                self.audio_analyzer.start()
+                self.poller.set_analysis_provider(self.audio_analyzer)
+        except Exception as e:
+            logger.warning(f"Audio analyzer failed to start: {e}")
         self.poller.start()
         self.start_time = time.time()
 

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 import functools
 
 # Audio Analysis imports
-from .audio_analysis import AudioAnalyzer, AudioAnalyzerConfig
+from MCP_Server.audio_analysis import AudioAnalyzer, AudioAnalyzerConfig
 
 # Global audio analyzer instance
 _audio_analyzer: AudioAnalyzer | None = None
@@ -63,15 +63,6 @@ INSTRUMENT_DEVICE_INDEX = 0  # First device is always the instrument
 DEVICE_ON_PARAMETER_INDEX = 0  # Parameter 0 is "Device On"
 
 
-def is_instrument_disable_attempt(
-    device_index: int, parameter_index: int, value: float
-) -> bool:
-    """
-    Check if a parameter change would disable an instrument.
-
-    Returns True if this would set Device On = 0 on the instrument device.
-    """
-
 
 # ===== UDP ELIGIBLE COMMANDS (UPDATED FOR AUDIO) =====
 # Commands suitable for UDP fire-and-forget parameter updates
@@ -88,12 +79,21 @@ UDP_ELIGIBLE_COMMANDS = frozenset([
     "set_audio_effect_parameter",  # NEW - UDP-eligible
     "set_parameters_bulk",        # NEW - UDP-eligible
 ])
+
+
+def is_instrument_disable_attempt(
+    device_index: int, parameter_index: int, value: float
+) -> bool:
+    """
+    Check if a parameter change would disable an instrument.
+
+    Returns True if this would set Device On = 0 on the instrument device.
+    """
     return (
         device_index == INSTRUMENT_DEVICE_INDEX
         and parameter_index == DEVICE_ON_PARAMETER_INDEX
         and value < 0.5  # Device On uses 0=off, 1=on
     )
-
 
 def validate_parameter_change(
     device_index: int, parameter_index: int, value: float, context: str = ""
@@ -727,8 +727,7 @@ def get_ableton_connection():
         # If we get here, all connection attempts failed
         if _ableton_connection is None:
             logger.error("Failed to connect to Ableton after multiple attempts")
-            raise Exception(
-
+            raise Exception("Failed to connect to Ableton after multiple attempts")
 
 # =============================================
 # AUDIO EFFECT MANAGEMENT COMMANDS (TCP)
@@ -883,10 +882,7 @@ async def set_parameters_bulk(ctx: Context, track_index: int, device_index: int,
         "results": results,
         "error_messages": error_messages
     })
-                "Could not connect to Ableton. Make sure the Remote Script is running."
-            )
 
-    return _ableton_connection
 
 
 # Core Tool endpoints
@@ -4032,7 +4028,6 @@ def suggest_key_transition(
 
     Uses Camelot Wheel theory to suggest compatible key transitions.
 
-        return json.dumps(compatible_keys)
     Parameters:
     - current_key: Current Camelot key (e.g., "8A")
     - energy_change: Desired change - "up" (brighter), "down" (deeper),
@@ -4041,7 +4036,6 @@ def suggest_key_transition(
     Returns suggested target keys with explanations.
     """
     try:
-        # Parse the key
         if len(current_key) < 2:
             return json.dumps({"error": "Invalid key format. Use format like '8A'"})
 
@@ -4185,6 +4179,25 @@ def set_loop(ctx: Context, start_bar: int, end_bar: int, enabled: bool = True) -
     """
     Set arrangement loop region.
 
+    Parameters:
+    - start_bar: Start bar of loop
+    - end_bar: End bar of loop
+    - enabled: Whether loop is enabled
+
+    Returns:
+    - JSON confirmation of success/failure
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("set_loop", {
+            "start_bar": start_bar,
+            "end_bar": end_bar,
+            "enabled": enabled
+        })
+        return json.dumps(result)
+    except Exception as e:
+        logger.error(f"Error setting loop: {str(e)}")
+        return f"Error setting loop: {str(e)}"
 
 # =============================================
 # UDP HANDLERS (AUDIO EFFECTS SUPPORT)
@@ -4215,11 +4228,10 @@ async def _handle_udp_set_audio_effect_parameter(self, command):
 
 async def _handle_udp_set_parameters_bulk(self, command):
     """
-    """
     UDP handler for set_parameters_bulk.
     
     Glorified loop over updates, calling _set_device_parameter for each.
-    """
+    "
     params = command.get("params", {})
     try:
         track_index = int(params.get("track_index", -1))

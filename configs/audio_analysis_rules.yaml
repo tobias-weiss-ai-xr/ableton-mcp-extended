@@ -1,0 +1,175 @@
+# Audio Analysis Rules for Auto-DJ
+# These rules trigger actions based on real-time audio analysis
+# (BPM, key, loudness, spectral characteristics)
+
+id: auto_dj_rules
+name: Auto-DJ Rules
+description: |
+  Rules that respond to real-time audio analysis for automated DJ-like behavior.
+  Requires AudioAnalyzer to be running with VB-Cable capture.
+enabled: true
+
+rules:
+  # ==========================================================================
+  # TEMPO RULES
+  # ==========================================================================
+  
+  - id: auto_tempo_limit_high
+    name: "Limit tempo to 140 BPM max"
+    description: "Prevent tempo from exceeding 140 BPM (techno/house limit)"
+    audio_conditions:
+      - type: bpm_gt
+        threshold: 140
+    actions:
+      - type: set_tempo
+        track_index: 0
+        target_value: 140
+        data:
+          message: "Tempo limited to 140 BPM"
+    cooldown_seconds: 30
+    enabled: true
+
+  - id: auto_tempo_limit_low
+    name: "Minimum tempo 60 BPM"
+    description: "Prevent tempo from dropping below 60 BPM"
+    audio_conditions:
+      - type: bpm_lt
+        threshold: 60
+    actions:
+      - type: set_tempo
+        track_index: 0
+        target_value: 60
+        data:
+          message: "Tempo raised to 60 BPM minimum"
+    cooldown_seconds: 30
+    enabled: true
+
+  # ==========================================================================
+  # KEY DETECTION RULES
+  # ==========================================================================
+  
+  - id: detect_key_am
+    name: "Detect A minor key"
+    description: "Trigger when key changes to A minor"
+    audio_conditions:
+      - type: key_eq
+        threshold: "Am"
+    actions:
+      - type: log
+        track_index: 0
+        data:
+          message: "Key changed to A minor - harmonic mixing opportunity"
+    cooldown_seconds: 60
+    enabled: false  # Disabled by default - enable for harmonic mixing
+
+  - id: detect_key_c
+    name: "Detect C major key"
+    description: "Trigger when key changes to C major"
+    audio_conditions:
+      - type: key_eq
+        threshold: "C"
+    actions:
+      - type: log
+        track_index: 0
+        data:
+          message: "Key changed to C major"
+    cooldown_seconds: 60
+    enabled: false
+
+  # ==========================================================================
+  # LOUDNESS RULES
+  # ==========================================================================
+  
+  - id: auto_gain_reduction
+    name: "Reduce gain if too loud"
+    description: "Reduce master volume if LUFS exceeds -6 dB"
+    audio_conditions:
+      - type: loudness_gt
+        threshold: -6
+    actions:
+      - type: set_volume
+        track_index: -1  # Master track
+        target_value: 0.7
+        data:
+          message: "Gain reduced due to high loudness"
+    cooldown_seconds: 15
+    enabled: true
+
+  - id: auto_gain_boost
+    name: "Boost gain if too quiet"
+    description: "Increase master volume if LUFS drops below -24 dB"
+    audio_conditions:
+      - type: loudness_lt
+        threshold: -24
+    actions:
+      - type: set_volume
+        track_index: -1  # Master track
+        target_value: 0.85
+        data:
+          message: "Gain boosted due to low loudness"
+    cooldown_seconds: 15
+    enabled: true
+
+  # ==========================================================================
+  # SPECTRAL RULES
+  # ==========================================================================
+  
+  - id: bright_sound_detected
+    name: "Bright sound detected"
+    description: "Trigger when spectral centroid exceeds 4000 Hz (bright sound)"
+    audio_conditions:
+      - type: spectral_centroid_gt
+        threshold: 4000
+    actions:
+      - type: log
+        track_index: 0
+        data:
+          message: "Bright sound detected - consider EQ adjustment"
+    cooldown_seconds: 30
+    enabled: false
+
+  - id: dark_sound_detected
+    name: "Dark sound detected"
+    description: "Trigger when spectral centroid drops below 1000 Hz (dark sound)"
+    audio_conditions:
+      - type: spectral_centroid_lt
+        threshold: 1000
+    actions:
+      - type: log
+        track_index: 0
+        data:
+          message: "Dark sound detected - consider adding brightness"
+    cooldown_seconds: 30
+    enabled: false
+
+  # ==========================================================================
+  # RMS/ENERGY RULES
+  # ==========================================================================
+  
+  - id: high_energy_detected
+    name: "High energy detected"
+    description: "Trigger when RMS level exceeds 0.3 (high energy)"
+    audio_conditions:
+      - type: rms_gt
+        threshold: 0.3
+    actions:
+      - type: log
+        track_index: 0
+        data:
+          message: "High energy section detected"
+    cooldown_seconds: 20
+    enabled: false
+
+  - id: low_energy_detected
+    name: "Low energy detected"
+    description: "Trigger when RMS level drops below 0.05 (breakdown/quiet section)"
+    audio_conditions:
+      - type: rms_lt
+        threshold: 0.05
+    actions:
+      - type: log
+        track_index: 0
+        data:
+          message: "Low energy section detected - potential breakdown"
+    cooldown_seconds: 20
+    enabled: false
