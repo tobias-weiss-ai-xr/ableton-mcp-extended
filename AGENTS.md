@@ -8,15 +8,11 @@
 Control Ableton Live via AI assistants using Model Context Protocol. Python-based MCP server with dual TCP/UDP architecture for real-time control and ElevenLabs voice integration.
 
 ## STRUCTURE
-## STRUCTURE
 ```
 ./
 ├── MCP_Server/              # Core MCP server (108 TCP + 9 UDP commands)
 ├── AbletonMCP_Remote_Script/ # Ableton Remote Script (socket server)
-├── sets/                    # Project-specific setups
-│   ├── dub_techno_2h/       # 2-hour dub techno automation
-│   ├── reggae/              # Reggae/dub projects
-│   └── generative/          # Generative music scripts
+├── sets/                    # Pattern utilities (production moved to ~/git/dub, ~/git/reggae)
 ├── scripts/                  # Utilities and tests
 │   ├── test/                # Test scripts
 │   ├── util/                # Utility scripts
@@ -34,6 +30,10 @@ Control Ableton Live via AI assistants using Model Context Protocol. Python-base
 ├── skills/                   # OpenCode skills
 └── rework/                   # Experimental scripts (HTTP/OSC - reference only)
 ```
+
+**Production Scripts Moved:**
+- Dub techno: `~/git/dub` - 2-hour dub techno automation, generative music
+- Reggae: `~/git/reggae` - Reggae/dub production scripts
 ./
 ├── MCP_Server/              # Core MCP server (108 TCP + 9 UDP commands)
 ├── AbletonMCP_Remote_Script/ # Ableton Remote Script (socket server)
@@ -63,7 +63,8 @@ Control Ableton Live via AI assistants using Model Context Protocol. Python-base
 |-----------------------|---------------------------------------------|
 | Protocol handlers     | MCP_Server/server.py                         |
 | Remote Script API     | AbletonMCP_Remote_Script/__init__.py         |
-| 2h dub techno scripts | sets/dub_techno_2h/                          |
+| Dub techno production | ~/git/dub/ (separate repo)                   |
+| Reggae production     | ~/git/reggae/ (separate repo)                |
 | Drum utilities        | scripts/drum_tools/                          |
 | Test utilities        | scripts/test/                                |
 | General utilities     | scripts/util/                                |
@@ -71,10 +72,9 @@ Control Ableton Live via AI assistants using Model Context Protocol. Python-base
 | Voice generation      | elevenlabs_mcp/                              |
 | Audio export          | max_devices/                                 |
 | Documentation         | docs/                                        |
-| **DJ performance**    | scripts/live_dj_*.py, scripts/ultra_dj_loop.py |
-| **Dub orchestrator**  | scripts/dub_mcp_orchestrator.py              |
-| **Rework (ref only)** | rework/ (HTTP/OSC protocols - superseded)    |
-| Task                  | Location                                    |
+| DJ performance        | scripts/live_dj_*.py, scripts/ultra_dj_loop.py |
+| Dub orchestrator      | scripts/dub_mcp_orchestrator.py              |
+| Rework (ref only)     | rework/ (HTTP/OSC protocols - superseded)    |
 |-----------------------|---------------------------------------------|
 | Protocol handlers     | MCP_Server/server.py                         |
 | Remote Script API     | AbletonMCP_Remote_Script/__init__.py         |

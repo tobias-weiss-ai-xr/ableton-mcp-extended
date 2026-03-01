@@ -3426,82 +3426,6 @@ class AbletonMCP(ControlSurface):
             self.log_message(traceback.format_exc())
             raise
 
-    def _stretch_clip(self, track_index, clip_index, length):
-        """Stretch clip to new length"""
-        try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-
-            track = self._song.tracks[track_index]
-
-            if clip_index < 0 or clip_index >= len(track.clip_slots):
-                raise IndexError("Clip index out of range")
-
-            clip_slot = track.clip_slots[clip_index]
-            if not clip_slot.has_clip:
-                raise Exception("No clip in slot")
-
-            clip_slot.crop_clip()
-            result = {"cropped": True}
-            return result
-        except Exception as e:
-            self.log_message("Error stretching clip: " + str(e))
-            self.log_message(traceback.format_exc())
-            raise
-
-    def _resize_clip(self, track_index, clip_index, length):
-        """Resize clip to new length"""
-        try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-
-            track = self._song.tracks[track_index]
-
-            if clip_index < 0 or clip_index >= len(track.clip_slots):
-                raise IndexError("Clip index out of range")
-
-            clip_slot = track.clip_slots[clip_index]
-            if not clip_slot.has_clip:
-                raise Exception("No clip in slot")
-
-            clip_slot.crop_clip()
-            result = {"resized": True, "length": length}
-            return result
-        except Exception as e:
-            self.log_message("Error resizing clip: " + str(e))
-            self.log_message(traceback.format_exc())
-            raise
-
-    def _duplicate_clip_to(
-        self, track_index, clip_index, target_track_index, target_clip_index
-    ):
-        """Duplicate clip to specific slot"""
-        try:
-            if track_index < 0 or track_index >= len(self._song.tracks):
-                raise IndexError("Track index out of range")
-            if target_track_index < 0 or target_track_index >= len(self._song.tracks):
-                raise IndexError("Target track index out of range")
-
-            track = self._song.tracks[track_index]
-            if clip_index < 0 or clip_index >= len(track.clip_slots):
-                raise IndexError("Clip index out of range")
-            clip_slot = track.clip_slots[clip_index]
-            if not clip_slot.has_clip:
-                raise Exception("No clip in slot")
-
-            target_track = self._song.tracks[target_track_index]
-            if target_clip_index < 0 or target_clip_index >= len(
-                target_track.clip_slots
-            ):
-                raise IndexError("Target clip index out of range")
-            target_slot = target_track.clip_slots[target_clip_index]
-
-            clip_slot.duplicate_clip_to(target_slot)
-            result = {"duplicated": True, "to": [target_track_index, target_clip_index]}
-            return result
-        except Exception as e:
-            self.log_message("Error duplicating clip to: " + str(e))
-            raise
 
     def _group_tracks(self, track_indices):
         """Group multiple tracks"""
@@ -3680,7 +3604,7 @@ class AbletonMCP(ControlSurface):
 
             return result
         except Exception as e:
-self.log_message("Error getting browser item: " + str(e))
+            self.log_message("Error getting browser item: " + str(e))
             self.log_message(traceback.format_exc())
             raise
 
@@ -4048,10 +3972,40 @@ self.log_message("Error getting browser item: " + str(e))
 
                 if not found:
                     return {
-            "path": path,
-            "error": "Path part '{0}' not found".format(part),
-            "items": [],
-        }
+                        "path": path,
+                        "error": "Path part '{0}' not found".format(part),
+                        "items": [],
+                    }
+
+            # Return the items at the current path
+            items = []
+            if hasattr(current_item, "children"):
+                for child in current_item.children:
+                    item_info = {
+                        "name": child.name if hasattr(child, "name") else "Unknown",
+                        "is_folder": hasattr(child, "children") and bool(child.children),
+                        "is_device": hasattr(child, "is_device") and child.is_device,
+                        "is_loadable": hasattr(child, "is_loadable") and child.is_loadable,
+                        "uri": child.uri if hasattr(child, "uri") else None,
+                    }
+                    items.append(item_info)
+
+            result = {
+                "path": path,
+                "name": current_item.name if hasattr(current_item, "name") else "Unknown",
+                "uri": current_item.uri if hasattr(current_item, "uri") else None,
+                "is_folder": hasattr(current_item, "children") and bool(current_item.children),
+                "is_device": hasattr(current_item, "is_device") and current_item.is_device,
+                "is_loadable": hasattr(current_item, "is_loadable") and current_item.is_loadable,
+                "items": items,
+            }
+
+            self.log_message("Retrieved {0} items at path: {1}".format(len(items), path))
+            return result
+        except Exception as e:
+            self.log_message("Error getting browser items at path: " + str(e))
+            self.log_message(traceback.format_exc())
+            raise
 
     def _detect_clip_key(self, track_index, clip_index):
         """
