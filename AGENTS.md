@@ -34,6 +34,7 @@ Control Ableton Live via AI assistants using Model Context Protocol. Python-base
 **Production Scripts Moved:**
 - Dub techno: `~/git/dub` - 2-hour dub techno automation, generative music
 - Reggae: `~/git/reggae` - Reggae/dub production scripts
+- Deep house: `~/git/deep-house` - Deep house production scripts
 ./
 ├── MCP_Server/              # Core MCP server (108 TCP + 9 UDP commands)
 ├── AbletonMCP_Remote_Script/ # Ableton Remote Script (socket server)
