@@ -1,0 +1,103 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-opencode/master/assets/oh-my-opencode.schema.json",
+  "google_auth": false,
+
+  "disabled_hooks": ["agent-usage-reminder", "startup-toast"],
+
+  "agents": {
+    "sisyphus": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.3
+    },
+    "sisyphus-junior": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.3
+    },
+    "prometheus": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.2
+    },
+    "metis": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.1
+    },
+    "momus": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.1
+    },
+    "atlas": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.2
+    },
+    "oracle": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.1
+    },
+    "librarian": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.2
+    },
+    "explore": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.1
+    },
+    "multimodal-looker": {
+      "model": "zai/glm-4.6V",
+      "temperature": 0.3
+    },
+    "frontend-ui-ux-engineer": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.5
+    },
+    "document-writer": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.5
+    }
+  },
+
+  "categories": {
+    "visual-engineering": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.5
+    },
+    "ultrabrain": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.1
+    },
+    "artistry": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.7
+    },
+    "quick": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.2
+    },
+    "deep": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.2
+    },
+    "unspecified-low": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.3
+    },
+    "unspecified-high": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.3
+    },
+    "writing": {
+      "model": "local-llm/Qwen/Qwen3.5-35B-A3B",
+      "temperature": 0.5
+    }
+  },
+
+  "background_task": {
+    "defaultConcurrency": 5,
+    "providerConcurrency": {
+      "llamacpp": 5,
+      "local-llm": 8,
+      "zai": 5,
+      "saia": 10,
+      "saiav2": 0
+    }
+  }
+}

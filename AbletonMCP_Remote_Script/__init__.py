@@ -2816,15 +2816,28 @@ class AbletonMCP(ControlSurface):
                 )
                 if notes_list:
                     for i, note in enumerate(notes_list):
-                        notes.append(
-                            {
-                                "pitch": note.pitch,
-                                "start_time": note.start_time,
-                                "duration": note.duration,
-                                "velocity": note.velocity,
-                                "mute": note.mute if hasattr(note, "mute") else False,
-                            }
-                        )
+                        # Handle both tuple format (Ableton 11) and object format (Ableton 12+)
+                        if hasattr(note, "pitch"):
+                            notes.append(
+                                {
+                                    "pitch": note.pitch,
+                                    "start_time": note.start_time,
+                                    "duration": note.duration,
+                                    "velocity": note.velocity,
+                                    "mute": note.mute if hasattr(note, "mute") else False,
+                                }
+                            )
+                        else:
+                            # Tuple format: (pitch, start_time, duration, velocity, mute)
+                            notes.append(
+                                {
+                                    "pitch": note[0],
+                                    "start_time": note[1],
+                                    "duration": note[2],
+                                    "velocity": note[3],
+                                    "mute": note[4] if len(note) > 4 else False,
+                                }
+                            )
 
             if not notes:
                 raise Exception(
