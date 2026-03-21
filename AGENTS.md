@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-13 05:28:00
-**Commit:** 30c5aa1
+**Generated:** 2026-03-14
+**Commit:** (current)
 **Branch:** main
 
 ## OVERVIEW
@@ -12,46 +12,54 @@ Control Ableton Live via AI assistants using Model Context Protocol. Python-base
 ./
 ├── MCP_Server/              # Core MCP server (108 TCP + 9 UDP commands)
 ├── AbletonMCP_Remote_Script/ # Ableton Remote Script (socket server)
-├── sets/                    # Pattern utilities (production moved to ~/git/dub, ~/git/reggae)
+├── dub/                      # Dub techno production module (active)
+│   ├── core/                # Evolution engine, pattern generator
+│   ├── mcp/                 # MCP client integration
+│   ├── cli/                 # Command-line interface
+│   ├── session/             # Session builder
+│   ├── genres/              # Genre-specific patterns (dub_techno, reggae)
+│   └── utils/               # Utility functions
 ├── scripts/                  # Utilities and tests
 │   ├── test/                # Test scripts
 │   ├── util/                # Utility scripts
 │   ├── drum_tools/          # Drum-related utilities
-│   ├── automation/          # General automation scripts
-│   └── analysis/            # Analysis tools
+│   ├── analysis/            # Analysis tools
+│   └── live_dj_*.py         # Live performance scripts
 ├── tests/                    # Integration test suite
+│   ├── debug/               # Debug/test scripts (moved from root)
+│   ├── integration/dub/     # Dub integration tests
+│   └── test_music_theory/   # Music theory unit tests
 ├── docs/                     # Documentation
-│   ├── archive/             # Archived status files
+│   ├── archive/             # Archived files (status, rework, sets)
+│   │   ├── status/          # Old status/verification docs
+│   │   ├── rework/          # Deprecated HTTP/OSC protocols
+│   │   └── sets/            # Legacy pattern utilities
 │   └── vst-plugins/         # VST documentation
 ├── elevenlabs_mcp/           # Voice generation integration
 ├── max_devices/              # Max for Live audio export device
 ├── music_theory/             # Music theory utilities
 ├── configs/                  # Configuration files
-├── skills/                   # OpenCode skills
-└── rework/                   # Experimental scripts (HTTP/OSC - reference only)
+├── examples/                 # Example scripts
+│   └── audio_modulation/     # Audio modulation examples
+└── skills/                   # OpenCode skills
 ```
-
-**Production Scripts Moved:**
-- Dub techno: `~/git/dub` - 2-hour dub techno automation, generative music, dub-specific scripts
-- Reggae: `~/git/reggae` - Reggae/dub production scripts
-- Deep house: `~/git/deep-house` - Deep house production scripts
 
 ## WHERE TO LOOK
 | Task                  | Location                                    |
 |-----------------------|---------------------------------------------|
 | Protocol handlers     | MCP_Server/server.py                         |
 | Remote Script API     | AbletonMCP_Remote_Script/__init__.py         |
-| Dub techno production | ~/git/dub/ (separate repo)                   |
-| Reggae production     | ~/git/reggae/ (separate repo)                |
+| Dub techno production | dub/ (this repo)                             |
 | Drum utilities        | scripts/drum_tools/                          |
 | Test utilities        | scripts/test/                                |
-| General utilities     | scripts/util/                                |
+| Debug/test scripts    | tests/debug/                                 |
 | Integration tests     | tests/integration/                           |
+| General utilities     | scripts/util/                                |
 | Voice generation      | elevenlabs_mcp/                              |
 | Audio export          | max_devices/                                 |
 | Documentation         | docs/                                        |
 | DJ performance        | scripts/live_dj_*.py, scripts/ultra_dj_loop.py |
-| Rework (ref only)     | rework/ (HTTP/OSC protocols - superseded) |
+| Archived files        | docs/archive/                                |
 
 ## CONVENTIONS
 - **Parameter normalization**: All device/track parameters use 0.0-1.0 normalized values
@@ -67,6 +75,8 @@ Control Ableton Live via AI assistants using Model Context Protocol. Python-base
 - NEVER use absolute parameter values (always normalize to 0.0-1.0)
 - NEVER use UDP for Category D operations (30 critical commands: all get_*, delete_*, quantize, mix, crop, undo/redo, recording, heavy operations)
 - NEVER modify LSP server configuration
+- NEVER create MIDI clips on audio tracks (track.has_midi_input must be true)
+- NEVER load empty Drum Rack without a kit preset (use pre-configured presets only)
 
 ## UNIQUE STYLES
 - **Dual TCP/UDP architecture**: 108 TCP commands (request/response) vs 9 UDP commands (fire-and-forget for real-time control)
@@ -267,8 +277,12 @@ set_track_name(3, "Horns_Melody")
 
 ### Step 4: Load Instruments (CRITICAL - DO NOT SKIP)
 ```
-# Drums - Load Drum Rack first
-load_instrument_or_effect(0, "query:Drums#Drum%20Rack")
+# Drums - Load a specific drum kit preset (NOT empty Drum Rack!)
+load_instrument_or_effect(0, "query:Drums#FileId_58622")  # 32 Pad Kit Jazz
+
+# Or use browser navigation to find specific presets:
+# browser_item_children("query:Drums") → list available kits
+# load_instrument_or_effect(0, "query:Drums#Kit%20Name")
 
 # Bass - Load bass synth
 load_instrument_or_effect(1, "query:Synths#Bass")
@@ -301,9 +315,44 @@ add_notes_to_clip(1, 0, [...])
    ```
    # WRONG - empty drum rack (no sounds!)
    load_instrument_or_effect(0, "query:Drums#Drum%20Rack")
-   
+
    # CORRECT - load an actual drum kit
    load_instrument_or_effect(0, "query:Drums#FileId_58622")  # 32 Pad Kit Jazz
    # OR use the load_drum_kit command:
    load_drum_kit(0, "Drums/Drum Rack", "drums/acoustic/kit1")
    ```
+5. **Creating clips on audio tracks** - Will fail with clear error message:
+   ```
+   # Error: "Cannot create MIDI clip on this track. The track does not support MIDI input. Use create_midi_track() first or ensure track is a MIDI track."
+   # Solution: Always use create_midi_track() before creating clips
+   create_midi_track(0)
+   create_clip(0, 0, 4)  # Now this will work
+   ```
+
+## TROUBLESHOOTING
+
+### Clip Creation Failures
+
+**Symptom**: "Cannot create MIDI clip on this track. The track does not support MIDI input."
+**Cause**: Attempting to create MIDI clip on audio track
+**Solution**: Use `create_midi_track()` first, or ensure track has MIDI input
+
+**Symptom**: "Clip creation failed - clip slot is still empty"
+**Cause**: Internal Ableton issue or timing problem
+**Solution**: Retry the operation, check Ableton console for errors
+
+### Drum Rack Issues
+
+**Symptom**: Empty Drum Rack (128 unassigned pads)
+**Cause**: Loaded Drum Rack device without a kit preset
+**Solution**: Use `load_instrument_or_effect()` with a specific kit preset, not the base "Drum Rack" device
+
+**Symptom**: Wrong instrument/sound loaded
+**Cause**: Browser query matched wrong item
+**Solution**: Use specific FileId in query (e.g., `query:Drums#FileId_58622`)
+
+### Track Deletion Issues
+
+**Symptom**: "Index 0 cannot be deleted"
+**Cause**: May be Ableton API restriction or timing issue
+**Solution**: Check Ableton console for diagnostic logs, try deleting from highest index first

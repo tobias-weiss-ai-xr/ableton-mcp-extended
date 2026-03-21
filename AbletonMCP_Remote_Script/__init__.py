@@ -1193,6 +1193,14 @@ class AbletonMCP(ControlSurface):
 
             track = self._song.tracks[track_index]
 
+            # Validate track supports MIDI
+            if not track.has_midi_input:
+                raise Exception(
+                    "Cannot create MIDI clip on this track. "
+                    "The track does not support MIDI input. "
+                    "Use create_midi_track() first or ensure track is a MIDI track."
+                )
+
             if clip_index < 0 or clip_index >= len(track.clip_slots):
                 raise IndexError("Clip index out of range")
 
@@ -1204,6 +1212,10 @@ class AbletonMCP(ControlSurface):
 
             # Create the clip
             clip_slot.create_clip(length)
+
+            # Verify the clip was actually created
+            if not clip_slot.has_clip:
+                raise Exception("Clip creation failed - clip slot is still empty")
 
             result = {"name": clip_slot.clip.name, "length": clip_slot.clip.length}
             return result
@@ -2011,11 +2023,29 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Track index out of range")
             track = self._song.tracks[track_index]
             track_name = track.name
+
+            # Log before deletion attempt
+            self.log_message(
+                f"[DELETE_TRACK] Attempting to delete track '{track_name}' at index {track_index}"
+            )
+            self.log_message(
+                f"[DELETE_TRACK] Total tracks before deletion: {len(self._song.tracks)}"
+            )
+
             self._song.delete_track(track_index)
+
+            # Log after deletion
+            self.log_message(
+                f"[DELETE_TRACK] Total tracks after deletion: {len(self._song.tracks)}"
+            )
+
             result = {"deleted_index": track_index, "deleted_track": track_name}
             return result
         except Exception as e:
-            self.log_message("Error deleting track: " + str(e))
+            import traceback
+
+            self.log_message(f"[DELETE_TRACK] Error deleting track: {str(e)}")
+            self.log_message(f"[DELETE_TRACK] Stack trace: {traceback.format_exc()}")
             raise
 
     def _set_track_color(self, track_index, color_index):
