@@ -2467,11 +2467,39 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Device index out of range")
             device = track.devices[device_index]
             device_name = device.name if hasattr(device, "name") else "Unknown"
+
+            # Log before deletion attempt
+            self.log_message(
+                f"[DELETE_DEVICE] Attempting to delete device '{device_name}' from track {track_index} (device index {device_index})"
+            )
+            self.log_message(
+                f"[DELETE_DEVICE] Total devices before deletion: {len(track.devices)}"
+            )
+
             device.delete_device()
-            result = {"deleted_device": device_name, "device_index": device_index}
+
+            # Log after deletion and verify
+            self.log_message(
+                f"[DELETE_DEVICE] Total devices after deletion: {len(track.devices)}"
+            )
+
+            # Verify deletion worked
+            remaining_devices = list(track.devices)
+            deleted_successfully = len(remaining_devices) < (device_index + 1)
+
+            result = {
+                "deleted_device": device_name,
+                "device_index": device_index,
+                "verified": deleted_successfully,
+                "track_index": track_index,
+                "devices_remaining": len(remaining_devices),
+            }
             return result
         except Exception as e:
-            self.log_message("Error deleting device: " + str(e))
+            import traceback
+
+            self.log_message(f"[DELETE_DEVICE] Error deleting device: {str(e)}")
+            self.log_message(f"[DELETE_DEVICE] Stack trace: {traceback.format_exc()}")
             raise
 
     def _move_device(self, track_index, device_index, new_position):
@@ -2824,7 +2852,9 @@ class AbletonMCP(ControlSurface):
                                     "start_time": note.start_time,
                                     "duration": note.duration,
                                     "velocity": note.velocity,
-                                    "mute": note.mute if hasattr(note, "mute") else False,
+                                    "mute": note.mute
+                                    if hasattr(note, "mute")
+                                    else False,
                                 }
                             )
                         else:
@@ -3439,7 +3469,6 @@ class AbletonMCP(ControlSurface):
             self.log_message(traceback.format_exc())
             raise
 
-
     def _group_tracks(self, track_indices):
         """Group multiple tracks"""
         try:
@@ -3624,9 +3653,9 @@ class AbletonMCP(ControlSurface):
     def _load_instrument_or_effect(self, track_index, uri):
         """
         Load an instrument or effect onto a track by its URI.
-        
+
         This is a wrapper for _load_browser_item to maintain compatibility.
-        
+
         Parameters:
         - track_index: The track to load onto
         - uri: The URI of the instrument or effect
@@ -3996,24 +4025,33 @@ class AbletonMCP(ControlSurface):
                 for child in current_item.children:
                     item_info = {
                         "name": child.name if hasattr(child, "name") else "Unknown",
-                        "is_folder": hasattr(child, "children") and bool(child.children),
+                        "is_folder": hasattr(child, "children")
+                        and bool(child.children),
                         "is_device": hasattr(child, "is_device") and child.is_device,
-                        "is_loadable": hasattr(child, "is_loadable") and child.is_loadable,
+                        "is_loadable": hasattr(child, "is_loadable")
+                        and child.is_loadable,
                         "uri": child.uri if hasattr(child, "uri") else None,
                     }
                     items.append(item_info)
 
             result = {
                 "path": path,
-                "name": current_item.name if hasattr(current_item, "name") else "Unknown",
+                "name": current_item.name
+                if hasattr(current_item, "name")
+                else "Unknown",
                 "uri": current_item.uri if hasattr(current_item, "uri") else None,
-                "is_folder": hasattr(current_item, "children") and bool(current_item.children),
-                "is_device": hasattr(current_item, "is_device") and current_item.is_device,
-                "is_loadable": hasattr(current_item, "is_loadable") and current_item.is_loadable,
+                "is_folder": hasattr(current_item, "children")
+                and bool(current_item.children),
+                "is_device": hasattr(current_item, "is_device")
+                and current_item.is_device,
+                "is_loadable": hasattr(current_item, "is_loadable")
+                and current_item.is_loadable,
                 "items": items,
             }
 
-            self.log_message("Retrieved {0} items at path: {1}".format(len(items), path))
+            self.log_message(
+                "Retrieved {0} items at path: {1}".format(len(items), path)
+            )
             return result
         except Exception as e:
             self.log_message("Error getting browser items at path: " + str(e))
@@ -4024,79 +4062,145 @@ class AbletonMCP(ControlSurface):
         """
         Detect the musical key of a clip by analyzing its notes.
         Uses the Krumhansl-Schmuckler algorithm for key detection.
-        
+
         Returns: {"key": "A minor", "camelot": "8A", "confidence": 0.85}
         """
         try:
             track = self._song.tracks[track_index]
             clip_slot = track.clip_slots[clip_index]
-            
+
             if not clip_slot.has_clip:
                 return {"error": "No clip in slot"}
-            
+
             clip = clip_slot.clip
             notes = clip.get_notes(0, 0, 999999, 128)
-            
+
             # Extract pitch classes (MIDI note % 12)
             pitch_class_counts = [0] * 12
             for note in notes:
                 pitch_class = note[0] % 12
                 pitch_class_counts[pitch_class] += 1
-            
+
             # Key profiles (Krumhansl-Schmuckler)
-            major_profile = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-            minor_profile = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
-            
+            major_profile = [
+                6.35,
+                2.23,
+                3.48,
+                2.33,
+                4.38,
+                4.09,
+                2.52,
+                5.19,
+                2.39,
+                3.66,
+                2.29,
+                2.88,
+            ]
+            minor_profile = [
+                6.33,
+                2.68,
+                3.52,
+                5.38,
+                2.60,
+                3.53,
+                2.54,
+                4.75,
+                3.98,
+                2.69,
+                3.34,
+                3.17,
+            ]
+
             # Correlation scores for all keys
             correlation_scores = []
             keys = [
-                "C major", "C# major", "D major", "Eb major", "E major", "F major", 
-                "F# major", "G major", "Ab major", "A major", "Bb major", "B major",
-                "A minor", "Bb minor", "B minor", "C minor", "C# minor", "D minor", 
-                "Eb minor", "E minor", "F minor", "F# minor", "G minor", "G# minor"
+                "C major",
+                "C# major",
+                "D major",
+                "Eb major",
+                "E major",
+                "F major",
+                "F# major",
+                "G major",
+                "Ab major",
+                "A major",
+                "Bb major",
+                "B major",
+                "A minor",
+                "Bb minor",
+                "B minor",
+                "C minor",
+                "C# minor",
+                "D minor",
+                "Eb minor",
+                "E minor",
+                "F minor",
+                "F# minor",
+                "G minor",
+                "G# minor",
             ]
-            
+
             # Calculate correlation for each key
             for key_idx in range(24):
                 profile = major_profile if key_idx < 12 else minor_profile
                 key_offset = key_idx % 12
-                
+
                 # Rotate the profile to match the key
                 rotated_profile = profile[key_offset:] + profile[:key_offset]
                 if key_idx >= 12:
                     rotated_profile = rotated_profile[::-1]  # Minor is descending
-                
+
                 # Calculate correlation
                 correlation = 0.0
                 total_notes = sum(pitch_class_counts)
                 if total_notes > 0:
                     for pc in range(12):
-                        correlation += (pitch_class_counts[pc] / total_notes) * rotated_profile[pc]
-                
+                        correlation += (
+                            pitch_class_counts[pc] / total_notes
+                        ) * rotated_profile[pc]
+
                 correlation_scores.append(correlation)
-            
+
             # Find the key with the highest correlation
             best_idx = correlation_scores.index(max(correlation_scores))
             best_key = keys[best_idx]
             best_score = correlation_scores[best_idx]
-            
+
             # Map to Camelot notation
             CAMELOT_WHEEL = {
-                "C major": "8B", "G major": "9B", "D major": "10B", "A major": "11B", 
-                "E major": "12B", "B major": "1B", "F# major": "2B", "Db major": "3B",
-                "Ab major": "4B", "Eb major": "5B", "Bb major": "6B", "F major": "7B",
-                "A minor": "8A", "E minor": "9A", "B minor": "10A", "F# minor": "11A",
-                "C# minor": "12A", "G# minor": "1A", "Eb minor": "2A", "Bb minor": "3A",
-                "F minor": "4A", "C minor": "5A", "G minor": "6A", "D minor": "7A"
+                "C major": "8B",
+                "G major": "9B",
+                "D major": "10B",
+                "A major": "11B",
+                "E major": "12B",
+                "B major": "1B",
+                "F# major": "2B",
+                "Db major": "3B",
+                "Ab major": "4B",
+                "Eb major": "5B",
+                "Bb major": "6B",
+                "F major": "7B",
+                "A minor": "8A",
+                "E minor": "9A",
+                "B minor": "10A",
+                "F# minor": "11A",
+                "C# minor": "12A",
+                "G# minor": "1A",
+                "Eb minor": "2A",
+                "Bb minor": "3A",
+                "F minor": "4A",
+                "C minor": "5A",
+                "G minor": "6A",
+                "D minor": "7A",
             }
-            
+
             camelot_code = CAMELOT_WHEEL.get(best_key, "1A")
-            
+
             return {
                 "key": best_key,
                 "camelot": camelot_code,
                 "confidence": float(best_score),
-                "note_count": len(notes)
+                "note_count": len(notes),
             }
         except Exception as e:
             return {"error": str(e)}
@@ -4104,19 +4208,19 @@ class AbletonMCP(ControlSurface):
     def _snap_notes_to_scale(self, track_index, clip_index, scale="minor", root=60):
         """
         Snap out-of-key notes to the nearest note in a specified scale.
-        
+
         Returns: {"message": "Snapped X notes to A minor scale"}
         """
         try:
             track = self._song.tracks[track_index]
             clip_slot = track.clip_slots[clip_index]
-            
+
             if not clip_slot.has_clip:
                 return {"error": "No clip in slot"}
-            
+
             clip = clip_slot.clip
             notes = list(clip.get_notes(0, 0, 999999, 128))
-            
+
             # Scale intervals
             SCALE_INTERVALS = {
                 "major": [0, 2, 4, 5, 7, 9, 11],
@@ -4129,9 +4233,9 @@ class AbletonMCP(ControlSurface):
                 "pentatonic_minor": [0, 3, 5, 7, 10],
                 "blues": [0, 3, 5, 6, 7, 10],
             }
-            
+
             scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"])
-            
+
             # Generate all notes in the scale
             scale_notes = []
             for octave in range(10):
@@ -4139,11 +4243,11 @@ class AbletonMCP(ControlSurface):
                     note = root + (octave * 12) + interval
                     if 0 <= note <= 127:
                         scale_notes.append(note)
-            
+
             # Snap each note to the nearest scale note
             snapped_count = 0
             new_notes = []
-            
+
             for note in notes:
                 pitch = note[0]
                 if pitch not in scale_notes:
@@ -4153,37 +4257,39 @@ class AbletonMCP(ControlSurface):
                     snapped_count += 1
                 else:
                     new_notes.append(note)
-            
+
             # Update the clip
             if snapped_count > 0:
                 clip.remove_notes(0, 0, 999999, 128)
                 clip.set_notes(tuple(new_notes))
-            
+
             return {
                 "message": f"Snapped {snapped_count} notes to {scale} scale (root={root})"
             }
         except Exception as e:
             return {"error": str(e)}
 
-    def _create_scale_reference_clip(self, track_index, clip_index, scale="minor", root=60, octaves=3):
+    def _create_scale_reference_clip(
+        self, track_index, clip_index, scale="minor", root=60, octaves=3
+    ):
         """
         Create a clip containing all notes of a scale (for Fold function).
         Places notes before 1.1.1 so they're hidden but available for Fold.
-        
+
         Returns: {"message": "Created C minor scale reference clip with 21 notes"}
         """
         try:
             track = self._song.tracks[track_index]
             clip_slot = track.clip_slots[clip_index]
-            
+
             # Create clip
             clip_slot.create_clip(4.0)
-            
+
             if not clip_slot.has_clip:
                 return {"error": "Failed to create clip"}
-            
+
             clip = clip_slot.clip
-            
+
             # Scale intervals
             SCALE_INTERVALS = {
                 "major": [0, 2, 4, 5, 7, 9, 11],
@@ -4196,9 +4302,9 @@ class AbletonMCP(ControlSurface):
                 "pentatonic_minor": [0, 3, 5, 7, 10],
                 "blues": [0, 3, 5, 6, 7, 10],
             }
-            
+
             scale_intervals = SCALE_INTERVALS.get(scale, SCALE_INTERVALS["minor"])
-            
+
             # Generate notes
             notes = []
             note_index = 0
@@ -4206,45 +4312,81 @@ class AbletonMCP(ControlSurface):
                 for interval in scale_intervals:
                     pitch = root + (octave * 12) + interval
                     if 0 <= pitch <= 127:
-                        notes.append({
-                            "pitch": pitch,
-                            "start_time": -1.0 - (note_index * 0.1),  # Before 1.1.1
-                            "duration": 0.1,
-                            "velocity": 100,
-                            "mute": False,
-                        })
+                        notes.append(
+                            {
+                                "pitch": pitch,
+                                "start_time": -1.0 - (note_index * 0.1),  # Before 1.1.1
+                                "duration": 0.1,
+                                "velocity": 100,
+                                "mute": False,
+                            }
+                        )
                         note_index += 1
-            
+
             # Add notes to clip
             result = self._add_notes_to_clip(track_index, clip_index, notes)
-            
+
             return {
                 "message": f"Created {scale} scale reference clip (root={root}, octaves={octaves}) with {len(notes)} notes",
-                "notes_added": len(notes)
+                "notes_added": len(notes),
             }
         except Exception as e:
             return {"error": str(e)}
 
-    def _create_chord_progression(self, track_index, clip_index, key="C", progression=["I", "V", "vi", "IV"], duration_per_chord=4.0):
+    def _create_chord_progression(
+        self,
+        track_index,
+        clip_index,
+        key="C",
+        progression=["I", "V", "vi", "IV"],
+        duration_per_chord=4.0,
+    ):
         """
         Create a chord progression in a clip from Roman numerals.
-        
+
         Returns: {"message": "Created C major chord progression with 4 chords"}
         """
         try:
             # Map key to root note and mode
             KEY_ROOTS = {
-                "C": 60, "C#": 61, "Db": 61, "D": 62, "D#": 63, "Eb": 63,
-                "E": 64, "F": 65, "F#": 66, "Gb": 66, "G": 67, "G#": 68,
-                "Ab": 68, "A": 69, "A#": 70, "Bb": 70, "B": 71,
-                "Am": 57, "A#m": 58, "Bbm": 58, "Bm": 59, "Cm": 60, "C#m": 61,
-                "Dbm": 61, "Dm": 62, "D#m": 63, "Ebm": 63, "Em": 64, "Fm": 65,
-                "F#m": 66, "Gbm": 66, "Gm": 67, "G#m": 68,
+                "C": 60,
+                "C#": 61,
+                "Db": 61,
+                "D": 62,
+                "D#": 63,
+                "Eb": 63,
+                "E": 64,
+                "F": 65,
+                "F#": 66,
+                "Gb": 66,
+                "G": 67,
+                "G#": 68,
+                "Ab": 68,
+                "A": 69,
+                "A#": 70,
+                "Bb": 70,
+                "B": 71,
+                "Am": 57,
+                "A#m": 58,
+                "Bbm": 58,
+                "Bm": 59,
+                "Cm": 60,
+                "C#m": 61,
+                "Dbm": 61,
+                "Dm": 62,
+                "D#m": 63,
+                "Ebm": 63,
+                "Em": 64,
+                "Fm": 65,
+                "F#m": 66,
+                "Gbm": 66,
+                "Gm": 67,
+                "G#m": 68,
             }
-            
+
             root_note = KEY_ROOTS.get(key, 60)
             is_minor = "m" in key.lower()
-            
+
             # Chord intervals
             CHORD_INTERVALS = {
                 "major": [0, 4, 7],
@@ -4255,73 +4397,84 @@ class AbletonMCP(ControlSurface):
                 "min7": [0, 3, 7, 10],
                 "dom7": [0, 4, 7, 10],
             }
-            
+
             # Scale intervals
             SCALE_INTERVALS = {
                 "major": [0, 2, 4, 5, 7, 9, 11],
                 "minor": [0, 2, 3, 5, 7, 8, 10],
             }
-            
-            scale_intervals = SCALE_INTERVALS["minor"] if is_minor else SCALE_INTERVALS["major"]
-            
+
+            scale_intervals = (
+                SCALE_INTERVALS["minor"] if is_minor else SCALE_INTERVALS["major"]
+            )
+
             # Map Roman numerals to scale degrees
             ROMAN_TO_DEGREE = {
-                "I": 1, "i": 1,
-                "II": 2, "ii": 2,
-                "III": 3, "iii": 3,
-                "IV": 4, "iv": 4,
-                "V": 5, "v": 5,
-                "VI": 6, "vi": 6,
-                "VII": 7, "vii": 7,
+                "I": 1,
+                "i": 1,
+                "II": 2,
+                "ii": 2,
+                "III": 3,
+                "iii": 3,
+                "IV": 4,
+                "iv": 4,
+                "V": 5,
+                "v": 5,
+                "VI": 6,
+                "vi": 6,
+                "VII": 7,
+                "vii": 7,
             }
-            
+
             # Build chords
             track = self._song.tracks[track_index]
             clip_slot = track.clip_slots[clip_index]
-            
+
             # Create clip
             clip_slot.create_clip(duration_per_chord * len(progression))
-            
+
             if not clip_slot.has_clip:
                 return {"error": "Failed to create clip"}
-            
+
             clip = clip_slot.clip
             all_notes = []
-            
+
             for chord_idx, roman in enumerate(progression):
                 degree = ROMAN_TO_DEGREE.get(roman, 1)
                 if degree < 1 or degree > 7:
                     continue
-                
+
                 # Get root note for the chord
                 scale_note = root_note + scale_intervals[degree - 1]
-                
+
                 # Determine chord type (major/minor)
                 chord_type = "minor" if is_minor and degree in [2, 3, 6, 7] else "major"
                 chord_type = "dim" if degree == 7 and is_minor else chord_type
-                
+
                 # Get chord intervals
                 intervals = CHORD_INTERVALS.get(chord_type, CHORD_INTERVALS["major"])
-                
+
                 # Add chord notes
                 for interval in intervals:
                     pitch = scale_note + interval
                     if 0 <= pitch <= 127:
-                        all_notes.append({
-                            "pitch": pitch,
-                            "start_time": chord_idx * duration_per_chord,
-                            "duration": duration_per_chord,
-                            "velocity": 100,
-                            "mute": False,
-                        })
-            
+                        all_notes.append(
+                            {
+                                "pitch": pitch,
+                                "start_time": chord_idx * duration_per_chord,
+                                "duration": duration_per_chord,
+                                "velocity": 100,
+                                "mute": False,
+                            }
+                        )
+
             # Add notes to clip
             result = self._add_notes_to_clip(track_index, clip_index, all_notes)
-            
+
             return {
                 "message": f"Created chord progression in {key} with {len(progression)} chords",
                 "chords_created": len(progression),
-                "notes_added": len(all_notes)
+                "notes_added": len(all_notes),
             }
         except Exception as e:
             return {"error": str(e)}
