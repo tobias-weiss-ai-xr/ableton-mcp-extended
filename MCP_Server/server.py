@@ -2,10 +2,10 @@
 # Default URIs for common audio effects (Reverb, Delay, EQ, Compressor)
 # These map to Ableton's built-in devices in the audio_effects category
 EFFECT_URIS = {
-    "Reverb": "query:Audio/Effects/Reverb",
-    "Delay": "query:Audio/Effects/Delay",
-    "EQ": "query:Audio/Effects/EQ",
-    "Compressor": "query:Audio/Effects/Compressor",
+    "Reverb": "query:Audio Effects#Reverb",
+    "Delay": "query:Audio Effects#Delay",
+    "EQ": "query:Audio Effects#EQ Eight",
+    "Compressor": "query:Audio Effects#Compressor",
 }
 # ableton_mcp_server.py
 from mcp.server.fastmcp import FastMCP, Context
@@ -29,8 +29,8 @@ import time
 from datetime import datetime, timezone
 import functools
 
-# Audio Analysis imports
-from MCP_Server.audio_analysis import AudioAnalyzer, AudioAnalyzerConfig
+# Global audio analyzer instance
+_audio_analyzer = None
 
 # Global audio analyzer instance
 _audio_analyzer: AudioAnalyzer | None = None
@@ -49,6 +49,7 @@ from MCP_Server.browser_cache import (
 # ABLETON CONNECTION CLASS
 # ============================================================================
 
+
 @dataclass
 class AbletonConnection:
     host: str
@@ -57,7 +58,7 @@ class AbletonConnection:
     udp_port: int = 9878
 
     def connect(self) -> bool:
-        """Connect to the Ableton Remote Script socket server"""
+        """Connect to Ableton Remote Script socket server"""
         if self.sock:
             return True
 
@@ -68,13 +69,11 @@ class AbletonConnection:
             return True
         except Exception as e:
             logger.error(f"Failed to connect to Ableton: {str(e)}")
+            self.sock = None
             return False
-        finally:
-            if not self.sock or self.sock.fileno() == -1:
-                self.sock = None
 
     def disconnect(self):
-        """Disconnect from the Ableton Remote Script"""
+        """Disconnect from Ableton Remote Script"""
         if self.sock:
             try:
                 self.sock.close()
@@ -83,10 +82,62 @@ class AbletonConnection:
             finally:
                 self.sock = None
 
+    def send_command_udp(
+        self, command_type: str, params: Dict[str, Any] = None
+    ) -> None:
+        """
+        Send command via UDP (fire-and-forget).
+
+        This sends a command to Ableton using UDP protocol without waiting for a response.
+        Use for high-frequency parameter updates where occasional packet loss is acceptable.
+
+        Parameters:
+        - command_type: Type of command to send (e.g., "set_device_parameter", "set_track_volume")
+        - params: Command parameters as dictionary
+
+        Returns:
+        - None (fire-and-forget, no response)
+
+        UDP-ALLOWED commands (fast, reversible):
+        - set_device_parameter
+        - set_track_volume
+        - set_track_pan
+        - set_track_mute
+        - set_track_solo
+        - set_track_arm
+        - set_clip_launch_mode
+        - fire_clip
+
+        Note: UDP is connectionless, so no connection check is needed.
+        Port 9878 is used for UDP (9877 is TCP).
+        """
+        command = {"type": command_type, "params": params or {}}
+
+        try:
+            logger.info(f"Sending UDP command: {command_type} with params: {params}")
+
+            # Create UDP socket
+            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+            # Send command (fire-and-forget, no response)
+            udp_socket.sendto(
+                json.dumps(command).encode("utf-8"), (self.host, self.udp_port)
+            )
+
+            # Close socket immediately (UDP is connectionless)
+            udp_socket.close()
+
+            logger.info(f"UDP command sent (fire-and-forget): {command_type}")
+
+        except Exception as e:
+            # Log error but don't raise (UDP fire-and-forget acceptable)
+            logger.error(f"Error sending UDP command: {str(e)}")
+            # Continue without raising - UDP can tolerate occasional failures
+
     def receive_full_response(self, sock, buffer_size=8192):
         """Receive the complete response, potentially in multiple chunks"""
         chunks = []
-        sock.settimeout(15.0)
+        sock.settimeout(15.0)  # Increased timeout for operations that might take longer
 
         try:
             while True:
@@ -94,43 +145,146 @@ class AbletonConnection:
                     chunk = sock.recv(buffer_size)
                     if not chunk:
                         if not chunks:
-                            raise Exception("Connection closed before receiving any data")
+                            raise Exception(
+                                "Connection closed before receiving any data"
+                            )
                         break
+
                     chunks.append(chunk)
+
                     # Check if we've received a complete JSON object
                     try:
                         data = b"".join(chunks)
                         json.loads(data.decode("utf-8"))
+                        logger.info(f"Received complete response ({len(data)} bytes)")
                         return data
                     except json.JSONDecodeError:
+                        # Incomplete JSON, continue receiving
                         continue
                 except socket.timeout:
                     logger.warning("Socket timeout during chunked receive")
                     break
+                except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
+                    logger.error(f"Socket connection error during receive: {str(e)}")
+                    raise
         except Exception as e:
             logger.error(f"Error during receive: {str(e)}")
             raise
 
+        # If we get here, we either timed out or broke out of the loop
         if chunks:
             data = b"".join(chunks)
-            return data
+            logger.info(f"Returning data after receive completion ({len(data)} bytes)")
+            try:
+                json.loads(data.decode("utf-8"))
+                return data
+            except json.JSONDecodeError:
+                raise Exception("Incomplete JSON response received")
         else:
             raise Exception("No data received")
 
-    def send_command(self, command_type: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+    def send_command(
+        self, command_type: str, params: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
         """Send a command to Ableton and return the response"""
         if not self.sock and not self.connect():
             raise ConnectionError("Not connected to Ableton")
 
         command = {"type": command_type, "params": params or {}}
 
+        # Check if this is a state-modifying command
+        is_modifying_command = command_type in [
+            "create_midi_track",
+            "create_audio_track",
+            "delete_all_tracks",
+            "delete_track",
+            "set_track_name",
+            "set_track_color",
+            "set_track_fold",
+            "duplicate_track",
+            "create_clip",
+            "delete_clip",
+            "duplicate_clip",
+            "move_clip",
+            "add_notes_to_clip",
+            "delete_notes_from_clip",
+            "quantize_clip",
+            "transpose_clip",
+            "set_clip_name",
+            "set_clip_loop",
+            "set_clip_launch_mode",
+            "create_scene",
+            "delete_scene",
+            "duplicate_scene",
+            "set_scene_name",
+            "set_tempo",
+            "set_time_signature",
+            "set_metronome",
+            "fire_clip",
+            "stop_clip",
+            "start_playback",
+            "stop_playback",
+            "start_recording",
+            "stop_recording",
+            "set_track_monitoring_state",
+            "load_instrument_or_effect",
+            "get_device_parameters",
+            "set_device_parameter",
+            "add_automation_point",
+            "clear_automation",
+            "duplicate_device",
+            "delete_device",
+            "move_device",
+            "set_track_volume",
+            "set_track_pan",
+            "set_track_mute",
+            "set_track_solo",
+            "set_track_arm",
+            "set_send_amount",
+            "load_instrument_preset",
+            "undo",
+            "redo",
+            "get_playhead_position",
+            "set_playhead_position",
+            "create_locator",
+            "delete_locator",
+            "jump_to_locator",
+            "set_loop",
+            "get_clip_notes",
+        ]
+
         try:
+            logger.info(f"Sending command: {command_type} with params: {params}")
+
+            # Send the command
             self.sock.sendall(json.dumps(command).encode("utf-8"))
+            logger.info(f"Command sent, waiting for response...")
+
+            # For state-modifying commands, add a small delay to give Ableton time to process
+            if is_modifying_command:
+                # import time  # removed - using module-level import
+                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
+
+            # Set timeout based on command type
+            timeout = 15.0 if is_modifying_command else 10.0
+            self.sock.settimeout(timeout)
+
+            # Receive the response
             response_data = self.receive_full_response(self.sock)
+            logger.info(f"Received {len(response_data)} bytes of data")
+
+            # Parse the response
             response = json.loads(response_data.decode("utf-8"))
+            logger.info(f"Response parsed, status: {response.get('status', 'unknown')}")
 
             if response.get("status") == "error":
+                logger.error(f"Ableton error: {response.get('message')}")
                 raise Exception(response.get("message", "Unknown error from Ableton"))
+
+            # For state-modifying commands, add another small delay after receiving response
+            if is_modifying_command:
+                # import time  # removed - using module-level import
+                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
 
             return response.get("result", {})
         except socket.timeout:
@@ -143,6 +297,8 @@ class AbletonConnection:
             raise Exception(f"Connection to Ableton lost: {str(e)}")
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON response from Ableton: {str(e)}")
+            if "response_data" in locals() and response_data:
+                logger.error(f"Raw response (first 200 bytes): {response_data[:200]}")
             self.sock = None
             raise Exception(f"Invalid response from Ableton: {str(e)}")
         except Exception as e:
@@ -176,7 +332,9 @@ def get_ableton_connection():
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
             try:
-                logger.info(f"Connecting to Ableton (attempt {attempt}/{max_attempts})...")
+                logger.info(
+                    f"Connecting to Ableton (attempt {attempt}/{max_attempts})..."
+                )
                 _ableton_connection = AbletonConnection(host="127.0.0.1", port=9877)
                 if _ableton_connection.connect():
                     logger.info("Created new persistent connection to Ableton")
@@ -198,18 +356,22 @@ def get_ableton_connection():
 
             if attempt < max_attempts:
                 import time
+
                 time.sleep(1.0)
 
     # Safety check - should never happen, but ensures we never return None
     if _ableton_connection is None:
         logger.error("SAFETY CHECK: _ableton_connection is None after all attempts!")
-        raise Exception("Internal error: connection is None after successful connection attempt")
-    
+        raise Exception(
+            "Internal error: connection is None after successful connection attempt"
+        )
+
     return _ableton_connection
 
 
 # Use orjson for faster JSON serialization (3-10x faster than stdlib json)
 try:
+
     def json_dumps(obj, indent=None):
         """Fast JSON serialization using orjson with fallback"""
         if indent:
@@ -246,22 +408,23 @@ INSTRUMENT_DEVICE_INDEX = 0  # First device is always the instrument
 DEVICE_ON_PARAMETER_INDEX = 0  # Parameter 0 is "Device On"
 
 
-
 # ===== UDP ELIGIBLE COMMANDS (UPDATED FOR AUDIO) =====
 # Commands suitable for UDP fire-and-forget parameter updates
-UDP_ELIGIBLE_COMMANDS = frozenset([
-    "set_device_parameter",
-    "set_track_volume",
-    "set_track_pan",
-    "set_track_mute",
-    "set_track_solo",
-    "set_track_arm",
-    "set_clip_launch_mode",
-    "fire_clip",
-    "set_master_volume",
-    "set_audio_effect_parameter",  # NEW - UDP-eligible
-    "set_parameters_bulk",        # NEW - UDP-eligible
-])
+UDP_ELIGIBLE_COMMANDS = frozenset(
+    [
+        "set_device_parameter",
+        "set_track_volume",
+        "set_track_pan",
+        "set_track_mute",
+        "set_track_solo",
+        "set_track_arm",
+        "set_clip_launch_mode",
+        "fire_clip",
+        "set_master_volume",
+        "set_audio_effect_parameter",  # NEW - UDP-eligible
+        "set_parameters_bulk",  # NEW - UDP-eligible
+    ]
+)
 
 
 def is_instrument_disable_attempt(
@@ -277,6 +440,7 @@ def is_instrument_disable_attempt(
         and parameter_index == DEVICE_ON_PARAMETER_INDEX
         and value < 0.5  # Device On uses 0=off, 1=on
     )
+
 
 def validate_parameter_change(
     device_index: int, parameter_index: int, value: float, context: str = ""
@@ -559,263 +723,6 @@ CHORD_INTERVALS = {
 }
 
 
-@dataclass
-class AbletonConnection:
-    host: str
-    port: int
-    sock: socket.socket = None
-    udp_port: int = 9878
-
-    def connect(self) -> bool:
-        """Connect to the Ableton Remote Script socket server"""
-        if self.sock:
-            return True
-
-        try:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.connect((self.host, self.port))
-            logger.info(f"Connected to Ableton at {self.host}:{self.port}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to connect to Ableton: {str(e)}")
-            self.sock = None
-            return False
-
-    def disconnect(self):
-        """Disconnect from the Ableton Remote Script"""
-        if self.sock:
-            try:
-                self.sock.close()
-            except Exception as e:
-                logger.error(f"Error disconnecting from Ableton: {str(e)}")
-            finally:
-                self.sock = None
-
-    def send_command_udp(
-        self, command_type: str, params: Dict[str, Any] = None
-    ) -> None:
-        """
-        Send command via UDP (fire-and-forget).
-
-        This sends a command to Ableton using UDP protocol without waiting for a response.
-        Use for high-frequency parameter updates where occasional packet loss is acceptable.
-
-        Parameters:
-        - command_type: Type of command to send (e.g., "set_device_parameter", "set_track_volume")
-        - params: Command parameters as dictionary
-
-        Returns:
-        - None (fire-and-forget, no response)
-
-        UDP-ALLOWED commands (fast, reversible):
-        - set_device_parameter
-        - set_track_volume
-        - set_track_pan
-        - set_track_mute
-        - set_track_solo
-        - set_track_arm
-        - set_clip_launch_mode
-        - fire_clip
-
-        Note: UDP is connectionless, so no connection check is needed.
-        Port 9878 is used for UDP (9877 is TCP).
-        """
-        command = {"type": command_type, "params": params or {}}
-
-        try:
-            logger.info(f"Sending UDP command: {command_type} with params: {params}")
-
-            # Create UDP socket
-            udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-            # Send command (fire-and-forget, no response)
-            udp_socket.sendto(
-                json.dumps(command).encode("utf-8"), (self.host, self.udp_port)
-            )
-
-            # Close socket immediately (UDP is connectionless)
-            udp_socket.close()
-
-            logger.info(f"UDP command sent (fire-and-forget): {command_type}")
-
-        except Exception as e:
-            # Log error but don't raise (UDP fire-and-forget acceptable)
-            logger.error(f"Error sending UDP command: {str(e)}")
-            # Continue without raising - UDP can tolerate occasional failures
-
-    def receive_full_response(self, sock, buffer_size=8192):
-        """Receive the complete response, potentially in multiple chunks"""
-        chunks = []
-        sock.settimeout(15.0)  # Increased timeout for operations that might take longer
-
-        try:
-            while True:
-                try:
-                    chunk = sock.recv(buffer_size)
-                    if not chunk:
-                        if not chunks:
-                            raise Exception(
-                                "Connection closed before receiving any data"
-                            )
-                        break
-
-                    chunks.append(chunk)
-
-                    # Check if we've received a complete JSON object
-                    try:
-                        data = b"".join(chunks)
-                        json.loads(data.decode("utf-8"))
-                        logger.info(f"Received complete response ({len(data)} bytes)")
-                        return data
-                    except json.JSONDecodeError:
-                        # Incomplete JSON, continue receiving
-                        continue
-                except socket.timeout:
-                    logger.warning("Socket timeout during chunked receive")
-                    break
-                except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
-                    logger.error(f"Socket connection error during receive: {str(e)}")
-                    raise
-        except Exception as e:
-            logger.error(f"Error during receive: {str(e)}")
-            raise
-
-        # If we get here, we either timed out or broke out of the loop
-        if chunks:
-            data = b"".join(chunks)
-            logger.info(f"Returning data after receive completion ({len(data)} bytes)")
-            try:
-                json.loads(data.decode("utf-8"))
-                return data
-            except json.JSONDecodeError:
-                raise Exception("Incomplete JSON response received")
-        else:
-            raise Exception("No data received")
-
-    def send_command(
-        self, command_type: str, params: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        """Send a command to Ableton and return the response"""
-        if not self.sock and not self.connect():
-            raise ConnectionError("Not connected to Ableton")
-
-        command = {"type": command_type, "params": params or {}}
-
-        # Check if this is a state-modifying command
-        is_modifying_command = command_type in [
-            "create_midi_track",
-            "create_audio_track",
-            "delete_all_tracks",
-            "delete_track",
-            "set_track_name",
-            "set_track_color",
-            "set_track_fold",
-            "duplicate_track",
-            "create_clip",
-            "delete_clip",
-            "duplicate_clip",
-            "move_clip",
-            "add_notes_to_clip",
-            "delete_notes_from_clip",
-            "quantize_clip",
-            "transpose_clip",
-            "set_clip_name",
-            "set_clip_loop",
-            "set_clip_launch_mode",
-            "create_scene",
-            "delete_scene",
-            "duplicate_scene",
-            "set_scene_name",
-            "set_tempo",
-            "set_time_signature",
-            "set_metronome",
-            "fire_clip",
-            "stop_clip",
-            "start_playback",
-            "stop_playback",
-            "start_recording",
-            "stop_recording",
-            "set_track_monitoring_state",
-            "load_instrument_or_effect",
-            "get_device_parameters",
-            "set_device_parameter",
-            "add_automation_point",
-            "clear_automation",
-            "duplicate_device",
-            "delete_device",
-            "move_device",
-            "set_track_volume",
-            "set_track_pan",
-            "set_track_mute",
-            "set_track_solo",
-            "set_track_arm",
-            "set_send_amount",
-            "load_instrument_preset",
-            "undo",
-            "redo",
-            "get_playhead_position",
-            "set_playhead_position",
-            "create_locator",
-            "delete_locator",
-            "jump_to_locator",
-            "set_loop",
-            "get_clip_notes",
-        ]
-
-        try:
-            logger.info(f"Sending command: {command_type} with params: {params}")
-
-            # Send the command
-            self.sock.sendall(json.dumps(command).encode("utf-8"))
-            logger.info(f"Command sent, waiting for response...")
-
-            # For state-modifying commands, add a small delay to give Ableton time to process
-            if is_modifying_command:
-                # import time  # removed - using module-level import
-                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
-
-            # Set timeout based on command type
-            timeout = 15.0 if is_modifying_command else 10.0
-            self.sock.settimeout(timeout)
-
-            # Receive the response
-            response_data = self.receive_full_response(self.sock)
-            logger.info(f"Received {len(response_data)} bytes of data")
-
-            # Parse the response
-            response = json.loads(response_data.decode("utf-8"))
-            logger.info(f"Response parsed, status: {response.get('status', 'unknown')}")
-
-            if response.get("status") == "error":
-                logger.error(f"Ableton error: {response.get('message')}")
-                raise Exception(response.get("message", "Unknown error from Ableton"))
-
-            # For state-modifying commands, add another small delay after receiving response
-            if is_modifying_command:
-                # import time  # removed - using module-level import
-                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
-
-            return response.get("result", {})
-        except socket.timeout:
-            logger.error("Socket timeout while waiting for response from Ableton")
-            self.sock = None
-            raise Exception("Timeout waiting for Ableton response")
-        except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
-            logger.error(f"Socket connection error: {str(e)}")
-            self.sock = None
-            raise Exception(f"Connection to Ableton lost: {str(e)}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON response from Ableton: {str(e)}")
-            if "response_data" in locals() and response_data:
-                logger.error(f"Raw response (first 200 bytes): {response_data[:200]}")
-            self.sock = None
-            raise Exception(f"Invalid response from Ableton: {str(e)}")
-        except Exception as e:
-            logger.error(f"Error communicating with Ableton: {str(e)}")
-            self.sock = None
-            raise Exception(f"Communication error with Ableton: {str(e)}")
-
-
 @asynccontextmanager
 async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
     """Manage server startup and shutdown lifecycle"""
@@ -852,20 +759,28 @@ mcp = FastMCP(
 # AUDIO EFFECT MANAGEMENT COMMANDS (TCP)
 # =============================================
 
+
 @mcp.tool("load_audio_effect")
-async def load_audio_effect(ctx: Context, track_index: int, effect_type: str, uri: str = "", position: int = -1, preset_name: str = "") -> str:
+async def load_audio_effect(
+    ctx: Context,
+    track_index: int,
+    effect_type: str,
+    uri: str = "",
+    position: int = -1,
+    preset_name: str = "",
+) -> str:
     """
     Load an audio effect (Reverb, Delay, EQ, Compressor) onto a track via high-level API.
-    
+
     Maps effect_type to URI if no URI provided. Optionally applies a preset after loading.
-    
+
     Parameters:
     - track_index: Index of track to load effect on
     - effect_type: Type of effect (Reverb, Delay, EQ, Compressor)
     - uri: Optional URI for specific effect (overrides effect_type URI)
     - position: Device chain position (-1 = end)
     - preset_name: Optional preset to apply after loading
-    
+
     Returns:
     - JSON string: {"loaded": true|false, "device_index": int, "device_name": "..."}
     """
@@ -874,134 +789,176 @@ async def load_audio_effect(ctx: Context, track_index: int, effect_type: str, ur
         if not uri and effect_type in EFFECT_URIS:
             uri = EFFECT_URIS[effect_type]
         elif not uri:
-            return json.dumps({"error": f"No URI provided and effect_type '{effect_type}' not mapped"})
-            
+            return json.dumps(
+                {"error": f"No URI provided and effect_type '{effect_type}' not mapped"}
+            )
+
         # Load the effect via existing browser-item loading path
         response = await load_browser_item(ctx, track_index, uri, position)
         result = json.loads(response)
-        
+
         if not result.get("loaded", False):
-            return json.dumps({"error": f"Failed to load {effect_type} effect", "details": result})
-            
+            return json.dumps(
+                {"error": f"Failed to load {effect_type} effect", "details": result}
+            )
+
         device_index = result.get("device_index", -1)
-        
+
         # Apply preset if requested
         if preset_name and device_index > -1:
-            preset_response = await load_instrument_preset(ctx, track_index, device_index, preset_name)
+            preset_response = await load_instrument_preset(
+                ctx, track_index, device_index, preset_name
+            )
             preset_result = json.loads(preset_response)
             if not preset_result.get("success", False):
-                return json.dumps({
-                    "loaded": True,
-                    "device_index": device_index,
-                    "device_name": result.get("device_name", effect_type),
-                    "preset_warning": f"Failed to apply preset: {preset_result.get('error', 'Unknown error')}"
-                })
-        
-        # Return successful loading info
-        return json.dumps({
-            "loaded": True,
-            "device_index": device_index,
-            "device_name": result.get("device_name", effect_type)
-        })
+                return json.dumps(
+                    {
+                        "loaded": True,
+                        "device_index": device_index,
+                        "device_name": result.get("device_name", effect_type),
+                        "preset_warning": f"Failed to apply preset: {preset_result.get('error', 'Unknown error')}",
+                    }
+                )
 
-    
+        # Return successful loading info
+        return json.dumps(
+            {
+                "loaded": True,
+                "device_index": device_index,
+                "device_name": result.get("device_name", effect_type),
+            }
+        )
+
     except Exception as err:
-        return json.dumps({
-            "error": f"Failed to load audio effect: {str(err)}",
-            "details": traceback.format_exc()
-        })
+        return json.dumps(
+            {
+                "error": f"Failed to load audio effect: {str(err)}",
+                "details": traceback.format_exc(),
+            }
+        )
 
 
 @mcp.tool("set_audio_effect_parameter")
-async def set_audio_effect_parameter(ctx: Context, track_index: int, device_index: int, parameter_index: int, value: float) -> str:
+async def set_audio_effect_parameter(
+    ctx: Context,
+    track_index: int,
+    device_index: int,
+    parameter_index: int,
+    value: float,
+) -> str:
     """
     Set a parameter on an audio effect device (UDP-eligible).
-    
+
     Acts as a thin wrapper over set_device_parameter with bound checking.
-    
+
     Parameters:
     - track_index: Index of track containing the effect
     - device_index: Index of effect device on track
     - parameter_index: Index of parameter to set
     - value: Normalized parameter value (0.0-1.0)
-    
+
     Returns:
     - JSON confirmation of success/failure
     """
     # Value range validation (ensure 0.0-1.0)
     if not 0.0 <= value <= 1.0:
         value = max(0.0, min(1.0, value))  # Clamp to safe bounds
-    
+
     # Delegate to existing set_device_parameter logic
-    return json.loads(set_device_parameter(ctx, track_index, device_index, parameter_index, value))
+    return json.loads(
+        set_device_parameter(ctx, track_index, device_index, parameter_index, value)
+    )
 
 
 @mcp.tool("set_parameters_bulk")
-@mcp.tool("set_parameters_bulk")
-async def set_parameters_bulk(ctx: Context, track_index: int, device_index: int, updates: list) -> str:
+async def set_parameters_bulk(
+    ctx: Context, track_index: int, device_index: int, updates: list
+) -> str:
     """
     Bulk-set multiple parameter values on a device (UDP-eligible).
-    
+
     Parameters:
     - track_index: Index of track
     - device_index: Index of device on track
     - updates: List of parameter updates [{parameter_index: int, value: float}]
-    
+
     Returns:
     - JSON summary of updates {updated: int, errors: int, results: list}
     """
     update_count = 0
     error_messages = []
     results = []
-    
+
     # Validate updates structure
     if not isinstance(updates, list):
         return json.dumps({"error": "updates must be a list"})
-    
+
     # Validate each update
     for update in updates:
         if not isinstance(update, dict):
             error_messages.append(f"Invalid update: {str(update)} - not a dictionary")
             continue
-            
+
         # Ensure all required keys are present
         required_keys = ["parameter_index", "value"]
         missing_keys = [key for key in required_keys if key not in update]
         if missing_keys:
-            error_messages.append(f"Missing keys for update {str(update)}: {', '.join(missing_keys)}")
+            error_messages.append(
+                f"Missing keys for update {str(update)}: {', '.join(missing_keys)}"
+            )
             continue
-            
+
         # Validate parameter index
         param_index = update.get("parameter_index")
         if not isinstance(param_index, int) or param_index < 0:
-            error_messages.append(f"Invalid parameter index {str(param_index)} for update {str(update)}")
+            error_messages.append(
+                f"Invalid parameter index {str(param_index)} for update {str(update)}"
+            )
             continue
-        
+
         # Validate value
         value = update.get("value")
         if not 0.0 <= value <= 1.0:
             value = max(0.0, min(1.0, value))  # Clamp to bounds
-            results.append({"parameter_index": param_index, "result": "clamped", "original_value": value, "clamped_value": value})
-        
+            results.append(
+                {
+                    "parameter_index": param_index,
+                    "result": "clamped",
+                    "original_value": value,
+                    "clamped_value": value,
+                }
+            )
+
         try:
             # Apply each update using existing set_device_parameter
-            result = json.loads(set_device_parameter(ctx, track_index, device_index, param_index, value))
+            result = json.loads(
+                set_device_parameter(ctx, track_index, device_index, param_index, value)
+            )
             if result.get("success", True):
                 update_count += 1
-                results.append({"parameter_index": param_index, "result": "success", "value": value})
+                results.append(
+                    {
+                        "parameter_index": param_index,
+                        "result": "success",
+                        "value": value,
+                    }
+                )
             else:
-                error_messages.append(f"Parameter {param_index}: {result.get('message', 'update failed')}")
+                error_messages.append(
+                    f"Parameter {param_index}: {result.get('message', 'update failed')}"
+                )
         except Exception as err:
             error_messages.append(f"Parameter {param_index}: {str(err)}")
-    
-    # Return summary of results
-    return json.dumps({
-        "updated": update_count,
-        "errors": len(error_messages),
-        "results": results,
-        "error_messages": error_messages
-    })
 
+    # Return summary of results
+    return json.dumps(
+        {
+            "updated": update_count,
+            "errors": len(error_messages),
+            "results": results,
+            "error_messages": error_messages,
+        }
+    )
 
 
 # Core Tool endpoints
@@ -1557,42 +1514,51 @@ def create_drum_pattern(
                         "duration": 0.25,
                         "velocity": 100,
                         "mute": False,
-                    })
+                    }
+                )
 
         # Auto-load Drum Rack and drum kit if track has no device
         # This fixes the issue where create_drum_pattern creates empty Drum Racks
         ableton = get_ableton_connection()
-        track_info = ableton.send_command("get_track_info", {"track_index": track_index})
+        track_info = ableton.send_command(
+            "get_track_info", {"track_index": track_index}
+        )
         devices = track_info.get("devices", [])
-        
+
         if not devices or len(devices) == 0:
             # Track has no device - load default Drum Rack with drum kit
-            logger.info(f"Track {track_index} has no device - loading default Drum Rack and drum kit")
-            
+            logger.info(
+                f"Track {track_index} has no device - loading default Drum Rack and drum kit"
+            )
+
             # Step 1: Load the drum rack
             ableton.send_command(
                 "load_browser_item",
-                {"track_index": track_index, "item_uri": DEFAULT_DRUM_RACK_URI}
+                {"track_index": track_index, "item_uri": DEFAULT_DRUM_RACK_URI},
             )
-            
+
             # Step 2: Get the drum kit items at the default path
             kit_result = ableton.send_command(
                 "get_browser_items_at_path", {"path": DEFAULT_DRUM_KIT_PATH}
             )
-            
+
             # Step 3: Find a loadable drum kit
             kit_items = kit_result.get("items", [])
-            loadable_kits = [item for item in kit_items if item.get("is_loadable", False)]
-            
+            loadable_kits = [
+                item for item in kit_items if item.get("is_loadable", False)
+            ]
+
             if loadable_kits:
                 # Step 4: Load the first loadable kit
                 kit_uri = loadable_kits[0].get("uri")
                 ableton.send_command(
                     "load_browser_item",
-                    {"track_index": track_index, "item_uri": kit_uri}
+                    {"track_index": track_index, "item_uri": kit_uri},
                 )
             else:
-                logger.warning(f"No loadable drum kits found at '{DEFAULT_DRUM_KIT_PATH}'")
+                logger.warning(
+                    f"No loadable drum kits found at '{DEFAULT_DRUM_KIT_PATH}'"
+                )
 
         # First create the clip
         ableton = get_ableton_connection()
@@ -4309,24 +4275,24 @@ def set_loop(ctx: Context, start_bar: int, end_bar: int, enabled: bool = True) -
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_loop", {
-            "start_bar": start_bar,
-            "end_bar": end_bar,
-            "enabled": enabled
-        })
+        result = ableton.send_command(
+            "set_loop", {"start_bar": start_bar, "end_bar": end_bar, "enabled": enabled}
+        )
         return json.dumps(result)
     except Exception as e:
         logger.error(f"Error setting loop: {str(e)}")
         return f"Error setting loop: {str(e)}"
 
+
 # =============================================
 # UDP HANDLERS (AUDIO EFFECTS SUPPORT)
 # =============================================
 
+
 async def _handle_udp_set_audio_effect_parameter(self, command):
     """
     UDP handler for set_audio_effect_parameter.
-    
+
     Extracts fields from command and delegates to safe internal setter.
     """
     params = command.get("params", {})
@@ -4335,13 +4301,15 @@ async def _handle_udp_set_audio_effect_parameter(self, command):
         device_index = int(params.get("device_index", -1))
         parameter_index = int(params.get("parameter_index", -1))
         value = float(params.get("value", 0.0))
-        
+
         if not 0 <= value <= 1.0:
             value = max(0.0, min(1.0, value))  # Clamp bounds for safety
-            
+
         # Safely execute via main thread for thread safety
-        await self._set_device_parameter(track_index, device_index, parameter_index, value)
-        
+        await self._set_device_parameter(
+            track_index, device_index, parameter_index, value
+        )
+
     except (ValueError, KeyError) as err:
         logger.error(f"UDP set_audio_effect_parameter validation failed: {str(err)}")
 
@@ -4349,7 +4317,7 @@ async def _handle_udp_set_audio_effect_parameter(self, command):
 async def _handle_udp_set_parameters_bulk(self, command):
     """
     UDP handler for set_parameters_bulk.
-    
+
     Glorified loop over updates, calling _set_device_parameter for each.
     "
     params = command.get("params", {})
@@ -4357,27 +4325,27 @@ async def _handle_udp_set_parameters_bulk(self, command):
         track_index = int(params.get("track_index", -1))
         device_index = int(params.get("device_index", -1))
         updates = params.get("updates", [])
-        
+
         # Validate updates as list
         if not isinstance(updates, list):
             logger.warning("UDP set_parameters_bulk: updates not a list")
             return
-        
+
         # Process each update in the bulk
         for update in updates:
             try:
                 parameter_index = int(update.get("parameter_index", -1))
                 value = float(update.get("value", 0.0))
-                
+
                 if not 0.0 <= value <= 1.0:
                     value = max(0.0, min(1.0, value))
-                
+
                 # Safe UDP invocation (no response required)
                 await self._set_device_parameter(track_index, device_index, parameter_index, value)
-                
+
             except (ValueError, KeyError) as update_err:
                 logger.error(f"UDP set_parameters_bulk update failed: {str(update_err)}")
-    
+
     except (ValueError, KeyError) as err:
         logger.error(f"UDP set_parameters_bulk validation failed: {str(err)}")
 

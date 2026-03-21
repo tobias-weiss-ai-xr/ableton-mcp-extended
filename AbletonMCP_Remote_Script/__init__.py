@@ -20,6 +20,27 @@ DEFAULT_PORT = 9877
 UDP_PORT = 9878
 HOST = "127.0.0.1"
 
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+# Server configuration
+MAX_PENDING_CONNECTIONS = 5
+SOCKET_TIMEOUT = 1.0
+UDP_BUFFER_SIZE = 1024
+TCP_BUFFER_SIZE = 8192
+COMMAND_TIMEOUT = 10.0
+SERVER_SLEEP_TIME = 0.5
+UDP_SLEEP_TIME = 0.1
+
+# Default values
+DEFAULT_TRACK_INDEX = 0
+DEFAULT_CLIP_INDEX = 0
+DEFAULT_LENGTH = 4.0
+DEFAULT_TEMPO = 120.0
+DEFAULT_VOLUME = 0.75
+DEFAULT_QUANTIZATION = "1 Bar"
+
 
 def create_instance(c_instance):
     """Create and return the AbletonMCP script instance"""
@@ -95,7 +116,9 @@ class AbletonMCP(ControlSurface):
             self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.server.bind((HOST, DEFAULT_PORT))
-            self.server.listen(5)  # Allow up to 5 pending connections
+            self.server.listen(
+                MAX_PENDING_CONNECTIONS
+            )  # Allow up to 5 pending connections
 
             self.running = True
             self.server_thread = threading.Thread(target=self._server_thread)
@@ -128,7 +151,7 @@ class AbletonMCP(ControlSurface):
         try:
             self.log_message("Server thread started")
             # Set a timeout to allow regular checking of running flag
-            self.server.settimeout(1.0)
+            self.server.settimeout(SOCKET_TIMEOUT)
 
             while self.running:
                 try:
@@ -158,7 +181,7 @@ class AbletonMCP(ControlSurface):
                 except Exception as e:
                     if self.running:  # Only log if still running
                         self.log_message("Server accept error: " + str(e))
-                    time.sleep(0.5)
+                    time.sleep(SERVER_SLEEP_TIME)
 
             self.log_message("Server thread stopped")
         except Exception as e:
@@ -172,7 +195,7 @@ class AbletonMCP(ControlSurface):
 
             while self.running:
                 try:
-                    data, addr = self.udp_server_socket.recvfrom(1024)
+                    data, addr = self.udp_server_socket.recvfrom(UDP_BUFFER_SIZE)
                     if not self.running:
                         break
 
@@ -187,7 +210,7 @@ class AbletonMCP(ControlSurface):
                 except Exception as e:
                     if self.running:
                         self.log_message("UDP server loop error: " + str(e))
-                    time.sleep(0.1)
+                    time.sleep(UDP_SLEEP_TIME)
 
             self.log_message("UDP server thread stopped")
         except Exception as e:
@@ -203,7 +226,7 @@ class AbletonMCP(ControlSurface):
             while self.running:
                 try:
                     # Receive data
-                    data = client.recv(8192)
+                    data = client.recv(TCP_BUFFER_SIZE)
 
                     if not data:
                         # Client disconnected
@@ -939,7 +962,7 @@ class AbletonMCP(ControlSurface):
 
                 # Wait for the response with a timeout
                 try:
-                    task_response = response_queue.get(timeout=10.0)
+                    task_response = response_queue.get(timeout=COMMAND_TIMEOUT)
                     if task_response.get("status") == "error":
                         response["status"] = "error"
                         response["message"] = task_response.get(
