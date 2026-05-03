@@ -1,358 +1,99 @@
-# PROJECT KNOWLEDGE BASE
+# AGENTS.md - Ableton MCP Extended
 
-**Generated:** 2026-03-14
-**Commit:** (current)
-**Branch:** main
+Control Ableton Live via AI assistants using Model Context Protocol. Dual TCP/UDP architecture.
 
-## OVERVIEW
-Control Ableton Live via AI assistants using Model Context Protocol. Python-based MCP server with dual TCP/UDP architecture for real-time control and ElevenLabs voice integration.
+## KEY FILES
+| Task | Location |
+|------|----------|
+| MCP server (6411 lines) | `MCP_Server/server.py` |
+| Remote Script (4706 lines) | `AbletonMCP_Remote_Script/__init__.py` |
+| Entry point | `MCP_Server/__init__.py` → `ableton-mcp-extended` |
+| Install | `pip install -e .` |
 
-## STRUCTURE
+## ARCHITECTURE
+
+### Dual-Server Design
+| Server | Port | Protocol | Commands | Latency |
+|--------|------|----------|----------|---------|
+| TCP | 9877 | Request/response | 100+ commands | ~20-50ms |
+| UDP | 9878 | Fire-and-forget | 10 commands | ~0.2ms |
+
+### TCP Commands (port 9877)
+All critical operations - `get_*`, `delete_*`, `create_*`, `quantize`, `undo/redo`, recording, transport.
+
+### UDP Commands (port 9878) - ONLY these 10:
+`set_device_parameter`, `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `set_track_arm`, `set_master_volume`, `set_send_amount`, `fire_clip`, `set_clip_launch_mode`
+
+## CRITICAL RULES
+
+### ANTI-PATTERNS (violations cause hard failures)
+- **NEVER** use absolute parameter values - always normalize to 0.0-1.0
+- **NEVER** use UDP for `get_*`, `delete_*`, `quantize`, `undo/redo`, recording
+- **NEVER** create MIDI clips on audio tracks (must use `create_midi_track()` first)
+- **NEVER** load empty Drum Rack - must load a kit preset with specific FileId
+- **NEVER** attempt direct audio export (impossible via Remote Script API)
+- **NEVER** modify LSP server configuration
+
+### Audio Export
+Remote Script cannot export audio. Use:
+1. Manual export in Ableton UI (File → Export)
+2. Max for Live device (`max_devices/audio_export_device.maxpat`) - must manually trigger bang inlet
+
+## SESSION SETUP WORKFLOW
+
+Required order when creating Ableton session from scratch:
+
 ```
-./
-├── MCP_Server/              # Core MCP server (108 TCP + 9 UDP commands)
-├── AbletonMCP_Remote_Script/ # Ableton Remote Script (socket server)
-├── dub/                      # Dub techno production module (active)
-│   ├── core/                # Evolution engine, pattern generator
-│   ├── mcp/                 # MCP client integration
-│   ├── cli/                 # Command-line interface
-│   ├── session/             # Session builder
-│   ├── genres/              # Genre-specific patterns (dub_techno, reggae)
-│   └── utils/               # Utility functions
-├── scripts/                  # Utilities and tests
-│   ├── test/                # Test scripts
-│   ├── util/                # Utility scripts
-│   ├── drum_tools/          # Drum-related utilities
-│   ├── analysis/            # Analysis tools
-│   └── live_dj_*.py         # Live performance scripts
-├── tests/                    # Integration test suite
-│   ├── debug/               # Debug/test scripts (moved from root)
-│   ├── integration/dub/     # Dub integration tests
-│   └── test_music_theory/   # Music theory unit tests
-├── docs/                     # Documentation
-│   ├── archive/             # Archived files (status, rework, sets)
-│   │   ├── status/          # Old status/verification docs
-│   │   ├── rework/          # Deprecated HTTP/OSC protocols
-│   │   └── sets/            # Legacy pattern utilities
-│   └── vst-plugins/         # VST documentation
-├── elevenlabs_mcp/           # Voice generation integration
-├── max_devices/              # Max for Live audio export device
-├── music_theory/             # Music theory utilities
-├── configs/                  # Configuration files
-├── examples/                 # Example scripts
-│   └── audio_modulation/     # Audio modulation examples
-└── skills/                   # OpenCode skills
+1. delete_all_tracks()                    # Clean slate - remove ALL tracks first
+2. create_midi_track(0), create_midi_track(1), ...  # Create MIDI tracks
+3. set_track_name(0, "Drums"), ...        # Name tracks
+4. load_instrument_or_effect(0, "query:Drums#FileId_58622")  # Load instruments (CRITICAL)
+5. set_tempo(75)                          # Set tempo
+6. create_drum_pattern(0, 0, "one_drop", 4)  # Create patterns
+7. create_clip(1, 0, 4), add_notes_to_clip(1, 0, [...])  # Add MIDI notes
 ```
+
+### Loading Instruments
+```python
+# CORRECT - specific drum kit with FileId
+load_instrument_or_effect(0, "query:Drums#FileId_58622")
+
+# WRONG - empty Drum Rack (128 unassigned pads, silent)
+load_instrument_or_effect(0, "query:Drums#Drum%20Rack")
+```
+
+### Drum Pattern Variants (for `create_drum_pattern`)
+| Pattern | Description | Grid |
+|---------|-------------|------|
+| `one_drop` | Classic dub techno - kick on 1, delayed snare | `|X---|----|--X-|----|` |
+| `rockers` | Jamaican skank - kick/hat offbeat emphasis | `|X-X-|---|X-X-|---|` |
+| `steppers` | Steppers rhythm - even kick distribution | `|X---|X---|X---|X---|` |
+| `house_basic` | Four-on-the-floor with clap | `|X---|---|X---|---|` |
+| `techno_4x4` | Driving techno - continuous kick | `|X---|X---|X---|X---|` |
+| `dub_techno` | Syncopated dub - offbeat accents | `|X---|----|--X-|----|` |
 
 ## WHERE TO LOOK
-| Task                  | Location                                    |
-|-----------------------|---------------------------------------------|
-| Protocol handlers     | MCP_Server/server.py                         |
-| Remote Script API     | AbletonMCP_Remote_Script/__init__.py         |
-| Dub techno production | dub/ (this repo)                             |
-| Drum utilities        | scripts/drum_tools/                          |
-| Test utilities        | scripts/test/                                |
-| Debug/test scripts    | tests/debug/                                 |
-| Integration tests     | tests/integration/                           |
-| General utilities     | scripts/util/                                |
-| Voice generation      | elevenlabs_mcp/                              |
-| Audio export          | max_devices/                                 |
-| Documentation         | docs/                                        |
-| DJ performance        | scripts/live_dj_*.py, scripts/ultra_dj_loop.py |
-| Archived files        | docs/archive/                                |
+| Task | Location |
+|------|----------|
+| Protocol handlers | `MCP_Server/server.py` |
+| Tool registration | `MCP_Server/advanced_tools.py` |
+| Remote Script API | `AbletonMCP_Remote_Script/__init__.py` |
+| Browser cache | `MCP_Server/browser_cache.py` |
+| DJ automation | `dub/enhanced_dj_performance.py`, `scripts/ultra_dj_loop.py` |
+| Tests | `tests/debug/`, `tests/integration/`, `tests/test_music_theory/` |
+| Test scripts | `scripts/test/test_connection.py`, `scripts/test/test_performance_udp.py` |
+| Analysis tools | `scripts/analysis/` |
 
-## CONVENTIONS
-- **Parameter normalization**: All device/track parameters use 0.0-1.0 normalized values
-- **Dual-server architecture**: TCP (port 9877) for reliable operations, UDP (port 9878) for high-frequency parameter updates
-- **NEVER-UDP protocol**: 30 critical operations (get_*, delete_*, quantize, mix, crop, undo/redo, recording) MUST use TCP only
-- **Telegraphic documentation**: Sectioned by functional domain, minimal verbosity
-- **pyproject.toml**: Modern Python packaging with setuptools build backend
-- **Entry points**: MCP_Server/__init__.py (main), AbletonMCP_Remote_Script/__init__.py
-
-## ANTI-PATTERNS (THIS PROJECT)
-- NEVER attempt direct audio export (fundamentally impossible via Remote Script API)
-- NEVER modify Ableton's Remote Script API
-- NEVER use absolute parameter values (always normalize to 0.0-1.0)
-- NEVER use UDP for Category D operations (30 critical commands: all get_*, delete_*, quantize, mix, crop, undo/redo, recording, heavy operations)
-- NEVER modify LSP server configuration
-- NEVER create MIDI clips on audio tracks (track.has_midi_input must be true)
-- NEVER load empty Drum Rack without a kit preset (use pre-configured presets only)
-
-## UNIQUE STYLES
-- **Dual TCP/UDP architecture**: 108 TCP commands (request/response) vs 9 UDP commands (fire-and-forget for real-time control)
-- **High-performance UDP**: Ultra-low latency (~0.2ms avg, 1.5ms P99), 1386+ Hz throughput for parameter sweeps
-- **Manual audio export workflow**: Remote Script can't export audio → requires manual export in Ableton UI or Max for Live device
-- **Project-specific UDP eligibility**: 9 commands pre-approved for UDP (set_device_parameter, set_track_*, set_clip_launch_mode, fire_clip, set_master_volume)
-- **2-hour automation patterns**: dub_techno_2h uses timer-based scene progression, filter automation, section-based volume changes
-
-## MUSIC THEORY & PERFORMANCE TOOLS (21 Commands)
-
-### Constants
-- **CAMELOT_WHEEL**: 24-key mapping for harmonic mixing (Camelot notation)
-- **CHORD_INTERVALS**: 12 chord types (major, minor, dim, aug, maj7, min7, dom7, dim7, sus2, sus4, add9, power)
-- **SCALE_INTERVALS**: 9 scale types (major, minor, dorian, phrygian, lydian, mixolydian, pentatonic_major, pentatonic_minor, blues)
-- **DRUM_PATTERNS**: 6 genre patterns (one_drop, rockers, steppers, house_basic, techno_4x4, dub_techno)
-
-### Scales
-#### Scale Intervals and Character
-| Scale            | Intervals (Semitones) | Character/Usage                          | MCP Command Example |
-|------------------|-----------------------|-------------------------------------------|------------------------|
-| Major            | 0, 2, 4, 5, 7, 9, 11   | Bright, happy, uplifting                | `create_scale_reference_clip` |
-| Minor (Natural)  | 0, 2, 3, 5, 7, 8, 10   | Dark, melancholic, introspective        | `snap_notes_to_scale` |
-| Dorian           | 0, 2, 3, 5, 7, 9, 10   | Jazz, funk, soulful                     | `fire_scene_with_transpose` |
-| Phrygian         | 0, 1, 3, 5, 7, 8, 10   | Exotic, Spanish, metal                  | `batch_transpose_clips` |
-| Lydian           | 0, 2, 4, 6, 7, 9, 11   | Dreamy, floating, film scores           | `apply_filter_buildup` |
-| Mixolydian       | 0, 2, 4, 5, 7, 9, 10   | Blues, rock, jam bands                  | `transpose_all_playing_clips` |
-| Pentatonic Major | 0, 2, 4, 7, 9          | Universal, pop, folk                    | `create_chord_progression` |
-| Pentatonic Minor | 0, 3, 5, 7, 10         | Blues, rock, soloing                    | `apply_energy_curve` |
-| Blues            | 0, 3, 5, 6, 7, 10      | Blues, jazz, soul                       | `set_global_quantization` |
-
-#### Grid Patterns for Controller Layouts
+## RUNNING TESTS
+No pytest.ini or test discovery. Tests are standalone scripts:
+```bash
+python scripts/test/test_connection.py          # Basic connectivity
+python scripts/test/test_performance_udp.py     # UDP throughput benchmarks
+python scripts/test/test_clip_firing.py         # Clip trigger verification
+python scripts/util/check_session_state.py      # Session state query
 ```
-[ Launchpad / Push Layout Example ]
-+-----------------+   +-----------------+
-| C Major         |   | A Minor         |
-| 1 3 5 6 8 10 12 |   | 1 3 4 6 8 9  11 |
-|                 |   |                 |
-| Chord: C-E-G    |   | Chord: A-C-E    |
-+-----------------+   +-----------------+
-
-[ APC Mini Layout Example ]
-+-----------------+-----------------+
-| Scale Notes     | Chord Triads    |
-|                 |                 |
-| C D E F G A B   | I  III  V       |
-|                 |                 |
-+-----------------+-----------------+
-```
-
-### Chord Progressions (Organized by Genre)
-#### Common Chord Progressions
-| Genre          | Progression (Roman Numerals) | Key Example | MCP Command Example |
-|---------------|-----------------------------|-------------|------------------------|
-| Pop           | I-V-vi-IV                    | C Major     | `create_chord_progression` |
-| Rock          | I-IV-V                      | G Major     | `fire_scene_with_transpose` |
-| Jazz          | ii-V-I                      | F Major     | `batch_transpose_clips` |
-| Blues         | I-I-I-I IV-IV-I-I V-IV-I-I  | A Minor     | `apply_filter_buildup` |
-| EDM           | i-V-vi-IV (Minor)           | A Minor     | `transpose_all_playing_clips` |
-| Hip-Hop       | i-bVI-bIII-bVII             | C Minor     | `apply_energy_curve` |
-
-#### Jazz Progressions
-- **ii-V-I**: The most common jazz progression (e.g., Dm7 → G7 → Cmaj7 in C Major).
-- **Coltrane Changes**: i-bIII-bVI-bII-V-I (e.g., Im7 → #Idim7 → iim7 → V7 → I).
-- **Rhythm Changes**: I-vi-ii-V (e.g., C → Am → Dm → G in C Major).
-
-### Harmonic Mixing / Camelot Wheel Reference
-#### Camelot Wheel Cheat Sheet
-```
-        8B (Gb) -------- 9B (Db)
-      /                 \
-    7B (B)             10B (Ab)
-   /                   \
-12B (F)               11B (Eb)
-   \                   /
-    1B (A) ---------- 2B (E)
-     \               /
-      12A (C#m) --- 1A (F#m)
-       \           /
-        11A (G#m) / 2A (C#m)
-         \     /
-          10A (Dm)
-
-One-Hour Transition Path (Minimal Energy Change):
-8B → 9B → 10B → 11B → 12B → 1B → 2B → 3B → 5A → 8A → 8B
-```
-
-### Rhythm Patterns in Grid Notation
-#### House Basic (4/4)
-```
-Kick:  |X---|----|X---|----|
-Clap: |----|X---|----|X---|
-HiHat: |X-X-|X-X-|X-X-|X-X-|
-```
-
-#### Techno 4x4 (Driving)
-```
-Kick:  |X---|----|X---|----|X---|----|X---|----|
-HiHat: |--X-|--X-|--X-|--X-|--X-|--X-|--X-|--X-|
-```
-
-#### Dub Techno (Syncopated)
-```
-Kick:  |X---|----|--X-|----|X---|----|--X-|----|
-Snare: |----|X---|----|X---|----|X---|----|----|
-HiHat: |X-X-|X---|X-X-|X---|X-X-|X---|X-X-|X---|
-```
-
-### Tempo Ranges by Genre
-| Genre          | Tempo (BPM) | MCP Command Example |
-|---------------|--------------|------------------------|
-| Deep House    | 115-125      | `set_tempo` |
-| Techno        | 125-140      | `set_tempo` |
-| Dub Techno    | 110-120      | `set_tempo` |
-| Drum & Bass   | 160-180      | `set_tempo` |
-| Hip-Hop       | 85-95        | `set_tempo` |
-| Trance        | 130-150      | `set_tempo` |
-| Downtempo     | 70-90        | `set_tempo` |
-
-### Transposition Guide with MCP Commands
-- **Transpose a single clip**: `transpose_clip(track_index, clip_index, semitones)`
-- **Transpose all playing clips**: `transpose_all_playing_clips(semitones)`
-- **Batch transpose clips**: `batch_transpose_clips(clips=[{"track": 0, "clip": 0}], semitones=2)`
-- **Fire scene with transposition**: `fire_scene_with_transpose(scene_index=0, semitones=2)`
-
-### Live Performance Tips Using Theory
-#### Clip Launch Timing
-- Use `set_global_quantization("1 Bar")` to sync clip launches to the grid.
-- Example: `fire_clip(track_index=0, clip_index=0)` will launch at the next bar.
-
-#### Crossfading Between Tracks
-- Use `apply_energy_curve` to automate volume and filter changes:
-  ```json
-  {
-    "parameter_changes": [
-      {"track_index": 0, "device_index": 0, "parameter_index": 0, "start_value": 0.8, "end_value": 0.2},
-      {"track_index": 1, "device_index": 0, "parameter_index": 0, "start_value": 0.2, "end_value": 0.8}
-    ],
-    "duration_beats": 16,
-    "steps": 16
-  }
-  ```
-
-#### Dummy Clips for Control
-- Create empty clips with names like "FILTER_UP_8B" to trigger automation:
-  ```
-  apply_filter_buildup(track_index=0, device_index=0, start_value=0.2, end_value=0.9, duration_beats=16)
-  ```
-
-#### Energy Management
-- Use `apply_drop` to reset energy before a build:
-  ```
-  apply_drop(tracks_to_drop=[0, 1, 2], filter_param_index=0, drop_filter_value=0.2, return_delay_beats=8)
-  ```
-
-#### Harmonic Mixing
-- Transition to harmonically compatible keys using the Camelot Wheel:
-  ```
-  get_compatible_keys("8A") → {"one_up": ["9A"]}
-  transpose_all_playing_clips(semitones=2)  // e.g., A Minor → C Minor (8A → 9A)
-  ```
-
-### Sources
-- **Camelot Wheel**: Mixed In Key (https://mixedinkey.com/)
-- **Scale Intervals**: Music Theory for Dummies
-- **Chord Progressions**: Hooktheory (https://www.hooktheory.com/)
-- **Drum Patterns**: Attack Magazine (https://www.attackmagazine.com/)
 
 ## NOTES
-- **Max for Live device**: Required for audio export, but must be manually triggered (bang inlet) - no Remote Script control
-- **Ableton Remote Script limitations**: Cannot export/save audio files, cannot trigger export dialog
-- **Dual-server performance**: UDP is 100-250x faster than TCP for parameter updates, but TCP is required for 30 critical operations
-- **Cache directories**: .pytest_cache, .ruff_cache, __pycache__, .sisyphus - can be safely excluded from analysis
-- **Large files**: MCP_Server/server.py (4,234 lines), AbletonMCP_Remote_Script/__init__.py (3,622 lines)
-
-## SESSION SETUP WORKFLOW (CRITICAL)
-When creating a new Ableton session from scratch, ALWAYS follow this order:
-
-### Step 1: Clean Slate
-```
-delete_all_tracks()  # Remove ALL tracks to ensure no audio tracks remain
-```
-
-### Step 2: Create MIDI Tracks
-```
-create_midi_track(0)  # Drums
-create_midi_track(1)  # Bass
-create_midi_track(2)  # Rhythm/Keys
-create_midi_track(3)  # Melody/Horns
-```
-
-### Step 3: Name Tracks
-```
-set_track_name(0, "Drums")
-set_track_name(1, "Bass")
-set_track_name(2, "Rhythm_Skank")
-set_track_name(3, "Horns_Melody")
-```
-
-### Step 4: Load Instruments (CRITICAL - DO NOT SKIP)
-```
-# Drums - Load a specific drum kit preset (NOT empty Drum Rack!)
-load_instrument_or_effect(0, "query:Drums#FileId_58622")  # 32 Pad Kit Jazz
-
-# Or use browser navigation to find specific presets:
-# browser_item_children("query:Drums") → list available kits
-# load_instrument_or_effect(0, "query:Drums#Kit%20Name")
-
-# Bass - Load bass synth
-load_instrument_or_effect(1, "query:Synths#Bass")
-
-# Rhythm - Load electric piano or similar
-load_instrument_or_effect(2, "query:Synths#Electric")
-
-# Melody - Load synth for leads/horns
-load_instrument_or_effect(3, "query:Synths#Operator")
-```
-
-### Step 5: Set Tempo
-```
-set_tempo(75)  # Dub reggae: 70-85 BPM
-```
-
-### Step 6: Create Patterns
-```
-# Now you can create clips with actual sound!
-create_drum_pattern(0, 0, "one_drop", 4)
-create_clip(1, 0, 4)
-add_notes_to_clip(1, 0, [...])
-```
-
-### Common Mistakes to AVOID:
-1. **NOT deleting tracks first** - Audio tracks cannot have MIDI clips created
-2. **NOT loading instruments** - MIDI notes won't make any sound without an instrument
-3. **Creating clips before loading instruments** - Wastes time, clips will be silent
-4. **Loading empty Drum Rack** - Drum Rack is just a container! You MUST load a drum kit into it:
-   ```
-   # WRONG - empty drum rack (no sounds!)
-   load_instrument_or_effect(0, "query:Drums#Drum%20Rack")
-
-   # CORRECT - load an actual drum kit
-   load_instrument_or_effect(0, "query:Drums#FileId_58622")  # 32 Pad Kit Jazz
-   # OR use the load_drum_kit command:
-   load_drum_kit(0, "Drums/Drum Rack", "drums/acoustic/kit1")
-   ```
-5. **Creating clips on audio tracks** - Will fail with clear error message:
-   ```
-   # Error: "Cannot create MIDI clip on this track. The track does not support MIDI input. Use create_midi_track() first or ensure track is a MIDI track."
-   # Solution: Always use create_midi_track() before creating clips
-   create_midi_track(0)
-   create_clip(0, 0, 4)  # Now this will work
-   ```
-
-## TROUBLESHOOTING
-
-### Clip Creation Failures
-
-**Symptom**: "Cannot create MIDI clip on this track. The track does not support MIDI input."
-**Cause**: Attempting to create MIDI clip on audio track
-**Solution**: Use `create_midi_track()` first, or ensure track has MIDI input
-
-**Symptom**: "Clip creation failed - clip slot is still empty"
-**Cause**: Internal Ableton issue or timing problem
-**Solution**: Retry the operation, check Ableton console for errors
-
-### Drum Rack Issues
-
-**Symptom**: Empty Drum Rack (128 unassigned pads)
-**Cause**: Loaded Drum Rack device without a kit preset
-**Solution**: Use `load_instrument_or_effect()` with a specific kit preset, not the base "Drum Rack" device
-
-**Symptom**: Wrong instrument/sound loaded
-**Cause**: Browser query matched wrong item
-**Solution**: Use specific FileId in query (e.g., `query:Drums#FileId_58622`)
-
-### Track Deletion Issues
-
-**Symptom**: "Index 0 cannot be deleted"
-**Cause**: May be Ableton API restriction or timing issue
-**Solution**: Check Ableton console for diagnostic logs, try deleting from highest index first
+- Cache dirs safe to exclude: `.pytest_cache`, `.ruff_cache`, `__pycache__`, `.sisyphus`
+- `configs/analysis/*.yml` - YAML config files for audio analysis rules
+- Max for Live device requires manual bang trigger - no Remote Script control

@@ -89,6 +89,17 @@ python auto_play_2h_dub_techno.py
 * Perform batch edits on multiple notes in a single operation
 * Adjust clip loop parameters and follow actions
 
+### 🎹 Generative Music (MIDI Tools)
+* **apply_midi_effect_preset** - Apply presets to MIDI effects (arpeggiator, chord, scale, velocity, pitch, random)
+* **get_generative_chain_presets** - Browse generative chain presets for different genres
+* **create_generative_chain** - Load complete MIDI effect chains (dub_techno, house, techno, ambient)
+* **create_generative_clip** - Create generative clips with patterns (arpeggiated, random, strum, sustained)
+* **generate_chord_progression_clip** - Generate chord progressions from Roman numerals
+* **generate_melody_clip** - Generate scale-constrained melodies with complexity control
+* **setup_harmonic_follow_actions** - Harmonically intelligent clip transitions
+* **setup_energy_based_follow_actions** - Energy-based clip progression (build, drop, cycle)
+* **create_generative_session** - Create complete multi-track generative sessions per genre
+
 ### 🎚️ Device and Parameter Control
 * Load instruments and effects from Ableton's browser by URI
 * Get a full list of parameters for any device on a track

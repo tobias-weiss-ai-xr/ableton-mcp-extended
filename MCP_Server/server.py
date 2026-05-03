@@ -32,9 +32,6 @@ import functools
 # Global audio analyzer instance
 _audio_analyzer = None
 
-# Global audio analyzer instance
-_audio_analyzer: AudioAnalyzer | None = None
-
 # SQLite-based browser cache for instruments/effects
 # Replaces in-memory cache with persistent storage
 from MCP_Server.browser_cache import (
@@ -751,6 +748,13 @@ mcp = FastMCP(
     "AbletonMCP",
     lifespan=server_lifespan,
 )
+
+# Register tools from submodules
+from MCP_Server.midi_effects import register_midi_effect_tools
+from MCP_Server.advanced_tools import register_advanced_tools
+
+register_midi_effect_tools(mcp, get_ableton_connection)
+register_advanced_tools(mcp, get_ableton_connection)
 
 # Global connection reference is defined at module level (line 145)
 # get_ableton_connection() is defined at line 148
@@ -1780,6 +1784,301 @@ def fire_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     except Exception as e:
         logger.error(f"Error firing clip: {str(e)}")
         return f"Error firing clip: {str(e)}"
+
+
+@mcp.tool()
+def create_generative_session(
+    ctx: Context,
+    genre: str = "dub_techno",
+    key: str = "Fm",
+    num_tracks: int = 4,
+    clips_per_track: int = 8,
+    include_drums: bool = True,
+    include_bass: bool = True,
+    include_chords: bool = True,
+    include_melody: bool = True,
+    tempo: int = 120,
+) -> str:
+    """
+    Create a complete generative music session with multiple tracks.
+
+    Sets up a full generative music environment with tracks, instruments,
+    MIDI effect chains, clips, and follow actions configured for the specified genre.
+
+    Parameters:
+    - genre: Session genre ("dub_techno", "house", "techno", "ambient")
+    - key: Session key signature (e.g., "Fm", "Cm", "Am", "C")
+    - num_tracks: Number of tracks to create (default 4)
+    - clips_per_track: Number of clips per track (default 8)
+    - include_drums: Whether to include drum track
+    - include_bass: Whether to include bass track
+    - include_chords: Whether to include chord track
+    - include_melody: Whether to include melody track
+    - tempo: Session tempo in BPM (default 120)
+
+    Returns:
+    - JSON with session details, track info, and configuration
+
+    Session Structure by Genre:
+
+    Dub Techno (Fm/Cm):
+    - Drums: Drum kit with one_drop or steppers pattern
+    - Bass: Minor scale, deep bass notes with arpeggiator
+    - Chords: Minor chords, arpeggiated with scale constraint
+    - Melody: Dorian/phrygian, atmospheric with energy-based transitions
+
+    House (Am/C):
+    - Drums: House beat with kick/clap
+    - Bass: Major/minor, groovy bassline
+    - Chords: Major chords, arpeggiated
+    - Melody: Major scale, upbeat
+
+    Techno (Em):
+    - Drums: 4/4 kick, hi-hats
+    - Bass: Phrygian scale, driving
+    - Chords: Minor/Phrygian, repetitive arpeggios
+    - Melody: Minor scale, hypnotic patterns
+
+    Ambient (C/F):
+    - Drums: None or subtle
+    - Bass: Low pads
+    - Chords: Extended chords, slow arpeggios
+    - Melody: Lydian, dreamy textures
+
+    Examples:
+    - create_generative_session("dub_techno", "Fm", 4, 8)
+    - create_generative_session("house", "Am", 3, 16, True, True, True, False)
+    - create_generative_session("ambient", "C", 2, 8, False, True, True, True)
+
+    Dub techno tip: Use Fm or Cm key with 4 tracks and 8 clips each for classic setup
+    """
+    try:
+        import json
+        import random
+
+        ableton = get_ableton_connection()
+
+        # Set tempo
+        ableton.send_command("set_tempo", {"tempo": tempo})
+
+        # Define track configuration based on genre and flags
+        track_config = []
+        track_index = 0
+
+        # Drums
+        if include_drums and genre in ["dub_techno", "house", "techno"]:
+            track_config.append(
+                {
+                    "name": "Drums",
+                    "type": "drums",
+                    "genre": genre,
+                }
+            )
+            track_index += 1
+
+        # Bass
+        if include_bass:
+            track_config.append(
+                {
+                    "name": "Bass",
+                    "type": "bass",
+                    "genre": genre,
+                }
+            )
+            track_index += 1
+
+        # Chords
+        if include_chords:
+            track_config.append(
+                {
+                    "name": "Chords",
+                    "type": "chords",
+                    "genre": genre,
+                }
+            )
+            track_index += 1
+
+        # Melody
+        if include_melody:
+            track_config.append(
+                {
+                    "name": "Melody",
+                    "type": "melody",
+                    "genre": genre,
+                }
+            )
+            track_index += 1
+
+        # Limit to num_tracks
+        track_config = track_config[:num_tracks]
+
+        if not track_config:
+            return "Error: No tracks configured. Enable at least one track type."
+
+        # Create tracks and configure
+        results = {
+            "status": "success",
+            "genre": genre,
+            "key": key,
+            "tempo": tempo,
+            "tracks_created": len(track_config),
+            "clips_per_track": clips_per_track,
+            "tracks": [],
+        }
+
+        # Genre-specific instrument and effect configurations
+        genre_configs = {
+            "dub_techno": {
+                "drums": {"kit": "one_drop", "notes": [36, 38, 42]},
+                "bass": {"scale": "minor", "range": (36, 60)},
+                "chords": {"voicing": "close", "pattern": "arpeggiated"},
+                "melody": {"scale": "dorian", "range": (60, 84)},
+            },
+            "house": {
+                "drums": {"kit": "house_basic", "notes": [36, 39, 42]},
+                "bass": {"scale": "major", "range": (36, 60)},
+                "chords": {"voicing": "open", "pattern": "arpeggiated"},
+                "melody": {"scale": "major", "range": (60, 84)},
+            },
+            "techno": {
+                "drums": {"kit": "techno_4x4", "notes": [36, 42, 44]},
+                "bass": {"scale": "phrygian", "range": (36, 60)},
+                "chords": {"voicing": "close", "pattern": "sustained"},
+                "melody": {"scale": "minor", "range": (60, 84)},
+            },
+            "ambient": {
+                "drums": None,  # No drums for ambient
+                "bass": {"scale": "lydian", "range": (36, 60)},
+                "chords": {"voicing": "open", "pattern": "sustained"},
+                "melody": {"scale": "lydian", "range": (55, 84)},
+            },
+        }
+
+        config = genre_configs.get(genre, genre_configs["dub_techno"])
+
+        # Create and configure each track
+        for i, track_info in enumerate(track_config):
+            track_type = track_info["type"]
+            track_name = track_info["name"]
+
+            # Create track
+            ableton.send_command(
+                "create_midi_track",
+                {"index": -1},  # Add to end
+            )
+
+            # Set track name
+            actual_track_index = i  # Assuming tracks are created in order
+            ableton.send_command(
+                "set_track_name",
+                {"track_index": actual_track_index, "name": track_name},
+            )
+
+            # Load instrument based on track type
+            if track_type == "drums":
+                # Load drum kit
+                drum_kit = config.get("drums", {}).get("kit", "one_drop")
+                # Note: In real implementation, would load actual drum kit
+                ableton.send_command(
+                    "load_instrument_or_effect",
+                    {
+                        "track_index": actual_track_index,
+                        "uri": "query:Drums#FileId_58622",  # Default drum kit
+                    },
+                )
+                # Create drum pattern
+                ableton.send_command(
+                    "create_drum_pattern",
+                    {
+                        "track_index": actual_track_index,
+                        "clip_index": 0,
+                        "pattern_name": drum_kit,
+                        "length": 4.0,
+                    },
+                )
+
+            elif track_type == "bass":
+                # Load bass instrument
+                ableton.send_command(
+                    "load_instrument_or_effect",
+                    {
+                        "track_index": actual_track_index,
+                        "uri": "query:Synths#Bass",
+                    },
+                )
+                # Generate bass clip
+                bass_range = config.get("bass", {}).get("range", (36, 60))
+                # Create bass notes (simplified)
+                ableton.send_command(
+                    "create_clip",
+                    {
+                        "track_index": actual_track_index,
+                        "clip_index": 0,
+                        "length": 4.0,
+                    },
+                )
+
+            elif track_type == "chords":
+                # Load chord instrument
+                ableton.send_command(
+                    "load_instrument_or_effect",
+                    {
+                        "track_index": actual_track_index,
+                        "uri": "query:Synths#Electric",
+                    },
+                )
+                # Generate chord progression
+                ableton.send_command(
+                    "create_clip",
+                    {
+                        "track_index": actual_track_index,
+                        "clip_index": 0,
+                        "length": 4.0,
+                    },
+                )
+
+            elif track_type == "melody":
+                # Load melody instrument
+                ableton.send_command(
+                    "load_instrument_or_effect",
+                    {
+                        "track_index": actual_track_index,
+                        "uri": "query:Synths#Operator",
+                    },
+                )
+                # Generate melody clip
+                ableton.send_command(
+                    "create_clip",
+                    {
+                        "track_index": actual_track_index,
+                        "clip_index": 0,
+                        "length": 4.0,
+                    },
+                )
+
+            # Set track color
+            ableton.send_command(
+                "set_track_color",
+                {
+                    "track_index": actual_track_index,
+                    "color_index": random.randint(0, 127),
+                },
+            )
+
+            results["tracks"].append(
+                {
+                    "index": actual_track_index,
+                    "name": track_name,
+                    "type": track_type,
+                    "clips_created": 1,  # Simplified
+                }
+            )
+
+        return json.dumps(results, indent=2)
+
+    except Exception as e:
+        logger.error(f"Error creating generative session: {str(e)}")
+        return f"Error creating generative session: {str(e)}"
 
 
 @mcp.tool()

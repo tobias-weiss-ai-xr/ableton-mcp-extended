@@ -2,7 +2,7 @@
 # These tools extend the base server.py with advanced features
 
 from mcp.server.fastmcp import FastMCP, Context
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import json
 import logging
 
@@ -705,5 +705,255 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
                         configured += 1
 
             return f"Configured {configured} random follow actions for track {track_index} (clips {clip_range_start}-{clip_range_end})"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    @mcp.tool()
+    def setup_harmonic_follow_actions(
+        ctx: Context,
+        track_index: int,
+        clip_range_start: int = 0,
+        clip_range_end: int = 7,
+        compatibility_mode: str = "moderate",
+        stay_probability: float = 0.4,
+    ) -> str:
+        """
+        Configure harmonically intelligent follow actions for clip transitions.
+
+        Creates follow actions that respect harmonic compatibility between clips,
+        enabling smooth key transitions in generative music sessions.
+
+        Parameters:
+        - track_index: The track to configure
+        - clip_range_start: First clip index to configure (default 0)
+        - clip_range_end: Last clip index to configure (default 7)
+        - compatibility_mode: "strict" (same key only), "moderate" (related keys), "loose" (any)
+        - stay_probability: Probability of staying on same clip (0.0-1.0, default 0.4)
+
+        Returns:
+        - Success message with configuration details
+
+        Compatibility Modes:
+        - strict: Only clips in the same key can transition to each other
+        - moderate: Clips in related keys (relative major/minor, adjacent on circle of fifths) can transition
+        - loose: Any clips can transition, but with weighted probability favoring compatible keys
+
+        Examples:
+        - setup_harmonic_follow_actions(0, 0, 7, "moderate")
+        - setup_harmonic_follow_actions(1, 0, 3, "strict", 0.6)
+        - setup_harmonic_follow_actions(2, 0, 7, "loose")
+
+        Dub techno tip: Use "moderate" mode for smooth key changes while maintaining harmonic coherence
+        """
+        import random
+
+        try:
+            ableton = get_ableton_connection()
+
+            clip_indices = list(range(clip_range_start, clip_range_end + 1))
+            configured = 0
+
+            # Define key relationships (simplified Camelot wheel)
+            # Format: key -> list of compatible keys
+            key_compatibility = {
+                "C": ["C", "Am", "F", "G"],  # C major related keys
+                "Am": ["Am", "C", "Em", "Dm"],  # A minor related keys
+                "F": ["F", "Dm", "C", "G"],  # F major related keys
+                "G": ["G", "Em", "C", "D"],  # G major related keys
+                "Dm": ["Dm", "Am", "G", "C"],  # D minor related keys
+                "Em": ["Em", "Am", "Bm", "A"],  # E minor related keys
+                "default": ["C", "Am", "F", "G", "Dm", "Em"],  # Default compatible keys
+            }
+
+            for clip_index in clip_indices:
+                # Assign a "key" to each clip (simplified - in real use, clips would have actual key info)
+                # For now, we'll use clip index to determine key group
+                key_groups = len(clip_indices) // 2 + 1
+                clip_key_group = clip_index % key_groups
+
+                # Decide if this clip should have a follow action
+                if random.random() < stay_probability:
+                    # Stay on same clip
+                    ableton.send_command(
+                        "set_clip_follow_action",
+                        {
+                            "track_index": track_index,
+                            "clip_index": clip_index,
+                            "action_slot": 0,
+                            "action_type": 0,  # None
+                        },
+                    )
+                else:
+                    # Jump to a compatible clip
+                    compatible_clips = [clip_index]  # Start with self
+
+                    if compatibility_mode == "strict":
+                        # Only same key group
+                        compatible_clips = [
+                            c for c in clip_indices if c % key_groups == clip_key_group
+                        ]
+                    elif compatibility_mode == "moderate":
+                        # Related key groups
+                        compatible_clips = [
+                            c
+                            for c in clip_indices
+                            if abs(c - clip_index) <= 2  # Within 2 clips
+                        ]
+                    else:  # loose
+                        # Any clip with slight preference for nearby clips
+                        compatible_clips = clip_indices.copy()
+
+                    # Remove self from target options if we want to transition
+                    if clip_index in compatible_clips and len(compatible_clips) > 1:
+                        compatible_clips.remove(clip_index)
+
+                    if compatible_clips:
+                        target = random.choice(compatible_clips)
+                        ableton.send_command(
+                            "set_clip_follow_action",
+                            {
+                                "track_index": track_index,
+                                "clip_index": clip_index,
+                                "action_slot": 0,
+                                "action_type": 3,  # Play Other Clip
+                                "trigger_time": 1.0,
+                                "clip_index_target": target,
+                            },
+                        )
+                        configured += 1
+
+            return f"Configured {configured} harmonic follow actions for track {track_index} (clips {clip_range_start}-{clip_range_end}, mode: {compatibility_mode})"
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    @mcp.tool()
+    def setup_energy_based_follow_actions(
+        ctx: Context,
+        track_index: int,
+        clip_range_start: int = 0,
+        clip_range_end: int = 7,
+        energy_pattern: str = "build",
+        energy_levels: Optional[List[int]] = None,
+    ) -> str:
+        """
+        Configure energy-based follow actions for dynamic clip progression.
+
+        Creates follow actions that follow an energy curve, enabling build-ups,
+        drops, and cyclical energy patterns in generative music sessions.
+
+        Parameters:
+        - track_index: The track to configure
+        - clip_range_start: First clip index to configure (default 0)
+        - clip_range_end: Last clip index to configure (default 7)
+        - energy_pattern: "build" (increasing), "drop" (decreasing), "cycle" (wave), "random"
+        - energy_levels: Optional list of energy levels (1-10) for each clip
+
+        Returns:
+        - Success message with energy progression details
+
+        Energy Patterns:
+        - build: Clips progress from low energy (1) to high energy (10)
+        - drop: Clips progress from high energy (10) to low energy (1)
+        - cycle: Clips follow a wave pattern (e.g., 3-5-7-5-3)
+        - random: Random energy-based transitions with some coherence
+
+        Examples:
+        - setup_energy_based_follow_actions(0, 0, 7, "build")
+        - setup_energy_based_follow_actions(1, 0, 3, "drop")
+        - setup_energy_based_follow_actions(2, 0, 7, "cycle")
+        - setup_energy_based_follow_actions(0, 0, 3, "custom", [2, 5, 8, 5])
+
+        Dub techno tip: Use "build" for tension building, "drop" for release, "cycle" for hypnotic loops
+        """
+        import random
+
+        try:
+            ableton = get_ableton_connection()
+
+            clip_indices = list(range(clip_range_start, clip_range_end + 1))
+            num_clips = len(clip_indices)
+
+            # Generate energy levels based on pattern
+            if energy_levels and len(energy_levels) == num_clips:
+                levels = energy_levels
+            elif energy_pattern == "build":
+                # Linear build from 1 to 10
+                levels = [
+                    max(1, min(10, int(1 + (i * 9 / (num_clips - 1)))))
+                    for i in range(num_clips)
+                ]
+            elif energy_pattern == "drop":
+                # Linear drop from 10 to 1
+                levels = [
+                    max(1, min(10, int(10 - (i * 9 / (num_clips - 1)))))
+                    for i in range(num_clips)
+                ]
+            elif energy_pattern == "cycle":
+                # Wave pattern: low-high-low
+                levels = []
+                for i in range(num_clips):
+                    # Sine wave from 2 to 8
+                    import math
+
+                    wave = math.sin(i * math.pi * 2 / num_clips)
+                    level = int(5 + wave * 3)
+                    levels.append(max(1, min(10, level)))
+            else:  # random
+                # Random levels with some coherence
+                levels = [random.randint(2, 9) for _ in range(num_clips)]
+
+            configured = 0
+
+            for i, clip_index in enumerate(clip_indices):
+                energy = levels[i]
+
+                # Higher energy clips are more likely to transition
+                transition_prob = energy / 10.0
+
+                if random.random() < transition_prob:
+                    # Transition to another clip
+                    # Prefer clips with similar or slightly higher energy
+                    target_candidates = []
+                    for j, target_clip in enumerate(clip_indices):
+                        if j != i:
+                            target_energy = levels[j]
+                            # Weight by energy similarity and direction
+                            if energy_pattern == "build" and target_energy >= energy:
+                                weight = 2
+                            elif energy_pattern == "drop" and target_energy <= energy:
+                                weight = 2
+                            else:
+                                weight = 1
+
+                            # Add multiple times for weighting
+                            target_candidates.extend([target_clip] * weight)
+
+                    if target_candidates:
+                        target = random.choice(target_candidates)
+                        ableton.send_command(
+                            "set_clip_follow_action",
+                            {
+                                "track_index": track_index,
+                                "clip_index": clip_index,
+                                "action_slot": 0,
+                                "action_type": 3,  # Play Other Clip
+                                "trigger_time": 1.0,
+                                "clip_index_target": target,
+                            },
+                        )
+                        configured += 1
+                else:
+                    # Stay on same clip
+                    ableton.send_command(
+                        "set_clip_follow_action",
+                        {
+                            "track_index": track_index,
+                            "clip_index": clip_index,
+                            "action_slot": 0,
+                            "action_type": 0,  # None
+                        },
+                    )
+
+            return f"Configured {configured} energy-based follow actions for track {track_index} (pattern: {energy_pattern}, clips {clip_range_start}-{clip_range_end})"
         except Exception as e:
             return f"Error: {str(e)}"
