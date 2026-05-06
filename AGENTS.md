@@ -3,12 +3,16 @@
 Control Ableton Live via AI assistants using Model Context Protocol. Dual TCP/UDP architecture.
 
 ## KEY FILES
-| Task | Location |
-|------|----------|
-| MCP server (6411 lines) | `MCP_Server/server.py` |
-| Remote Script (4706 lines) | `AbletonMCP_Remote_Script/__init__.py` |
-| Entry point | `MCP_Server/__init__.py` → `ableton-mcp-extended` |
-| Install | `pip install -e .` |
+| Task | Location | Notes |
+|------|----------|-------|
+| MCP server (6411 lines) | `MCP_Server/server.py` | 152 `@server.tool` decorators, 239 command functions |
+| Remote Script (4706 lines) | `AbletonMCP_Remote_Script/__init__.py` | Socket server + Ableton API bridge |
+| Tool registration | `MCP_Server/advanced_tools.py` (959 lines) | Advanced DJ/generative tools |
+| MIDI effects | `MCP_Server/midi_effects.py` | Arpeggiator, chord, scale, etc. |
+| Browser cache | `MCP_Server/browser_cache.py` | SQLite persistent cache for instruments/effects |
+| Entry point | `MCP_Server/__init__.py` → `ableton-mcp-extended` | `pip install -e .` |
+| Voice integration | `elevenlabs_mcp/server.py` | ElevenLabs TTS MCP server |
+| Server watchdog | `MCP_Server/server_watchdog.py` | Auto-restarts MCP server on crash |
 
 ## ARCHITECTURE
 
@@ -76,13 +80,16 @@ load_instrument_or_effect(0, "query:Drums#Drum%20Rack")
 | Task | Location |
 |------|----------|
 | Protocol handlers | `MCP_Server/server.py` |
-| Tool registration | `MCP_Server/advanced_tools.py` |
+| Tool registration | `MCP_Server/advanced_tools.py` (959 lines) |
 | Remote Script API | `AbletonMCP_Remote_Script/__init__.py` |
 | Browser cache | `MCP_Server/browser_cache.py` |
-| DJ automation | `dub/enhanced_dj_performance.py`, `scripts/ultra_dj_loop.py` |
-| Tests | `tests/debug/`, `tests/integration/`, `tests/test_music_theory/` |
-| Test scripts | `scripts/test/test_connection.py`, `scripts/test/test_performance_udp.py` |
-| Analysis tools | `scripts/analysis/` |
+| MIDI effects | `MCP_Server/midi_effects.py` |
+| Voice integration | `elevenlabs_mcp/server.py` |
+| Server watchdog | `MCP_Server/server_watchdog.py` |
+| DJ automation | `scripts/live_dj_performance.py`, `scripts/ultra_dj_loop.py`, `scripts/dub_mcp_orchestrator.py` |
+| Tests | `scripts/test/` (18 standalone test scripts - no pytest discovery) |
+| Audio analysis | `MCP_Server/audio_analysis/` |
+| Config files | `configs/analysis/*.yml` |
 
 ## RUNNING TESTS
 No pytest.ini or test discovery. Tests are standalone scripts:
