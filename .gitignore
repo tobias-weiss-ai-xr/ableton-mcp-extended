@@ -48,3 +48,7 @@ Thumbs.db
 *.adv
 *.asd
 !AbletonMCP_Remote_Script/*
+
+# Runtime state
+nul
+scripts/automation_state.json
