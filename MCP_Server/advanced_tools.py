@@ -957,3 +957,366 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
             return f"Configured {configured} energy-based follow actions for track {track_index} (pattern: {energy_pattern}, clips {clip_range_start}-{clip_range_end})"
         except Exception as e:
             return f"Error: {str(e)}"
+
+
+def register_generation_tools(mcp: FastMCP, get_ableton_connection):
+    """Register algorithmic music generation tools"""
+
+    @mcp.tool()
+    def generate_melody_clip(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        key: str = "Fm",
+        scale_type: str = "minor",
+        length_beats: float = 64.0,
+        complexity: str = "medium",
+    ) -> str:
+        """
+        Generate a melodic clip using algorithmic composition.
+
+        Uses pattern-based generation instead of random arrays for musical results.
+        Applies scale constraints, phrase structure, and velocity dynamics.
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - key: Key signature (e.g., "Fm", "Cm", "Am")
+        - scale_type: Scale type (major, minor, dorian, phrygian, lydian, mixolydian)
+        - length_beats: Clip length in beats (default 64 = 16 bars)
+        - complexity: Pattern complexity (simple, medium, complex)
+
+        Examples:
+        - generate_melody_clip(6, 0, "Fm", "dorian", 64.0, "medium")
+        """
+        try:
+            # Import generation module
+            from MCP_Server.music_generation import (
+                Scale, ScaleType, ClipGenerator, MIDINote,
+                euclidean_rhythm, GenerationPipeline, GrooveGenerator
+            )
+
+            # Map scale type
+            scale_map = {
+                "major": ScaleType.MAJOR,
+                "minor": ScaleType.MINOR,
+                "dorian": ScaleType.DORIAN,
+                "phrygian": ScaleType.PHRYGIAN,
+                "lydian": ScaleType.LYDIAN,
+                "mixolydian": ScaleType.MIXOLYDIAN,
+            }
+            scale_enum = scale_map.get(scale_type.lower(), ScaleType.MINOR)
+
+            # Parse key (e.g., "Fm" -> root F, minor)
+            key_map = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+            root_str = key[0].upper()
+            root = 12 * 4 + key_map.get(root_str, 0)  # Octave 4
+
+            scale = Scale(root, scale_enum)
+
+            # Generate melody based on complexity
+            gen = ClipGenerator(tempo=126.0, length_beats=length_beats)
+            gen.scale = scale
+
+            if complexity == "simple":
+                # Simple repeating motif
+                degrees = [0, 2, 4, 2]  # Scale tones
+                for bar in range(int(length_beats / 4)):
+                    for i, deg in enumerate(degrees):
+                        pos = bar * 4 + i
+                        pitch = scale.degree_to_midi(deg, octave=1)
+                        vel = 75 + (i % 2) * 8
+                        if pos < length_beats:
+                            gen.notes.append(MIDINote(pitch, pos, 0.9, vel))
+            elif complexity == "medium":
+                # Medium complexity with variation
+                degrees = [0, 2, 4, 5, 4, 3, 4, 5, 7, 5, 4, 2]
+                for bar in range(int(length_beats / 4)):
+                    for i, deg in enumerate(degrees[:8]):
+                        pos = bar * 4 + i
+                        pitch = scale.degree_to_midi(deg, octave=1)
+                        vel = 80 + (i % 3) * 5
+                        if pos < length_beats:
+                            gen.notes.append(MIDINote(pitch, pos, 0.8 + (i % 3) * 0.1, vel))
+            else:  # complex
+                # More elaborate melodic development
+                degrees = [0, 2, 4, 5, 7, 5, 4, 2, 3, 4, 5, 4, 2, 0, -1, 0]
+                for bar in range(int(length_beats / 4)):
+                    shift = (bar % 4) * 0.5
+                    for i, deg in enumerate(degrees):
+                        pos = bar * 4 + i + shift
+                        pitch = scale.degree_to_midi(deg, octave=1 + (bar % 2))
+                        vel = 70 + (i % 4) * 7 + (bar % 3) * 3
+                        if pos < length_beats:
+                            gen.notes.append(MIDINote(pitch, pos, 0.6 + (i % 5) * 0.15, vel))
+
+            notes = gen.generate()
+            ableton = get_ableton_connection()
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes
+            })
+
+            return f"Generated melody clip with {len(notes)} notes (key={key}, scale={scale_type}, complexity={complexity})"
+
+        except Exception as e:
+            logger.error(f"Error generating melody: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating melody: {str(e)}"
+
+    @mcp.tool()
+    def generate_bass_line(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        key: str = "Fm",
+        progression: str = "i-VII-VI-V",
+        length_beats: float = 64.0,
+        velocity: int = 110,
+    ) -> str:
+        """
+        Generate a bass line following a chord progression.
+
+        Creates a musical bass pattern with proper root notes, chord tones,
+        and groove rather than random notes.
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - key: Key signature (e.g., "Fm", "Cm")
+        - progression: Chord progression as Roman numerals (e.g., "i-VII-VI-V")
+        - length_beats: Clip length in beats
+        - velocity: Base velocity (0-127)
+
+        Examples:
+        - generate_bass_line(4, 0, "Fm", "i-VII-VI-V", 64.0, 110)
+        """
+        try:
+            from MCP_Server.music_generation import (
+                Scale, ScaleType, Chord, ChordProgression,
+                ClipGenerator, GrooveGenerator, MIDINote
+            )
+
+            # Parse key
+            key_map = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+            root_str = key[0].upper()
+            root = 12 * 4 + key_map.get(root_str, 0)
+
+            # Build chord progression
+            chords = ChordProgression.from_preset(root, progression)
+            beats_per_chord = length_beats / len(chords)
+
+            gen = ClipGenerator(tempo=126.0, length_beats=length_beats)
+
+            for i, chord in enumerate(chords):
+                start = i * beats_per_chord
+                if start >= length_beats:
+                    break
+
+                # Root on downbeat
+                gen.notes.append(MIDINote(chord.notes[0], start, beats_per_chord * 0.8, velocity))
+
+                # Fifth on offbeat for groove
+                if len(chord.notes) > 1:
+                    fifth_offset = chord.notes[1] - chord.notes[0]
+                    gen.notes.append(MIDINote(
+                        chord.notes[0] + fifth_offset,
+                        start + beats_per_chord * 0.5,
+                        beats_per_chord * 0.3,
+                        velocity - 15
+                    ))
+
+                # Ghost note for dub feel
+                if i % 2 == 0:
+                    gen.notes.append(MIDINote(
+                        chord.notes[0] - 12,  # An octave down
+                        start + 2,
+                        0.25,
+                        velocity - 35
+                    ))
+
+            notes = gen.generate()
+            ableton = get_ableton_connection()
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes
+            })
+
+            return f"Generated bass line with {len(notes)} notes (key={key}, progression={progression})"
+
+        except Exception as e:
+            logger.error(f"Error generating bass line: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating bass line: {str(e)}"
+
+    @mcp.tool()
+    def generate_drum_pattern(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        drum_type: str = "kick",
+        pattern_name: str = "one_drop",
+        length_beats: float = 64.0,
+        velocity: int = 115,
+    ) -> str:
+        """
+        Generate drum patterns using Euclidean rhythms for authentic groove.
+
+        Uses Bjorklund algorithm to create even distributions that sound musical
+        rather than random/humanized patterns.
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - drum_type: Type of drum (kick, snare, hat, clap, perc)
+        - pattern_name: Named pattern or euclidean params
+          - Named: "one_drop", "steppers", "rockers", "house_basic", "dub_techno"
+          - Euclidean: "e{N}-{K}" e.g., "e16-4" for 4 hits in 16
+        - length_beats: Clip length in beats
+        - velocity: Base velocity
+
+        Examples:
+        - generate_drum_pattern(0, 0, "kick", "one_drop", 64.0, 120)
+        - generate_drum_pattern(2, 0, "hat", "e16-11", 64.0, 75)
+        """
+        try:
+            from MCP_Server.music_generation import (
+                euclidean_rhythm, ClipGenerator, GrooveGenerator, MIDINote
+            )
+
+            # Map drum types to MIDI notes
+            drum_notes = {
+                "kick": 36, "snare": 40, "hat": 42, "clap": 39, "perc": 37
+            }
+            pitch = drum_notes.get(drum_type.lower(), 36)
+
+            # Parse pattern
+            if pattern_name.startswith("e"):
+                # Euclidean format: e{steps}-{pulses}
+                parts = pattern_name[1:].split("-")
+                steps, pulses = int(parts[0]), int(parts[1])
+                timing = euclidean_rhythm(steps, pulses)
+            else:
+                # Named patterns - translate to Euclidean
+                named_patterns = {
+                    "one_drop": euclidean_rhythm(16, 4),  # 4 on floor
+                    "steppers": euclidean_rhythm(16, 8),  # 8 hits evenly
+                    "rockers": euclidean_rhythm(16, 6),   # Skank pattern
+                    "house_basic": euclidean_rhythm(16, 4),
+                    "dub_techno": euclidean_rhythm(16, 5),
+                    "four_on_floor": euclidean_rhythm(16, 4),
+                }
+                timing = named_patterns.get(pattern_name.lower(), euclidean_rhythm(16, 4))
+
+            # Scale timing to length_beats
+            scale_factor = length_beats / 16.0
+            timing = [beat * scale_factor for beat in timing]
+
+            gen = ClipGenerator(tempo=126.0, length_beats=length_beats)
+
+            # Get appropriate velocity pattern
+            groove_func = GrooveGenerator.basic_pattern
+            if drum_type == "kick":
+                groove_func = lambda v: [v, v - 30, v - 25, v - 35] * 4
+            elif drum_type == "hat":
+                groove_func = lambda v: [v - 10, v - 25, v - 15, v - 30] * 4
+
+            velocity_pattern = groove_func(velocity)
+
+            # Add hits
+            for i, beat in enumerate(timing):
+                if beat < length_beats:
+                    vel = velocity_pattern[i % len(velocity_pattern)]
+                    dur = 0.3 if drum_type == "kick" else 0.15
+                    gen.notes.append(MIDINote(pitch, beat, dur, vel))
+
+            notes = gen.generate()
+            ableton = get_ableton_connection()
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes
+            })
+
+            return f"Generated {drum_type} pattern with {len(notes)} hits (pattern={pattern_name})"
+
+        except Exception as e:
+            logger.error(f"Error generating drum pattern: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating drum pattern: {str(e)}"
+
+    @mcp.tool()
+    def generate_scene(
+        ctx: Context,
+        scene_index: int,
+        scene_type: str = "drop",
+        key: str = "Fm",
+        length_beats: float = 64.0,
+    ) -> str:
+        """
+        Generate complete scene with all tracks using algorithmic composition.
+
+        Applies the GenerationPipeline with scene-appropriate intensity and patterns.
+        Each scene type has distinct musical character.
+
+        Parameters:
+        - scene_index: Scene index to populate
+        - scene_type: Type of scene
+          - "intro": Sparse, atmospheric, building
+          - "drop": Full energy, driving
+          - "break": Minimal, sparse
+          - "build": Rising tension
+          - "atmosphere": Very sparse, ambient
+          - "outro": Fading, minimal
+        - key: Key signature
+        - length_beats: Total length in beats
+
+        Returns:
+            JSON with generated track data
+
+        Examples:
+        - generate_scene(0, "intro", "Fm", 64.0)
+        - generate_scene(1, "drop", "Fm", 64.0)
+        """
+        try:
+            from MCP_Server.music_generation import GenerationPipeline
+
+            # Generate complete session
+            tracks = GenerationPipeline.dub_techno_session(
+                tempo=126.0,
+                key=key,
+                length_bars=int(length_beats / 4),
+                scene=scene_type
+            )
+
+            # Track indices
+            track_map = {
+                "kick": 0, "snare": 1, "hat": 2, "clap": 3,
+                "bass": 4, "chords": 5, "melody": 6, "perc": 7
+            }
+
+            ableton = get_ableton_connection()
+
+            # Add to each track at the scene's clip slot
+            for track_name, notes in tracks.items():
+                track_idx = track_map.get(track_name)
+                if track_idx is not None and notes:
+                    ableton.send_command("add_notes_to_clip", {
+                        "track_index": track_idx,
+                        "clip_index": scene_index,
+                        "notes": notes
+                    })
+
+            note_count = sum(len(n) for n in tracks.values())
+            return f"Generated {scene_type} scene with {note_count} total notes across 8 tracks"
+
+        except Exception as e:
+            logger.error(f"Error generating scene: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating scene: {str(e)}"

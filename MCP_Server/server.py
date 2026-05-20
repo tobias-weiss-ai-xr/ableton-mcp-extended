@@ -751,10 +751,14 @@ mcp = FastMCP(
 
 # Register tools from submodules
 from MCP_Server.midi_effects import register_midi_effect_tools
-from MCP_Server.advanced_tools import register_advanced_tools
+from MCP_Server.advanced_tools import (
+    register_advanced_tools,
+    register_generation_tools
+)
 
 register_midi_effect_tools(mcp, get_ableton_connection)
 register_advanced_tools(mcp, get_ableton_connection)
+register_generation_tools(mcp, get_ableton_connection)
 
 # Global connection reference is defined at module level (line 145)
 # get_ableton_connection() is defined at line 148
@@ -6408,4 +6412,11 @@ def get_grid_layout(ctx: Context, device: str, layout_type: str, **kwargs) -> st
         return json.dumps(result)
     except Exception as e:
         logger.error(f"Error generating grid layout: {str(e)}")
-    return json.dumps([])
+        return json.dumps([])
+
+
+# =============================================================================
+# MUSIC GENERATION TOOLS (Algorithmic Composition Pipeline)
+# =============================================================================
+# Generation tools are defined in advanced_tools.py register_generation_tools()
+# They are imported and registered via register_advanced_tools()
