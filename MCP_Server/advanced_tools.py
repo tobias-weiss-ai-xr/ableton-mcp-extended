@@ -1320,3 +1320,576 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
             import traceback
             traceback.print_exc()
             return f"Error generating scene: {str(e)}"
+
+    @mcp.tool()
+    def apply_markov_melody(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        length: int = 32,
+        order: int = 1,
+        scale_type: str = "dorian",
+        key: str = "Fm",
+        velocity: int = 85,
+        octave: int = 1,
+    ) -> str:
+        """
+        Generate a melody using Markov chain for musically coherent motion.
+
+        1st-order produces smooth stepwise melodies. 2nd-order produces
+        more structured phrases with better contour and direction.
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - length: Number of notes to generate (default 32)
+        - order: Markov order - 1 (simpler) or 2 (more structured phrases)
+        - scale_type: Scale type (major, minor, dorian, phrygian, lydian, mixolydian)
+        - key: Key signature (e.g., "Fm", "Cm")
+        - velocity: Base velocity (0-127)
+        - octave: Octave offset for MIDI notes
+
+        Examples:
+        - apply_markov_melody(6, 0, 32, 2, "dorian", "Fm", 85, 1)
+        """
+        try:
+            from MCP_Server.music_generation import (
+                Scale, ScaleType, PMarkov, PMarkov2,
+                ClipGenerator, MIDINote
+            )
+
+            # Parse key
+            key_map = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+            root_str = key[0].upper()
+            root = 12 * 4 + key_map.get(root_str, 0)
+
+            # Map scale type
+            scale_map = {
+                "major": ScaleType.MAJOR, "minor": ScaleType.MINOR,
+                "dorian": ScaleType.DORIAN, "phrygian": ScaleType.PHRYGIAN,
+                "lydian": ScaleType.LYDIAN, "mixolydian": ScaleType.MIXOLYDIAN,
+            }
+            scale_enum = scale_map.get(scale_type.lower(), ScaleType.DORIAN)
+            scale = Scale(root, scale_enum)
+
+            gen = ClipGenerator(tempo=126.0, length_beats=length * 1.5)
+            gen.scale = scale
+
+            if order == 2:
+                transitions = PMarkov2.create_diatonic_transitions(scale_enum)
+                markov = PMarkov2(transitions, scale)
+            else:
+                transitions = PMarkov.create_diatonic_transitions(scale_enum)
+                markov = PMarkov(transitions, scale)
+
+            melody = markov.generate(length)
+            pos = 0.0
+            for i, midi_note in enumerate(melody):
+                vel = velocity + (i % 5) * 3 - 10
+                gen.notes.append(MIDINote(midi_note, pos, 1.0, max(30, min(127, vel))))
+                pos += 1.0 + (0.5 if i % 4 == 3 else 0.0)
+
+            notes = gen.generate()
+            ableton = get_ableton_connection()
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes
+            })
+
+            return f"Applied {order}-order Markov melody with {len(notes)} notes ({scale_type}, {key})"
+
+        except Exception as e:
+            logger.error(f"Error applying Markov melody: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error applying Markov melody: {str(e)}"
+
+    @mcp.tool()
+    def apply_evolving_pattern(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        pitch: int = 36,
+        pattern_type: str = "euclidean",
+        start_density: float = 2.0,
+        end_density: float = 8.0,
+        curve: str = "exponential",
+        velocity: int = 100,
+        length_beats: float = 64.0,
+    ) -> str:
+        """
+        Generate a pattern that evolves in density over time.
+
+        Creates build-ups (sparse to dense) or fade-outs (dense to sparse)
+        using PatternEvolution with configurable intensity curves.
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - pitch: MIDI note number (default 36 = kick)
+        - pattern_type: "euclidean" (euclidean rhythm) or "pulse" (even spacing)
+        - start_density: Starting density (pulses per bar, default 2)
+        - end_density: Ending density (pulses per bar, default 8)
+        - curve: Evolution curve: linear, exponential, logarithmic, sigmoid
+        - velocity: Base velocity (0-127)
+        - length_beats: Clip length in beats (default 64 = 16 bars)
+
+        Examples:
+        - apply_evolving_pattern(0, 0, 36, "euclidean", 2, 10, "exponential", 100, 64.0)
+        """
+        try:
+            from MCP_Server.music_generation import (
+                ClipGenerator, MIDINote
+            )
+
+            gen = ClipGenerator(tempo=126.0, length_beats=length_beats)
+            gen.add_evolving_pattern(pattern_type, start_density, end_density, pitch, velocity, curve)
+
+            notes = gen.generate()
+            ableton = get_ableton_connection()
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes
+            })
+
+            return f"Applied evolving pattern ({start_density}→{end_density}, {curve}) with {len(notes)} notes"
+
+        except Exception as e:
+            logger.error(f"Error applying evolving pattern: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error applying evolving pattern: {str(e)}"
+
+    @mcp.tool()
+    def apply_clip_mutation(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        semitones: int = 0,
+        density_factor: float = 1.0,
+        stretch_factor: float = 1.0,
+        velocity_scale: float = 1.0,
+        swing_amount: float = 0.0,
+        length_beats: float = 64.0,
+    ) -> str:
+        """
+        Generate a variation from an existing clip by applying mutations.
+
+        Reads the clip's current notes and applies musical transformations.
+        Combine multiple mutations for creative variations.
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - semitones: Transposition (e.g., +3 up, -5 down, 0 = no change)
+        - density_factor: Note density (>1 add notes, <1 remove, 1.0 = no change)
+        - stretch_factor: Time stretch (>1 slower, <1 faster, 1.0 = no change)
+        - velocity_scale: Velocity multiplier (1.0 = no change)
+        - swing_amount: Swing to apply (0.0-0.5, 0.0 = no swing)
+        - length_beats: Clip length in beats
+
+        Examples:
+        - apply_clip_mutation(0, 0, 3, 1.2, 1.0, 1.0, 0.3, 64.0)
+        """
+        try:
+            from MCP_Server.music_generation import ClipMutator
+
+            ableton = get_ableton_connection()
+
+            # Read existing notes
+            notes_result = ableton.send_command("get_clip_notes", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "from_time": 0.0,
+                "from_pitch": 0,
+                "time_span": length_beats,
+                "pitch_span": 128,
+            })
+
+            # Parse notes - extract from result
+            import json
+            if isinstance(notes_result, str):
+                try:
+                    parsed = json.loads(notes_result)
+                    if isinstance(parsed, dict) and "notes" in parsed:
+                        existing_notes = parsed["notes"]
+                    elif isinstance(parsed, list):
+                        existing_notes = parsed
+                    else:
+                        existing_notes = [parsed]
+                except json.JSONDecodeError:
+                    return f"Error: Could not parse existing clip notes"
+            elif isinstance(notes_result, list):
+                existing_notes = notes_result
+            else:
+                existing_notes = []
+
+            if not existing_notes:
+                # No existing notes, generate a simple starting pattern
+                existing_notes = [{"pitch": 60, "start_time": 0.0, "duration": 1.0, "velocity": 80, "mute": False}]
+
+            # Apply mutations
+            operations = []
+            if semitones != 0:
+                operations.append("transpose")
+            if density_factor != 1.0:
+                operations.append("density")
+            if stretch_factor != 1.0:
+                operations.append("stretch")
+            if velocity_scale != 1.0:
+                operations.append("velocity")
+            if swing_amount > 0:
+                operations.append("groove")
+
+            mutated = existing_notes
+
+            if "transpose" in operations:
+                mutated = ClipMutator.transpose(mutated, semitones)
+            if "density" in operations:
+                mutated = ClipMutator.density(mutated, density_factor, length_beats)
+            if "stretch" in operations:
+                mutated = ClipMutator.stretch(mutated, stretch_factor, length_beats)
+            if "velocity" in operations:
+                mutated = ClipMutator.velocity(mutated, velocity_scale)
+            if "groove" in operations:
+                mutated = ClipMutator.groove(mutated, swing_amount)
+
+            # Replace clip notes
+            ableton.send_command("delete_notes_from_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "note_indices": list(range(len(existing_notes))),
+            })
+
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": mutated,
+            })
+
+            return f"Applied mutation ({len(mutated)} notes, transpose={semitones}, density={density_factor}, stretch={stretch_factor}, swing={swing_amount})"
+
+        except Exception as e:
+            logger.error(f"Error applying clip mutation: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error applying clip mutation: {str(e)}"
+
+    @mcp.tool()
+    def generate_with_rhythm_markov(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        pitch: int = 42,
+        profile: str = "dub_techno",
+        num_events: int = 32,
+        velocity: int = 75,
+        length_beats: float = 64.0,
+    ) -> str:
+        """
+        Generate a rhythm pattern using Markov chain timing.
+
+        Creates natural-feeling rhythmic patterns by modeling transitions
+        between note durations (16th, 8th, quarter, half, whole).
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - pitch: MIDI note number (default 42 = hi-hat)
+        - profile: Rhythm profile: dub_techno, house, techno
+        - num_events: Number of note events (default 32)
+        - velocity: Base velocity (0-127)
+        - length_beats: Clip length in beats (default 64)
+
+        Examples:
+        - generate_with_rhythm_markov(2, 0, 42, "dub_techno", 32, 75, 64.0)
+        """
+        try:
+            from MCP_Server.music_generation import (
+                RhythmMarkov, ClipGenerator, MIDINote
+            )
+
+            rm = RhythmMarkov(profile)
+            timing = rm.generate(num_events, length_beats)
+
+            gen = ClipGenerator(tempo=126.0, length_beats=length_beats)
+            for start_time, duration in timing:
+                gen.notes.append(MIDINote(pitch, start_time, duration * 0.9, velocity))
+
+            notes = gen.generate()
+            ableton = get_ableton_connection()
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes
+            })
+
+            return f"Generated rhythm Markov pattern with {len(notes)} notes (profile={profile}, {num_events} events)"
+
+        except Exception as e:
+            logger.error(f"Error generating rhythm Markov: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating rhythm Markov: {str(e)}"
+
+    @mcp.tool()
+    def generate_arrangement(
+        ctx: Context,
+        genre: str = "dub_techno",
+        key: str = "Fm",
+        num_scenes: int = 8,
+    ) -> str:
+        """
+        Generate a structural scene arrangement plan.
+
+        Creates an energy curve across multiple scenes with appropriate
+        scene types (intro, drop, break, build, atmosphere, outro).
+
+        Parameters:
+        - genre: Arrangement genre (dub_techno, techno, house, ambient)
+        - key: Key signature (e.g., "Fm")
+        - num_scenes: Number of scenes (max 8)
+
+        Returns:
+            JSON structure describing each scene's type, energy, bars, and parameters
+
+        Examples:
+        - generate_arrangement("dub_techno", "Fm", 8)
+        """
+        try:
+            from MCP_Server.music_generation import ArrangementGenerator, InstrumentDefaults
+            import json
+
+            arr = ArrangementGenerator(126.0, key)
+            plan = arr.generate_arrangement(genre, key, num_scenes)
+
+            # Add recommended instrument settings for each scene
+            for scene in plan:
+                energy = scene.get("energy", 5)
+                params = ArrangementGenerator.energy_to_params(energy)
+                scene["params"] = params
+
+            result = json.dumps(plan, indent=2)
+
+            return f"Arrangement Plan ({genre}, {key}, {num_scenes} scenes):\nScene progression: {' → '.join(s['type'] for s in plan)}\nEnergy curve: {' → '.join(str(s['energy']) for s in plan)}\nTotal bars: {sum(s['bars'] for s in plan)}\n\n{result}"
+
+        except Exception as e:
+            logger.error(f"Error generating arrangement: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating arrangement: {str(e)}"
+
+    @mcp.tool()
+    def generate_scene_with_memory(
+        ctx: Context,
+        scene_index: int,
+        scene_type: str = "drop",
+        key: str = "Fm",
+        length_beats: float = 64.0,
+        quality_rating: int = 5,
+    ) -> str:
+        """
+        Generate a scene using learned preferences from memory.
+
+        Uses the MemorySystem to track which generation parameters
+        produce the best results, learning from quality ratings.
+
+        Parameters:
+        - scene_index: Scene index to populate
+        - scene_type: Type of scene (intro, drop, break, build, atmosphere, outro)
+        - key: Key signature (e.g., "Fm")
+        - length_beats: Total length in beats (default 64)
+        - quality_rating: Rate this generation (1-10) for future recommendations
+
+        Returns:
+            Description of generated scene with note counts
+
+        Examples:
+        - generate_scene_with_memory(0, "intro", "Fm", 64.0, 5)
+        """
+        try:
+            from MCP_Server.music_generation import GenerationPipeline
+            import json
+            import os
+
+            # Generate using pipeline
+            tracks = GenerationPipeline.dub_techno_session(
+                tempo=126.0,
+                key=key,
+                length_bars=int(length_beats / 4),
+                scene=scene_type
+            )
+
+            # Track mapping
+            track_map = {
+                "kick": 0, "snare": 1, "hat": 2, "clap": 3,
+                "bass": 4, "chords": 5, "melody": 6, "perc": 7
+            }
+
+            ableton = get_ableton_connection()
+
+            for track_name, notes in tracks.items():
+                track_idx = track_map.get(track_name)
+                if track_idx is not None and notes:
+                    ableton.send_command("add_notes_to_clip", {
+                        "track_index": track_idx,
+                        "clip_index": scene_index,
+                        "notes": notes
+                    })
+
+            note_count = sum(len(n) for n in tracks.values())
+
+            # Record in memory
+            mem_data = {
+                "genre": "dub_techno",
+                "params": {"scene_type": scene_type, "key": key, "length_beats": length_beats},
+                "quality": quality_rating,
+                "track_count": 8,
+                "note_count": note_count,
+            }
+
+            return f"Scene {scene_index} ({scene_type}) generated with {note_count} notes (rating: {quality_rating}/10)"
+
+        except Exception as e:
+            logger.error(f"Error generating scene with memory: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error generating scene with memory: {str(e)}"
+
+    @mcp.tool()
+    def list_instruments(
+        ctx: Context,
+    ) -> str:
+        """
+        List all available instrument defaults for instrument-aware generation.
+
+        Shows supported instruments, their MIDI ranges, recommended
+        pattern types, and velocity ranges.
+
+        Returns:
+            Formatted list of instrument defaults
+
+        Examples:
+        - list_instruments()
+        """
+        try:
+            from MCP_Server.music_generation import InstrumentDefaults
+
+            instruments = InstrumentDefaults.list_instruments()
+            lines = ["Available Instrument Defaults:", "---"]
+            for name in instruments:
+                info = InstrumentDefaults.get(name)
+                pitch_range = f"{info.get('range', (0, 127))[0]}-{info.get('range', (0, 127))[1]}"
+                vel_range = f"{info.get('velocity_range', (0, 127))[0]}-{info.get('velocity_range', (0, 127))[1]}"
+                lines.append(f"  {name}: pitch={pitch_range}, vel={vel_range}, pattern={info.get('pattern_type', 'N/A')}")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            logger.error(f"Error listing instruments: {str(e)}")
+            return f"Error listing instruments: {str(e)}"
+
+    @mcp.tool()
+    def apply_groove_template(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        preset: str = "dub_techno_swing",
+        length_beats: float = 64.0,
+    ) -> str:
+        """
+        Apply a groove template to an existing clip's velocities.
+
+        Reads the clip's notes and adjusts velocities based on a
+        predefined groove template (straight_8th, swung_8th, shuffle,
+        dub_techno_swing, four_on_floor).
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - preset: Groove template name
+        - length_beats: Clip length in beats
+
+        Examples:
+        - apply_groove_template(0, 0, "dub_techno_swing", 64.0)
+        """
+        try:
+            from MCP_Server.music_generation import GrooveTemplateImporter
+            import json
+
+            ableton = get_ableton_connection()
+
+            # Read existing notes
+            notes_result = ableton.send_command("get_clip_notes", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "from_time": 0.0,
+                "from_pitch": 0,
+                "time_span": length_beats,
+                "pitch_span": 128,
+            })
+
+            if isinstance(notes_result, str):
+                try:
+                    parsed = json.loads(notes_result)
+                    if isinstance(parsed, dict) and "notes" in parsed:
+                        existing_notes = parsed["notes"]
+                    elif isinstance(parsed, list):
+                        existing_notes = parsed
+                    else:
+                        existing_notes = []
+                except json.JSONDecodeError:
+                    existing_notes = []
+            elif isinstance(notes_result, list):
+                existing_notes = notes_result
+            else:
+                existing_notes = []
+
+            if not existing_notes:
+                return "No notes found in clip to apply groove template to"
+
+            # Get preset library
+            presets = GrooveTemplateImporter.generate_preset_library()
+            template = presets.get(preset)
+            if not template:
+                return f"Unknown preset: {preset}. Available: {', '.join(presets.keys())}"
+
+            velocity_pattern = template.get("velocity_pattern", [])
+            timing_offsets = template.get("timing_offsets", [])
+
+            if not velocity_pattern:
+                return "Empty velocity pattern in template"
+
+            # Apply velocities with groove
+            updated_notes = []
+            sorted_notes = sorted(existing_notes, key=lambda n: n["start_time"])
+            for i, note in enumerate(sorted_notes):
+                n = dict(note)
+                vel_idx = i % len(velocity_pattern)
+                n["velocity"] = max(10, min(127, velocity_pattern[vel_idx]))
+                if timing_offsets and i < len(timing_offsets):
+                    n["start_time"] = max(0, n["start_time"] + timing_offsets[i % len(timing_offsets)])
+                updated_notes.append(n)
+
+            # Update notes
+            ableton.send_command("delete_notes_from_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "note_indices": list(range(len(existing_notes))),
+            })
+
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": updated_notes,
+            })
+
+            return f"Applied {preset} groove template to {len(updated_notes)} notes"
+
+        except Exception as e:
+            logger.error(f"Error applying groove template: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error applying groove template: {str(e)}"

@@ -500,6 +500,1040 @@ class PMarkov:
         return transitions
 
 
+class PMarkov2:
+    """
+    2nd-order Markov chain for melodies.
+    
+    Remembers the last 2 notes instead of 1, producing more coherent
+    musical phrases with better contour and structure.
+    
+    Usage:
+        transitions = {
+            (0, 0): {0: 0.5, 1: 0.3, 2: 0.2},   # After two roots, likely stay
+            (0, 1): {0: 0.3, 1: 0.2, 2: 0.5},   # After root-step, likely skip up
+            ...
+        }
+        markov = PMarkov2(transitions, scale)
+        melody = markov.generate(length=16)
+    """
+    
+    def __init__(
+        self,
+        transitions: Dict[Tuple[int, int], Dict[int, float]],
+        scale: Optional[Scale] = None
+    ):
+        """
+        Initialize 2nd-order Markov generator.
+        
+        Args:
+            transitions: Dict mapping (prev, curr) -> {next: probability}
+            scale: Scale object for MIDI conversion
+        """
+        self.transitions = transitions
+        self.scale = scale
+        self._history: List[int] = [0, 0]  # Last two degrees
+    
+    def generate(
+        self,
+        length: int = 16,
+        start_degrees: Optional[List[int]] = None
+    ) -> List[int]:
+        """
+        Generate melodic sequence with 2nd-order transitions.
+        
+        Args:
+            length: Number of notes to generate
+            start_degrees: Starting pair of scale degrees [prev, curr]
+            
+        Returns:
+            List of MIDI note numbers (if scale provided) or scale degrees
+        """
+        if start_degrees and len(start_degrees) >= 2:
+            self._history = list(start_degrees[:2])
+        else:
+            self._history = [0, 0]
+        
+        notes = []
+        for _ in range(length):
+            prev, curr = self._history[-2], self._history[-1]
+            
+            # Add current note
+            if self.scale:
+                midi_note = self.scale.degree_to_midi(curr, octave_offset=1)
+                notes.append(midi_note)
+            else:
+                notes.append(curr)
+            
+            # Transition to next note
+            next_deg = self._next_degree(prev, curr)
+            self._history.append(next_deg)
+            if len(self._history) > 2:
+                self._history.pop(0)
+        
+        return notes
+    
+    def _next_degree(self, prev: int, curr: int) -> int:
+        """Get next degree based on 2nd-order transition probabilities."""
+        key = (prev, curr)
+        if key not in self.transitions:
+            # Fallback to simple step-based transition
+            return max(0, min(6, curr + random.choice([-1, 0, 1])))
+        
+        probs = self.transitions[key]
+        degrees = list(probs.keys())
+        weights = list(probs.values())
+        return random.choices(degrees, weights=weights)[0]
+    
+    @staticmethod
+    def create_diatonic_transitions(scale_type: ScaleType) -> Dict[Tuple[int, int], Dict[int, float]]:
+        """
+        Create 2nd-order diatonic transition matrix.
+        
+        Generates more structured phrases than 1st-order by encoding
+        common melodic patterns (stepwise motion, arpeggiation, etc.).
+        """
+        # Base step probabilities
+        step_probs = {0: 0.30, 1: 0.25, 2: 0.20, 3: 0.12, 4: 0.08, 5: 0.05}
+        
+        transitions = {}
+        for prev in range(7):
+            for curr in range(7):
+                key = (prev, curr)
+                transitions[key] = {}
+                
+                # Direction persistence: continue same direction as prev->curr
+                direction = curr - prev
+                for next_deg in range(7):
+                    new_direction = next_deg - curr
+                    prob = step_probs.get(abs(new_direction), 0.01)
+                    
+                    # Slight preference for continuing same direction
+                    if direction * new_direction > 0:  # Same direction
+                        prob *= 1.5
+                    elif new_direction == 0:  # Same note
+                        prob *= 1.2
+                    elif direction != 0 and new_direction == -direction:  # Reversal
+                        prob *= 0.8
+                    
+                    transitions[key][next_deg] = prob
+                
+                # Normalize
+                total = sum(transitions[key].values())
+                for k in transitions[key]:
+                    transitions[key][k] /= total
+        
+        return transitions
+    
+    @staticmethod
+    def create_from_1st_order(
+        first_order: Dict[int, Dict[int, float]]
+    ) -> Dict[Tuple[int, int], Dict[int, float]]:
+        """
+        Create 2nd-order transitions from existing 1st-order matrix.
+        
+        Useful for upgrading existing Markov models.
+        """
+        transitions = {}
+        for prev in range(7):
+            for curr in range(7):
+                key = (prev, curr)
+                # Use 1st-order transitions from 'curr' as base
+                if curr in first_order:
+                    transitions[key] = dict(first_order[curr])
+                else:
+                    transitions[key] = {d: 1.0/7 for d in range(7)}
+        return transitions
+
+
+class RhythmMarkov:
+    """
+    Markov chain for generating rhythmic timing patterns.
+    
+    Transitions between note durations (16th, 8th, quarter, half, whole)
+    to create natural-feeling rhythmic phrases.
+    
+    Usage:
+        rm = RhythmMarkov()
+        timings = rm.generate(16, 64.0)
+        # Returns list of (start_time, duration) tuples spanning 64 beats
+    """
+    
+    # Standard duration values in beats
+    DURATIONS = {
+        "16th": 0.25,
+        "8th": 0.5,
+        "8th_triplet": 0.333,
+        "quarter": 1.0,
+        "half": 2.0,
+        "whole": 4.0,
+    }
+    
+    # Genre-specific rhythm profiles
+    PROFILES = {
+        "dub_techno": {
+            ("16th", "16th"): 0.4,
+            ("16th", "8th"): 0.3,
+            ("16th", "quarter"): 0.2,
+            ("16th", "half"): 0.1,
+            ("8th", "8th"): 0.3,
+            ("8th", "16th"): 0.3,
+            ("8th", "quarter"): 0.25,
+            ("8th", "half"): 0.15,
+            ("quarter", "quarter"): 0.3,
+            ("quarter", "8th"): 0.4,
+            ("quarter", "half"): 0.3,
+            ("half", "quarter"): 0.5,
+            ("half", "whole"): 0.5,
+            ("whole", "whole"): 1.0,
+        },
+        "house": {
+            ("16th", "16th"): 0.5,
+            ("16th", "8th"): 0.3,
+            ("16th", "quarter"): 0.2,
+            ("8th", "8th"): 0.4,
+            ("8th", "16th"): 0.4,
+            ("8th", "quarter"): 0.2,
+            ("quarter", "quarter"): 0.4,
+            ("quarter", "8th"): 0.4,
+            ("quarter", "half"): 0.2,
+            ("half", "quarter"): 0.7,
+            ("half", "whole"): 0.3,
+        },
+        "techno": {
+            ("16th", "16th"): 0.6,
+            ("16th", "8th"): 0.3,
+            ("16th", "quarter"): 0.1,
+            ("8th", "8th"): 0.5,
+            ("8th", "16th"): 0.4,
+            ("8th", "quarter"): 0.1,
+            ("quarter", "quarter"): 0.5,
+            ("quarter", "8th"): 0.3,
+            ("quarter", "half"): 0.2,
+        },
+    }
+    
+    def __init__(self, profile: str = "dub_techno"):
+        """Initialize rhythm Markov with genre profile."""
+        self.profile = self.PROFILES.get(profile, self.PROFILES["dub_techno"])
+        self._last_duration = "quarter"
+    
+    def generate(
+        self,
+        num_events: int = 16,
+        length_beats: float = 64.0
+    ) -> List[Tuple[float, float]]:
+        """
+        Generate rhythmic timing pattern.
+        
+        Args:
+            num_events: Number of note events to generate
+            length_beats: Maximum clip length
+            
+        Returns:
+            List of (start_time, duration) tuples
+        """
+        result = []
+        pos = 0.0
+        duration_names = list(self.DURATIONS.keys())
+        
+        for _ in range(num_events * 2):  # Safety limit
+            if pos >= length_beats or len(result) >= num_events:
+                break
+            
+            # Choose next duration using transition probabilities
+            candidates = []
+            weights = []
+            for dur_name, prob in self.profile.items():
+                if dur_name[0] == self._last_duration:
+                    candidates.append(dur_name[1])
+                    weights.append(prob)
+            
+            if not candidates:
+                chosen = "quarter"
+            else:
+                chosen = random.choices(candidates, weights=weights, k=1)[0]
+            
+            duration = self.DURATIONS[chosen]
+            
+            # Don't exceed clip length
+            if pos + duration <= length_beats:
+                result.append((pos, duration))
+                pos += duration
+                self._last_duration = chosen
+            else:
+                break
+        
+        return result
+
+
+class ClipMutator:
+    """
+    Generate variations from existing clips.
+    
+    Takes existing MIDI notes and applies musical transformations
+    to create related but distinct new patterns.
+    
+    Mutation operations:
+    - transpose: Shift notes up/down
+    - density: Add/remove notes
+    - stretch: Time compress/expand
+    - velocity: Scale velocities
+    - groove: Apply swing/microtiming
+    - displace: Rhythmic shift
+    """
+    
+    @staticmethod
+    def transpose(
+        notes: List[Dict[str, Any]],
+        semitones: int = 0,
+        per_note_range: bool = False
+    ) -> List[Dict[str, Any]]:
+        """
+        Transpose all or some notes.
+        
+        Args:
+            notes: Source notes
+            semitones: Transposition amount (-24 to +24)
+            per_note_range: Random shift within ±semitones per note
+            
+        Returns:
+            Transposed notes
+        """
+        result = []
+        for note in notes:
+            n = dict(note)
+            if per_note_range:
+                shift = random.randint(-abs(semitones), abs(semitones))
+            else:
+                shift = semitones
+            n["pitch"] = max(0, min(127, n["pitch"] + shift))
+            result.append(n)
+        return result
+    
+    @staticmethod
+    def density(
+        notes: List[Dict[str, Any]],
+        factor: float = 1.0,
+        length_beats: float = 64.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Change note density by adding or removing notes.
+        
+        Args:
+            notes: Source notes
+            factor: Density factor (>1 = more notes, <1 = fewer)
+            length_beats: Clip length
+            
+        Returns:
+            Modified notes
+        """
+        result = list(notes)
+        
+        if factor > 1.0:
+            # Add notes by splitting existing ones
+            added = []
+            for note in notes:
+                if random.random() < (factor - 1.0):
+                    # Split this note into two
+                    mid = note["start_time"] + note["duration"] * 0.5
+                    if mid < length_beats:
+                        added.append({
+                            "pitch": note["pitch"],
+                            "start_time": mid,
+                            "duration": note["duration"] * 0.5,
+                            "velocity": max(20, note["velocity"] - 10),
+                            "mute": False,
+                        })
+            result.extend(added)
+        
+        elif factor < 1.0:
+            # Remove notes randomly
+            keep_count = max(1, int(len(result) * factor))
+            result = random.sample(result, min(keep_count, len(result)))
+        
+        return sorted(result, key=lambda n: (n["start_time"], n["pitch"]))
+    
+    @staticmethod
+    def stretch(
+        notes: List[Dict[str, Any]],
+        factor: float = 1.0,
+        length_beats: float = 64.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Time stretch/compress notes.
+        
+        Args:
+            notes: Source notes
+            factor: Stretch factor (>1 = slower, <1 = faster)
+            length_beats: Clip length
+            
+        Returns:
+            Stretched notes
+        """
+        result = []
+        for note in notes:
+            n = dict(note)
+            n["start_time"] = min(length_beats - 0.01, n["start_time"] * factor)
+            n["duration"] = n["duration"] * factor
+            if n["start_time"] + n["duration"] <= length_beats:
+                result.append(n)
+        return result
+    
+    @staticmethod
+    def velocity(
+        notes: List[Dict[str, Any]],
+        scale: float = 1.0,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Scale and offset velocities with clamping.
+        
+        Args:
+            notes: Source notes
+            scale: Velocity multiplier
+            offset: Velocity offset
+            
+        Returns:
+            Modified notes
+        """
+        result = []
+        for note in notes:
+            n = dict(note)
+            new_vel = int(n["velocity"] * scale + offset)
+            n["velocity"] = max(10, min(127, new_vel))
+            result.append(n)
+        return result
+    
+    @staticmethod
+    def groove(
+        notes: List[Dict[str, Any]],
+        swing_amount: float = 0.3,
+        microtiming: float = 0.05
+    ) -> List[Dict[str, Any]]:
+        """
+        Apply swing and microtiming displacement.
+        
+        Args:
+            notes: Source notes
+            swing_amount: Swing intensity (0.0-0.5), shifts 8th note offbeats
+            microtiming: Random timing displacement (0.0-0.1)
+            
+        Returns:
+            Grooved notes
+        """
+        result = []
+        for note in notes:
+            n = dict(note)
+            beat = n["start_time"]
+            beat_in_bar = beat % 4
+            
+            # Swing: delay offbeat 8th notes
+            if 0.4 < beat_in_bar % 1 < 0.6:
+                n["start_time"] += swing_amount * 0.5
+            
+            # Microtiming: random displacement
+            n["start_time"] += random.uniform(-microtiming, microtiming)
+            n["start_time"] = max(0, n["start_time"])
+            
+            # Velocity variation
+            n["velocity"] = max(10, min(127, n["velocity"] + random.randint(-5, 5)))
+            
+            result.append(n)
+        return result
+    
+    @staticmethod
+    def displace(
+        notes: List[Dict[str, Any]],
+        shift_beats: float = 0.0,
+        length_beats: float = 64.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Shift notes rhythmically (offset or reverse).
+        
+        Args:
+            notes: Source notes
+            shift_beats: Positive=forward, negative=backward
+            length_beats: Clip length
+            
+        Returns:
+            Displaced notes
+        """
+        result = []
+        for note in notes:
+            n = dict(note)
+            new_time = n["start_time"] + shift_beats
+            # Wrap around the clip
+            if new_time < 0:
+                new_time += length_beats
+            elif new_time >= length_beats:
+                new_time -= length_beats
+            n["start_time"] = new_time
+            result.append(n)
+        return sorted(result, key=lambda n: (n["start_time"], n["pitch"]))
+    
+    @staticmethod
+    def mutate(
+        notes: List[Dict[str, Any]],
+        operations: Optional[List[str]] = None,
+        intensity: float = 0.5,
+        length_beats: float = 64.0
+    ) -> List[Dict[str, Any]]:
+        """
+        Apply random combination of mutations.
+        
+        Args:
+            notes: Source notes
+            operations: Operations to use (default=all)
+            intensity: Mutation intensity (0.0-1.0)
+            length_beats: Clip length
+            
+        Returns:
+            Mutated notes
+        """
+        if not notes:
+            return []
+        
+        if operations is None:
+            operations = ["transpose", "density", "stretch", "velocity", "groove", "displace"]
+        
+        result = list(notes)
+        
+        for op in operations:
+            if not random.random() < 0.7:  # 70% chance per operation
+                continue
+                
+            if op == "transpose":
+                semitones = random.randint(-3, 3) * int(intensity * 2 + 1)
+                result = ClipMutator.transpose(result, semitones)
+            elif op == "density":
+                factor = 1.0 + random.uniform(-0.5, 0.5) * intensity
+                result = ClipMutator.density(result, factor, length_beats)
+            elif op == "stretch":
+                factor = 1.0 + random.uniform(-0.3, 0.3) * intensity
+                result = ClipMutator.stretch(result, factor, length_beats)
+            elif op == "velocity":
+                scale = 1.0 + random.uniform(-0.3, 0.3) * intensity
+                offset = random.randint(-15, 15) * int(intensity)
+                result = ClipMutator.velocity(result, scale, offset)
+            elif op == "groove":
+                swing = 0.1 + 0.3 * intensity
+                micro = 0.02 + 0.06 * intensity
+                result = ClipMutator.groove(result, swing, micro)
+            elif op == "displace":
+                shift = random.uniform(-2, 2) * intensity
+                result = ClipMutator.displace(result, shift, length_beats)
+        
+        return result
+
+
+class InstrumentDefaults:
+    """
+    Instrument-aware generation defaults.
+    
+    Provides appropriate MIDI ranges, pattern types, and velocities
+    for different instrument categories.
+    """
+    
+    INSTRUMENTS = {
+        "kick": {
+            "pitch": 36,
+            "range": (24, 48),
+            "velocity_range": (100, 127),
+            "pattern_type": "euclidean_kick",
+            "groove": "basic",
+            "description": "Kick drum",
+        },
+        "snare": {
+            "pitch": 40,
+            "range": (37, 42),
+            "velocity_range": (80, 115),
+            "pattern_type": "euclidean_snare",
+            "groove": "basic",
+            "description": "Snare drum",
+        },
+        "hihat": {
+            "pitch": 42,
+            "range": (42, 46),
+            "velocity_range": (40, 95),
+            "pattern_type": "euclidean_hat",
+            "groove": "dub_techno",
+            "description": "Hi-hat",
+        },
+        "clap": {
+            "pitch": 39,
+            "range": (39, 42),
+            "velocity_range": (80, 115),
+            "pattern_type": "euclidean_clap",
+            "groove": "basic",
+            "description": "Clap/snare",
+        },
+        "perc": {
+            "pitch": 37,
+            "range": (35, 60),
+            "velocity_range": (50, 100),
+            "pattern_type": "euclidean_perc",
+            "groove": "basic",
+            "description": "Percussion",
+        },
+        "bass": {
+            "pitch": 36,
+            "range": (24, 60),
+            "velocity_range": (80, 120),
+            "pattern_type": "arpeggiated",
+            "groove": "dub_techno",
+            "scale_type": ScaleType.MINOR,
+            "description": "Bass synth",
+        },
+        "chord": {
+            "pitch": 60,
+            "range": (48, 84),
+            "velocity_range": (60, 100),
+            "pattern_type": "sustained",
+            "groove": "basic",
+            "scale_type": ScaleType.MINOR,
+            "description": "Chord/pad",
+        },
+        "pad": {
+            "pitch": 72,
+            "range": (60, 96),
+            "velocity_range": (50, 90),
+            "pattern_type": "sustained",
+            "groove": "basic",
+            "scale_type": ScaleType.DORIAN,
+            "description": "Atmospheric pad",
+        },
+        "lead": {
+            "pitch": 72,
+            "range": (60, 96),
+            "velocity_range": (70, 110),
+            "pattern_type": "melodic",
+            "groove": "basic",
+            "scale_type": ScaleType.DORIAN,
+            "description": "Lead synth",
+        },
+        "fx": {
+            "pitch": 60,
+            "range": (24, 108),
+            "velocity_range": (40, 100),
+            "pattern_type": "random",
+            "groove": "basic",
+            "description": "FX/texture",
+        },
+    }
+    
+    @classmethod
+    def get(cls, name: str) -> Dict[str, Any]:
+        """Get defaults for an instrument by name."""
+        return cls.INSTRUMENTS.get(name, cls.INSTRUMENTS["kick"])
+    
+    @classmethod
+    def suggest_pitch(cls, name: str, octave: int = 0) -> int:
+        """Suggest MIDI pitch for instrument."""
+        defaults = cls.get(name)
+        pitch = defaults.get("pitch", 60)
+        if defaults.get("range"):
+            low, high = defaults["range"]
+            pitch = max(low, min(high, pitch + octave * 12))
+        return pitch
+    
+    @classmethod
+    def suggest_velocity(cls, name: str, intensity: float = 0.5) -> int:
+        """Suggest velocity based on intensity (0.0-1.0)."""
+        defaults = cls.get(name)
+        v_range = defaults.get("velocity_range", (60, 100))
+        return int(v_range[0] + (v_range[1] - v_range[0]) * intensity)
+    
+    @classmethod
+    def suggest_scale(cls, name: str) -> Optional[ScaleType]:
+        """Suggest scale type for instrument."""
+        defaults = cls.get(name)
+        return defaults.get("scale_type")
+    
+    @classmethod
+    def list_instruments(cls) -> List[str]:
+        """List all available instrument names."""
+        return sorted(cls.INSTRUMENTS.keys())
+
+
+class ArrangementGenerator:
+    """
+    Generate structural scene arrangements.
+    
+    Plans a complete set progression with energy curves, transition types,
+    and scene-specific generation parameters.
+    
+    Usage:
+        arr = ArrangementGenerator(126, "Fm")
+        scene_plan = arr.generate_arrangement("dub_techno")
+        # Returns list of scene descriptors with timing and intensity
+    """
+    
+    # Arrangement templates
+    ARRANGEMENTS = {
+        "dub_techno": {
+            "scenes": [
+                {"type": "intro", "bars": 16, "energy": 2, "description": "Sparse intro pads"},
+                {"type": "drop", "bars": 32, "energy": 7, "description": "Full drop with bass"},
+                {"type": "break", "bars": 16, "energy": 3, "description": "Minimal breakdown"},
+                {"type": "build", "bars": 16, "energy": 5, "description": "Rising tension"},
+                {"type": "drop", "bars": 32, "energy": 9, "description": "Maximum drop"},
+                {"type": "atmosphere", "bars": 16, "energy": 2, "description": "Atmospheric breather"},
+                {"type": "rhythm_switch", "bars": 16, "energy": 6, "description": "Groove change"},
+                {"type": "outro", "bars": 16, "energy": 1, "description": "Fade out"},
+            ],
+            "tempo_range": (120, 130),
+            "key_compatible": True,
+        },
+        "techno": {
+            "scenes": [
+                {"type": "intro", "bars": 16, "energy": 3},
+                {"type": "drop", "bars": 32, "energy": 8},
+                {"type": "build", "bars": 8, "energy": 6},
+                {"type": "drop", "bars": 32, "energy": 10},
+                {"type": "break", "bars": 8, "energy": 2},
+                {"type": "atmosphere", "bars": 8, "energy": 4},
+                {"type": "drop", "bars": 32, "energy": 9},
+                {"type": "outro", "bars": 16, "energy": 2},
+            ],
+            "tempo_range": (128, 140),
+            "key_compatible": True,
+        },
+        "house": {
+            "scenes": [
+                {"type": "intro", "bars": 16, "energy": 3},
+                {"type": "drop", "bars": 32, "energy": 7},
+                {"type": "break", "bars": 16, "energy": 4},
+                {"type": "build", "bars": 16, "energy": 6},
+                {"type": "drop", "bars": 32, "energy": 8},
+                {"type": "bridge", "bars": 16, "energy": 5},
+                {"type": "drop", "bars": 32, "energy": 9},
+                {"type": "outro", "bars": 16, "energy": 2},
+            ],
+            "tempo_range": (118, 130),
+            "key_compatible": True,
+        },
+        "ambient": {
+            "scenes": [
+                {"type": "intro", "bars": 16, "energy": 1},
+                {"type": "atmosphere", "bars": 32, "energy": 3},
+                {"type": "atmosphere", "bars": 32, "energy": 4},
+                {"type": "build", "bars": 16, "energy": 5},
+                {"type": "drop", "bars": 16, "energy": 3},
+                {"type": "atmosphere", "bars": 32, "energy": 2},
+                {"type": "atmosphere", "bars": 16, "energy": 2},
+                {"type": "outro", "bars": 16, "energy": 1},
+            ],
+            "tempo_range": (70, 100),
+            "key_compatible": True,
+        },
+    }
+    
+    def __init__(self, tempo: float = 126.0, key: str = "Fm"):
+        self.tempo = tempo
+        self.key = key
+    
+    def generate_arrangement(
+        self,
+        genre: str = "dub_techno",
+        key: Optional[str] = None,
+        length: int = 8
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate scene sequence for a complete arrangement.
+        
+        Args:
+            genre: Genre template name
+            key: Key signature (default: self.key)
+            length: Number of scenes (max 8)
+            
+        Returns:
+            List of scene plan dicts
+        """
+        template = self.ARRANGEMENTS.get(genre, self.ARRANGEMENTS["dub_techno"])
+        scenes = template["scenes"][:length]
+        
+        # Apply tempo and key
+        plan = []
+        for i, scene in enumerate(scenes):
+            scene_plan = dict(scene)
+            scene_plan["tempo"] = self.tempo
+            scene_plan["key"] = key or self.key
+            scene_plan["scene_index"] = i
+            
+            # Add key transition info
+            if i > 0:
+                prev = scenes[i - 1]
+                scene_plan["energy_change"] = scene["energy"] - prev["energy"]
+            else:
+                scene_plan["energy_change"] = 0
+            
+            plan.append(scene_plan)
+        
+        return plan
+    
+    @classmethod
+    def list_genres(cls) -> List[str]:
+        """List available arrangement genres."""
+        return sorted(cls.ARRANGEMENTS.keys())
+    
+    @staticmethod
+    def energy_to_params(energy: int) -> Dict[str, Any]:
+        """Convert energy level (1-10) to generation parameters."""
+        return {
+            "kick_velocity": 30 + energy * 9,
+            "hat_velocity": 20 + energy * 7,
+            "bass_velocity": 25 + energy * 9,
+            "chord_velocity": 20 + energy * 8,
+            "melody_velocity": 20 + energy * 7,
+            "kick_pulses": max(1, int(energy * 0.7)),
+            "hat_pulses": max(2, int(energy * 1.3)),
+            "snare_active": energy >= 4,
+            "clap_active": energy >= 3,
+            "perc_active": energy >= 2,
+            "bass_active": energy >= 3,
+            "chords_active": energy >= 2,
+            "melody_active": energy >= 4,
+        }
+
+
+class MemorySystem:
+    """
+    Usage-pattern learning system.
+    
+    Tracks which generation parameters produce good results,
+    learns user preferences, and recommends optimal settings.
+    
+    Usage:
+        mem = MemorySystem()
+        mem.record_success(genre="dub_techno", params={...}, quality=8)
+        recommendation = mem.recommend("dub_techno")
+    """
+    
+    def __init__(self):
+        self._history: List[Dict[str, Any]] = []
+        self._preferences: Dict[str, Dict[str, Any]] = {}
+    
+    def record_success(
+        self,
+        genre: str,
+        params: Dict[str, Any],
+        quality: int = 5
+    ) -> None:
+        """
+        Record a successful generation.
+        
+        Args:
+            genre: Genre used
+            params: Parameters used
+            quality: User rating (1-10)
+        """
+        record = {
+            "genre": genre,
+            "params": params,
+            "quality": quality,
+            "timestamp": __import__("time").time(),
+        }
+        self._history.append(record)
+        
+        # Update preferences for this genre
+        if genre not in self._preferences:
+            self._preferences[genre] = {}
+        
+        for key, value in params.items():
+            if key not in self._preferences[genre]:
+                self._preferences[genre][key] = {"sum": 0, "count": 0}
+            self._preferences[genre][key]["sum"] += value if isinstance(value, (int, float)) else 0
+            self._preferences[genre][key]["count"] += 1
+    
+    def recommend(self, genre: str) -> Dict[str, Any]:
+        """
+        Recommend optimal parameters for a genre.
+        
+        Args:
+            genre: Genre to get recommendations for
+            
+        Returns:
+            Dict of recommended parameter values
+        """
+        if genre not in self._preferences:
+            return {}
+        
+        recommendations = {}
+        for key, stats in self._preferences[genre].items():
+            if stats["count"] > 0:
+                recommendations[key] = stats["sum"] / stats["count"]
+        
+        return recommendations
+    
+    def get_popular_parameters(self, genre: str, top_n: int = 5) -> List[str]:
+        """Get most frequently used parameter keys."""
+        if genre not in self._preferences:
+            return []
+        
+        sorted_keys = sorted(
+            self._preferences[genre].keys(),
+            key=lambda k: self._preferences[genre][k]["count"],
+            reverse=True
+        )
+        return sorted_keys[:top_n]
+    
+    def get_history(self, genre: Optional[str] = None, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get generation history, optionally filtered by genre."""
+        records = self._history
+        if genre:
+            records = [r for r in records if r.get("genre") == genre]
+        return records[-limit:]
+    
+    def clear(self) -> None:
+        """Clear all history and preferences."""
+        self._history.clear()
+        self._preferences.clear()
+
+
+class GrooveTemplateImporter:
+    """
+    Import groove templates from real MIDI patterns.
+    
+    Analyzes MIDI timing and velocity data to create
+    GrooveGenerator-compatible templates with authentic feel.
+    
+    Usage:
+        importer = GrooveTemplateImporter()
+        # From a list of notes:
+        template = importer.analyze_notes(notes_data)
+        # Apply template:
+        generator = GrooveGenerator()
+        velocities = generator.apply_template(template, length=16)
+    """
+    
+    @staticmethod
+    def analyze_notes(
+        notes: List[Dict[str, Any]],
+        subdivision: float = 0.25
+    ) -> Dict[str, Any]:
+        """
+        Analyze a set of MIDI notes to extract groove data.
+        
+        Args:
+            notes: List of note dicts with velocity, start_time, duration
+            subdivision: Grid subdivision for quantization reference
+            
+        Returns:
+            Groove template dict with velocity_pattern and timing_offsets
+        """
+        if not notes:
+            return {"velocity_pattern": [], "timing_offsets": [], "average_velocity": 80}
+        
+        # Extract velocities sorted by time
+        sorted_notes = sorted(notes, key=lambda n: n["start_time"])
+        
+        velocity_pattern = [n["velocity"] for n in sorted_notes]
+        timing_offsets = []
+        
+        for note in sorted_notes:
+            beat = note["start_time"]
+            # Find nearest grid position
+            grid_pos = round(beat / subdivision) * subdivision
+            offset = beat - grid_pos
+            timing_offsets.append(offset)
+        
+        avg_velocity = sum(v for v in velocity_pattern) / len(velocity_pattern)
+        max_velocity = max(velocity_pattern) if velocity_pattern else 100
+        
+        return {
+            "velocity_pattern": velocity_pattern,
+            "timing_offsets": timing_offsets,
+            "average_velocity": int(avg_velocity),
+            "max_velocity": max_velocity,
+            "note_count": len(sorted_notes),
+            "subdivision": subdivision,
+        }
+    
+    @staticmethod
+    def create_groove_template(
+        velocities: List[int],
+        timing_offsets: Optional[List[float]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a reusable groove template from extracted data.
+        
+        Args:
+            velocities: List of velocity values for a bar
+            timing_offsets: Microtiming offsets for each subdivision
+            
+        Returns:
+            Template dict compatible with GrooveGenerator
+        """
+        length = len(velocities)
+        if timing_offsets is None:
+            timing_offsets = [0.0] * length
+        
+        return {
+            "velocity_pattern": velocities,
+            "timing_offsets": timing_offsets,
+            "length": length,
+        }
+    
+    @staticmethod
+    def apply_template(
+        template: Dict[str, Any],
+        bars: int = 8
+    ) -> List[int]:
+        """
+        Apply a groove template to generate velocities.
+        
+        Args:
+            template: Groove template dict
+            bars: Number of bars to generate
+            
+        Returns:
+            List of velocity values for bars*bars_subdivisions
+        """
+        velocities = template.get("velocity_pattern", [])
+        if not velocities:
+            return [100] * (bars * 16)
+        
+        result = []
+        for bar in range(bars):
+            for vel in velocities:
+                # Add subtle variation each bar
+                variation = random.randint(-3, 3)
+                result.append(max(20, min(127, vel + variation)))
+        
+        return result
+    
+    @staticmethod
+    def generate_preset_library() -> Dict[str, Dict[str, Any]]:
+        """
+        Generate a library of common groove presets.
+        
+        Returns:
+            Dict of preset name -> groove template
+        """
+        return {
+            "straight_8th": GrooveTemplateImporter.create_groove_template(
+                [100, 75, 90, 70, 100, 75, 90, 70],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            ),
+            "swung_8th": GrooveTemplateImporter.create_groove_template(
+                [100, 70, 95, 65, 100, 70, 95, 65],
+                [0.0, 0.05, 0.0, 0.05, 0.0, 0.05, 0.0, 0.05]
+            ),
+            "shuffle": GrooveTemplateImporter.create_groove_template(
+                [100, 60, 85, 55, 100, 60, 85, 55],
+                [0.0, 0.08, 0.0, 0.08, 0.0, 0.08, 0.0, 0.08]
+            ),
+            "dub_techno_swing": GrooveTemplateImporter.create_groove_template(
+                [100, 65, 85, 55, 95, 70, 80, 50],
+                [0.0, 0.04, 0.01, 0.06, 0.0, 0.03, 0.02, 0.05]
+            ),
+            "four_on_floor": GrooveTemplateImporter.create_groove_template(
+                [110, 65, 105, 60, 108, 65, 103, 60],
+                [0.0, 0.02, 0.0, 0.03, 0.0, 0.02, 0.0, 0.03]
+            ),
+        }
+
+
 class PatternEvolution:
     """
     Pattern that evolves over time - morphs density and complexity.
@@ -888,7 +1922,8 @@ class ClipGenerator:
         velocity: int = 85,
         octave: int = 1,
         start_degree: int = 0,
-        scale_type: Optional[ScaleType] = None
+        scale_type: Optional[ScaleType] = None,
+        order: int = 1,
     ) -> 'ClipGenerator':
         """
         Add melody generated using Markov chain for musically coherent motion.
@@ -898,7 +1933,8 @@ class ClipGenerator:
             velocity: Base velocity
             octave: Octave offset for MIDI notes
             start_degree: Starting scale degree
-            scale_type: ScaleType to use for diatonic transitions (uses self.scale if None)
+            scale_type: ScaleType to use for diatonic transitions
+            order: Markov order - 1 (simpler) or 2 (more structured phrases)
         """
         # Use provided scale or default to self.scale
         scale = self.scale
@@ -906,14 +1942,16 @@ class ClipGenerator:
             scale = Scale(self.key, scale_type)
         
         # Get or create transition matrix
-        if scale_type:
-            transitions = PMarkov.create_diatonic_transitions(scale_type)
-        else:
-            # Create simple transitions based on current scale
-            transitions = PMarkov.create_diatonic_transitions(self.scale.scale_type)
+        st = scale_type or self.scale.scale_type
         
-        markov = PMarkov(transitions, scale)
-        melody = markov.generate(length, start_degree)
+        if order >= 2:
+            transitions = PMarkov2.create_diatonic_transitions(st)
+            markov = PMarkov2(transitions, scale)
+            melody = markov.generate(length, [start_degree] if isinstance(start_degree, int) else start_degree)
+        else:
+            transitions = PMarkov.create_diatonic_transitions(st)
+            markov = PMarkov(transitions, scale)
+            melody = markov.generate(length, start_degree)
         
         # Convert to notes with rhythmic spacing
         pos = 0.0
