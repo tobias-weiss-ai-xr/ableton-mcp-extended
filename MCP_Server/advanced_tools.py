@@ -1893,3 +1893,241 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
             import traceback
             traceback.print_exc()
             return f"Error applying groove template: {str(e)}"
+
+    @mcp.tool()
+    def apply_phrase(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        phrase_type: str = "basic_motif",
+        key: str = "Fm",
+        length_bars: int = 4,
+        energy_curve: str = "neutral",
+        octave: int = 1,
+        velocity: int = 85,
+    ) -> str:
+        """
+        Generate a musical phrase with built-in tension/release arc.
+
+        Creates a phrase-level structure (4-8 bars) with musical shaping,
+        scale constraints, and articulation patterns. Superior to raw note
+        arrays because phrases have internal energy curves.
+
+        Parameters:
+        - track_index: Target track index
+        - clip_index: Target clip slot
+        - phrase_type: Phrase template:
+          - "basic_motif": Simple repeating motif on root
+          - "rising_line": Ascending line from root upward
+          - "arpeggio": Chord arpeggiation
+          - "call_response": Call-and-response structure
+          - "tension": Delayed resolution phrase
+        - key: Key signature (e.g., "Fm", "Cm")
+        - length_bars: Phrase length in bars
+        - energy_curve: "neutral", "rise", "fall", "rise_fall", "fall_rise"
+        - octave: Octave offset for MIDI notes
+        - velocity: Base velocity (0-127)
+
+        Examples:
+        - apply_phrase(6, 0, "rising_line", "Fm", 4, "rise")
+        - apply_phrase(5, 0, "arpeggio", "Cm", 2, "neutral")
+        """
+        try:
+            from MCP_Server.music_generation import (
+                Scale, ScaleType, Phrase, PhraseComposer, MIDINote
+            )
+
+            # Parse key (e.g., "Fm" -> root F, minor)
+            key_map = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+            root_str = key[0].upper()
+            is_minor = 'm' in key.lower() or key.islower()
+            root = 12 * 4 + key_map.get(root_str, 0)
+            scale_type = ScaleType.MINOR if is_minor else ScaleType.MAJOR
+            scale = Scale(root, scale_type)
+
+            # Build phrase based on type
+            if phrase_type == "basic_motif":
+                phrase = Phrase.basic_motif(root_degree=0, length_bars=length_bars, density=4)
+            elif phrase_type == "rising_line":
+                phrase = Phrase.rising_line(start_degree=0, end_degree=7, length_bars=length_bars)
+            elif phrase_type == "arpeggio":
+                chord_degrees = [0, 2, 4] if is_minor else [0, 4, 7]
+                phrase = Phrase.arpeggio(
+                    chord_degrees, "up", length_bars, rate=0.5
+                )
+            elif phrase_type == "call_response":
+                call = [0, 2, 4, 2]
+                response = [4, 3, 2, 0]
+                phrase = Phrase.call_response(call, response, call_reps=max(1, length_bars // 4))
+            elif phrase_type == "tension":
+                phrase = Phrase.tension_phrase(0, 4, steps=length_bars * 2, length_bars=length_bars)
+            else:
+                return f"Unknown phrase type: {phrase_type}"
+
+            phrase.set_energy_curve(energy_curve)
+            composer = PhraseComposer(scale=scale, octave=octave)
+            midi_notes = composer.compose([phrase], normalize_velocity=True)
+
+            # Convert to Ableton format
+            notes = [
+                {"pitch": n.pitch, "start_time": n.start_time,
+                 "duration": n.duration, "velocity": n.velocity, "mute": False}
+                for n in midi_notes
+            ]
+
+            ableton = get_ableton_connection()
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": notes,
+            })
+
+            return f"Generated {phrase_type} phrase ({length_bars} bars, {energy_curve}) with {len(notes)} notes"
+
+        except Exception as e:
+            logger.error(f"Error applying phrase: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error applying phrase: {str(e)}"
+
+    @mcp.tool()
+    def apply_live_performance_fill(
+        ctx: Context,
+        track_index: int,
+        clip_index: int,
+        fill_type: str = "ghost_notes",
+        intensity: float = 0.3,
+    ) -> str:
+        """
+        Apply a live performance fill pattern to an existing clip.
+
+        Generates evolving variations for live playback: ghost notes,
+        accent shifts, pattern displacement, double-time fills.
+        Keeps repetitive patterns musical over extended playing.
+
+        Parameters:
+        - track_index: Track index containing the clip
+        - clip_index: Clip slot index
+        - fill_type: Fill technique:
+          - "ghost_notes": Add low-velocity ghost notes between hits
+          - "accent_shift": Randomly alter accent velocities
+          - "density_up": Add more notes to increase density
+          - "density_down": Remove notes to decrease density
+          - "displace": Shift pattern by rhythmic offset
+          - "fill": Generate track-appropriate fill pattern
+        - intensity: 0.0 (subtle) to 1.0 (dramatic)
+
+        Examples:
+        - apply_live_performance_fill(0, 0, "ghost_notes", 0.3)
+        - apply_live_performance_fill(4, 0, "fill", 0.6)
+        """
+        try:
+            from MCP_Server.music_generation import LivePerformanceEngine
+
+            # Get current clip notes
+            ableton = get_ableton_connection()
+            result = ableton.send_command("get_clip_notes", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+            })
+            existing_notes = result if isinstance(result, list) else []
+
+            if not existing_notes:
+                return f"No notes found in track {track_index}, clip {clip_index}"
+
+            engine = LivePerformanceEngine()
+            track_type_map = {0: "kick", 1: "snare", 2: "hat", 3: "clap",
+                              4: "bass", 5: "", 6: "melody", 7: ""}
+            track_type = track_type_map.get(track_index, "")
+
+            # Apply fill technique
+            if fill_type == "ghost_notes":
+                updated = engine.ghost_notes(existing_notes, probability=0.15 + intensity * 0.3)
+            elif fill_type == "accent_shift":
+                updated = engine.accent_shift(existing_notes, shift_amount=0.1 + intensity * 0.15)
+            elif fill_type == "density_up":
+                updated = engine.density_change(existing_notes, factor=1.0 + intensity)
+            elif fill_type == "density_down":
+                updated = engine.density_change(existing_notes, factor=max(0.3, 1.0 - intensity * 0.7))
+            elif fill_type == "displace":
+                updated = engine.pattern_displacement(existing_notes, offset=0.25 + intensity * 0.5)
+            elif fill_type == "fill":
+                updated = engine.generate_fill(track_type, existing_notes, intensity)
+            else:
+                return f"Unknown fill type: {fill_type}"
+
+            # Update clip
+            ableton.send_command("delete_notes_from_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "note_indices": list(range(len(existing_notes))),
+            })
+            ableton.send_command("add_notes_to_clip", {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "notes": updated,
+            })
+
+            return f"Applied {fill_type} fill (intensity={intensity}) to track {track_index}, clip {clip_index}: {len(updated)} notes"
+
+        except Exception as e:
+            logger.error(f"Error applying performance fill: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return f"Error applying performance fill: {str(e)}"
+
+    @mcp.tool()
+    def graphiti_search(
+        ctx: Context,
+        query: str,
+        group_id: str = "ableton-mcp",
+        limit: int = 5,
+    ) -> str:
+        """
+        Search the optional Graphiti knowledge graph for past patterns.
+
+        If Graphiti MCP server is running (separate process), this searches
+        the temporal knowledge graph for pattern entities matching your query.
+        If Graphiti is not running, returns a helpful message.
+
+        Parameters:
+        - query: Natural language description (e.g., "dark Fm bass 126bpm")
+        - group_id: Graphiti group for data isolation
+        - limit: Maximum results
+
+        Examples:
+        - graphiti_search("dub techno Fm 126bpm kick pattern")
+        - graphiti_search("atmospheric pads with reverb")
+        """
+        try:
+            from MCP_Server.graphiti_memory import GraphitiMemoryBackend
+
+            backend = GraphitiMemoryBackend(
+                endpoint="http://localhost:8083/mcp/",
+                group_id=group_id,
+            )
+
+            if not backend.enabled:
+                return (
+                    "Graphiti knowledge graph not available. "
+                    "To enable: start Graphiti MCP server at http://localhost:8083/mcp/ "
+                    "(optional dependency - see https://github.com/getzep/graphiti)"
+                )
+
+            results = backend.search_similar(query, limit=limit)
+            if not results:
+                return f"No patterns found matching: '{query}'"
+
+            lines = [f"Found {len(results)} patterns matching '{query}':"]
+            for i, r in enumerate(results[:limit]):
+                if isinstance(r, dict):
+                    text = r.get("text", str(r))
+                    lines.append(f"  {i + 1}. {text[:200]}")
+                else:
+                    lines.append(f"  {i + 1}. {str(r)[:200]}")
+
+            return "\n".join(lines)
+
+        except Exception as e:
+            logger.error(f"Error searching graphiti: {str(e)}")
+            return f"Error searching knowledge graph: {str(e)}"

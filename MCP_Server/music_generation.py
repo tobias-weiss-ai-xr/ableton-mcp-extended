@@ -1303,15 +1303,29 @@ class MemorySystem:
     Tracks which generation parameters produce good results,
     learns user preferences, and recommends optimal settings.
     
+    Optionally backed by Graphiti MCP for persistent, temporally-aware
+    knowledge graph storage across sessions.
+    
     Usage:
+        # In-memory only:
         mem = MemorySystem()
+        
+        # With optional Graphiti backend:
+        from MCP_Server.graphiti_memory import GraphitiMemoryBackend
+        mem = MemorySystem(
+            graphiti_backend=GraphitiMemoryBackend(
+                endpoint="http://localhost:8083/mcp/",
+                group_id="ableton-dub-techno"
+            )
+        )
         mem.record_success(genre="dub_techno", params={...}, quality=8)
         recommendation = mem.recommend("dub_techno")
     """
     
-    def __init__(self):
+    def __init__(self, graphiti_backend: Optional[Any] = None):
         self._history: List[Dict[str, Any]] = []
         self._preferences: Dict[str, Dict[str, Any]] = {}
+        self._graphiti = graphiti_backend
     
     def record_success(
         self,
@@ -1335,6 +1349,10 @@ class MemorySystem:
         }
         self._history.append(record)
         
+        # Also record to Graphiti backend if available
+        if self._graphiti and hasattr(self._graphiti, 'enabled') and self._graphiti.enabled:
+            self._graphiti.record_success(genre, params, quality)
+        
         # Update preferences for this genre
         if genre not in self._preferences:
             self._preferences[genre] = {}
@@ -1349,19 +1367,28 @@ class MemorySystem:
         """
         Recommend optimal parameters for a genre.
         
+        First checks Graphiti backend (if available) for cross-session
+        patterns, then merges with in-memory preferences.
+        
         Args:
             genre: Genre to get recommendations for
             
         Returns:
             Dict of recommended parameter values
         """
-        if genre not in self._preferences:
-            return {}
-        
         recommendations = {}
-        for key, stats in self._preferences[genre].items():
-            if stats["count"] > 0:
-                recommendations[key] = stats["sum"] / stats["count"]
+        
+        # Try Graphiti backend first for persistent recommendations
+        if self._graphiti and hasattr(self._graphiti, 'enabled') and self._graphiti.enabled:
+            graphiti_recs = self._graphiti.recommend(genre)
+            if graphiti_recs:
+                recommendations.update(graphiti_recs)
+        
+        # Merge with in-memory preferences (higher weight)
+        if genre in self._preferences:
+            for key, stats in self._preferences[genre].items():
+                if stats["count"] > 0:
+                    recommendations[key] = stats["sum"] / stats["count"]
         
         return recommendations
     
@@ -1382,12 +1409,24 @@ class MemorySystem:
         records = self._history
         if genre:
             records = [r for r in records if r.get("genre") == genre]
-        return records[-limit:]
+        
+        # Also pull history from Graphiti if available
+        graphiti_history = []
+        if self._graphiti and hasattr(self._graphiti, 'enabled') and self._graphiti.enabled:
+            graphiti_history = self._graphiti.get_history(genre, limit)
+        
+        # Merge both, prioritizing Graphiti (persistent)
+        combined = graphiti_history + records
+        return combined[-limit:]
     
     def clear(self) -> None:
         """Clear all history and preferences."""
         self._history.clear()
         self._preferences.clear()
+        
+        # Also clear Graphiti if available
+        if self._graphiti and hasattr(self._graphiti, 'enabled') and self._graphiti.enabled:
+            self._graphiti.clear()
 
 
 class GrooveTemplateImporter:
@@ -1534,13 +1573,660 @@ class GrooveTemplateImporter:
         }
 
 
+# ============================================================================
+# PHRASE-LEVEL GENERATION
+# ============================================================================
+
+@dataclass
+class PhraseEvent:
+    """Single event within a musical phrase."""
+    scale_degree: int
+    start_beat: float
+    duration: float
+    velocity: int
+    articulation: str = "normal"  # normal, staccato, accent, ghost
+
+
+class Phrase:
+    """
+    A 4-8 bar musical phrase with built-in tension/release arc.
+    
+    Instead of generating raw notes, you compose at the phrase level:
+    motifs, call-response, rising lines, arpeggios. The phrase handles
+    the musical shaping internally.
+    
+    Usage:
+        phrase = Phrase.basic_motif(root_degree=0, length_bars=4)
+        phrase.set_energy_curve("rise")
+        midi_notes = phrase.generate_midi(scale, octave=1)
+    """
+    
+    def __init__(self, length_bars: int = 4):
+        self.length_bars = length_bars
+        self.events: List[PhraseEvent] = []
+        self.energy_curve: str = "neutral"  # neutral, rise, fall, rise_fall, fall_rise
+        self._length_beats = length_bars * 4.0
+    
+    def add_event(
+        self,
+        scale_degree: int,
+        start_beat: float,
+        duration: float = 1.0,
+        velocity: int = 80,
+        articulation: str = "normal"
+    ) -> 'Phrase':
+        """Add an event to the phrase."""
+        self.events.append(PhraseEvent(scale_degree, start_beat, duration, velocity, articulation))
+        return self
+    
+    def set_energy_curve(self, curve: str = "neutral") -> 'Phrase':
+        """Set the energy trajectory for this phrase."""
+        self.energy_curve = curve
+        return self
+    
+    def _curve_multiplier(self, beat: float) -> float:
+        """Get velocity multiplier at a beat position based on energy curve."""
+        t = beat / max(self._length_beats, 1)
+        if self.energy_curve == "neutral":
+            return 1.0
+        elif self.energy_curve == "rise":
+            return 0.7 + 0.5 * t
+        elif self.energy_curve == "fall":
+            return 1.2 - 0.5 * t
+        elif self.energy_curve == "rise_fall":
+            # Rise to midpoint then fall
+            return 0.7 + 1.0 * math.sin(t * math.pi)
+        elif self.energy_curve == "fall_rise":
+            return 0.7 + 1.0 * math.sin((1 - t) * math.pi)
+        return 1.0
+    
+    def generate_midi(self, scale: Optional[Scale] = None, octave: int = 0) -> List['MIDINote']:
+        """
+        Generate MIDI notes from this phrase.
+        
+        Args:
+            scale: Scale for degree-to-MIDI conversion. If None, uses raw degrees as pitch.
+            octave: Octave offset for degree conversion
+            
+        Returns:
+            List of MIDINote objects
+        """
+        notes = []
+        for event in self.events:
+            if event.start_beat >= self._length_beats:
+                continue
+            
+            if scale:
+                pitch = scale.degree_to_midi(event.scale_degree, octave_offset=octave)
+            else:
+                pitch = event.scale_degree + octave * 12
+            
+            # Energy curve affects velocity
+            curve_factor = self._curve_multiplier(event.start_beat)
+            
+            # Articulation shapes
+            dur = event.duration
+            vel = int(event.velocity * curve_factor)
+            
+            if event.articulation == "staccato":
+                dur = min(dur, 0.25)
+                vel = min(127, int(vel * 1.1))
+            elif event.articulation == "accent":
+                dur = min(dur, max(dur * 0.8, 0.5))
+                vel = min(127, int(vel * 1.3))
+            elif event.articulation == "ghost":
+                vel = int(vel * 0.4)
+                dur = dur * 0.6
+            
+            vel = max(20, min(127, vel))
+            notes.append(MIDINote(pitch, event.start_beat, dur, vel))
+        
+        return sorted(notes, key=lambda n: (n.start_time, n.pitch))
+    
+    # ========== Phrase Templates ==========
+    
+    @staticmethod
+    def basic_motif(root_degree: int = 0, length_bars: int = 4, density: int = 4) -> 'Phrase':
+        """
+        Simple repeating motif pattern.
+        
+        Args:
+            root_degree: Scale degree for the root
+            length_bars: Phrase length
+            density: Notes per bar
+        """
+        phrase = Phrase(length_bars)
+        bar_len = 4.0
+        for bar in range(length_bars):
+            offset = bar * bar_len
+            interval = bar_len / density
+            for i in range(density):
+                deg = root_degree + (i % 3)
+                vel = 95 if i == 0 else 75
+                phrase.add_event(deg, offset + i * interval, interval * 0.8, vel)
+        return phrase
+    
+    @staticmethod
+    def rising_line(start_degree: int = 0, end_degree: int = 7, length_bars: int = 4) -> 'Phrase':
+        """Ascending line that climbs from start_degree to end_degree."""
+        phrase = Phrase(length_bars)
+        steps = length_bars * 4  # One note per beat
+        for i in range(steps):
+            t = i / max(steps - 1, 1)
+            deg = start_degree + int((end_degree - start_degree) * t)
+            # Slight velocity increase as pitch rises
+            vel = 75 + int(t * 30)
+            phrase.add_event(deg, i * 1.0, 0.9, vel)
+        return phrase
+    
+    @staticmethod
+    def arpeggio(
+        chord_degrees: List[int],
+        pattern: str = "up",
+        length_bars: int = 2,
+        rate: float = 0.5
+    ) -> 'Phrase':
+        """
+        Arpeggiated chord pattern.
+        
+        Args:
+            chord_degrees: List of scale degrees forming a chord
+            pattern: "up", "down", "up_down", "random"
+            length_bars: Phrase length
+            rate: Time between each arpeggio note
+        """
+        phrase = Phrase(length_bars)
+        total_beats = length_bars * 4.0
+        pos = 0.0
+        cycle = list(chord_degrees)
+        
+        while pos < total_beats:
+            if pattern == "up":
+                pass  # use cycle as-is
+            elif pattern == "down":
+                cycle = list(reversed(chord_degrees))
+            elif pattern == "up_down":
+                cycle = chord_degrees + list(reversed(chord_degrees[1:-1]))
+            elif pattern == "random":
+                cycle = random.sample(chord_degrees, len(chord_degrees))
+            
+            for deg in cycle:
+                if pos >= total_beats:
+                    break
+                vel = 80 + int((pos / total_beats) * 20)
+                phrase.add_event(deg, pos, rate * 0.9, vel)
+                pos += rate
+        
+        return phrase
+    
+    @staticmethod
+    def call_response(
+        call_degrees: List[int],
+        response_degrees: List[int],
+        call_reps: int = 2
+    ) -> 'Phrase':
+        """Antiphonal call-and-response structure."""
+        bars = call_reps * 2  # call + response per rep
+        phrase = Phrase(bars)
+        bar = 0
+        for _ in range(call_reps):
+            # Call: first 2 bars
+            for i, deg in enumerate(call_degrees):
+                phrase.add_event(deg, bar * 4 + i * 0.5, 0.45, 90 + i * 5, "accent" if i == 0 else "normal")
+            # Response: next 2 bars
+            for i, deg in enumerate(response_degrees):
+                phrase.add_event(deg, (bar + 1) * 4 + i * 1.0, 0.9, 80 - i * 3)
+            bar += 2
+        return phrase
+    
+    @staticmethod
+    def rhythmic_motif(
+        degree: int,
+        rhythm_pattern: List[float],
+        velocity_pattern: Optional[List[int]] = None,
+        length_bars: int = 4
+    ) -> 'Phrase':
+        """
+        Rhythmic pattern on a single pitch.
+        
+        Args:
+            degree: Scale degree to repeat
+            rhythm_pattern: List of beat offsets (0.0, 0.5, 1.0...)
+            velocity_pattern: Velocities for each hit
+            length_bars: How many bars to repeat the pattern
+        """
+        phrase = Phrase(length_bars)
+        bar_len = 4.0
+        veloc = velocity_pattern or [80] * len(rhythm_pattern)
+        
+        for bar in range(length_bars):
+            offset = bar * bar_len
+            for i, beat in enumerate(rhythm_pattern):
+                vel = veloc[i % len(veloc)]
+                phrase.add_event(degree, offset + beat, 0.2, vel)
+        
+        return phrase
+    
+    @staticmethod
+    def tension_phrase(
+        start_degree: int = 0,
+        end_degree: int = 4,
+        steps: int = 8,
+        length_bars: int = 2
+    ) -> 'Phrase':
+        """Phrase that creates harmonic tension through delayed resolution."""
+        phrase = Phrase(length_bars)
+        for i in range(steps):
+            t = i / max(steps - 1, 1)
+            deg = start_degree + int((end_degree - start_degree) * t) if t < 0.7 else end_degree
+            vel = 85 + int(t * 20)
+            phrase.add_event(deg, i * (length_bars * 4.0 / steps), 0.8, vel)
+        return phrase
+
+
+class PhraseComposer:
+    """
+    Compose multiple phrases into a complete clip with intelligent transitions.
+    
+    Handles:
+    - Spacing between phrases
+    - Velocity normalization across joined phrases
+    - Crossfade/overlap handling
+    - Scale and octave application
+    
+    Usage:
+        composer = PhraseComposer(scale, octave=1)
+        intro = Phrase.basic_motif(0, 2)
+        build = Phrase.rising_line(0, 7, 4)
+        drop = Phrase.arpeggio([0, 2, 4], "up", 4)
+        notes = composer.compose([intro, build, drop])
+    """
+    
+    def __init__(self, scale: Optional[Scale] = None, octave: int = 0):
+        self.scale = scale
+        self.octave = octave
+    
+    def compose(
+        self,
+        phrases: List[Phrase],
+        beat_gap: float = 0.0,
+        normalize_velocity: bool = True
+    ) -> List['MIDINote']:
+        """
+        Chain multiple phrases into a continuous clip.
+        
+        Args:
+            phrases: List of Phrase objects to chain
+            beat_gap: Beats of silence between phrases
+            normalize_velocity: Scale all velocities so max = 127
+            
+        Returns:
+            Sorted list of MIDINote objects
+        """
+        all_notes: List[MIDINote] = []
+        cursor = 0.0
+        
+        for phrase in phrases:
+            midi_notes = phrase.generate_midi(self.scale, self.octave)
+            for note in midi_notes:
+                note.start_time += cursor
+            all_notes.extend(midi_notes)
+            cursor += phrase._length_beats + beat_gap
+        
+        if normalize_velocity and all_notes:
+            max_vel = max(n.velocity for n in all_notes)
+            if max_vel > 0 and max_vel < 127:
+                scale = 127.0 / max_vel
+                for note in all_notes:
+                    note.velocity = min(127, int(note.velocity * scale))
+        
+        return sorted(all_notes, key=lambda n: (n.start_time, n.pitch))
+
+
+# ============================================================================
+# LIVE PERFORMANCE ENGINE
+# ============================================================================
+
+class LivePerformanceEngine:
+    """
+    Generates evolving fills and variations during live playback.
+    
+    Instead of static loops, this engine produces subtle-to-dramatic
+    variations on each loop iteration: ghost notes, accent shifts,
+    density changes, pattern displacements. Keeps repetitive patterns
+    musical over extended playback.
+    
+    Usage:
+        engine = LivePerformanceEngine(scale)
+        iteration_3 = engine.loop_variation(original_notes, loop_count=3)
+        fill = engine.generate_fill("kick", current_notes, intensity=0.5)
+    """
+    
+    def __init__(self, scale: Optional[Scale] = None):
+        self.scale = scale
+        self._iteration = 0
+        # Diminishing probability — earlier iterations more conservative
+        self._variation_memory: List[Dict] = []
+    
+    def generate_fill(
+        self,
+        track_type: str,
+        base_notes: List[Dict[str, Any]],
+        intensity: float = 0.3
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate a fill pattern for a track type.
+        
+        Args:
+            track_type: "kick", "snare", "hat", "clap", "bass", "melody"
+            base_notes: Original note data
+            intensity: 0.0 (subtle) to 1.0 (dramatic)
+            
+        Returns:
+            Modified note list with fill variations
+        """
+        if not base_notes:
+            return base_notes
+        
+        # Copy notes to avoid mutation
+        notes = [dict(n) for n in base_notes]
+        
+        # Track type determines fill approach
+        if track_type == "kick":
+            if intensity > 0.5:
+                # Add double-time kick hits in last bar
+                notes = self._add_double_time(notes, intensity)
+        elif track_type == "snare":
+            if intensity > 0.3:
+                # Add ghost snares and rim shots
+                notes = self._add_sparse_notes(notes, intensity, pitch_add=1)
+        elif track_type == "hat":
+            # Open hat accent
+            notes = self._add_accents(notes, intensity)
+        elif track_type == "bass":
+            if intensity > 0.4:
+                # Add grace notes
+                notes = self._add_grace_notes(notes, intensity)
+        elif track_type == "melody":
+            if intensity > 0.5:
+                # More ornamentation
+                notes = self._add_ornaments(notes, intensity)
+        
+        return notes
+    
+    @staticmethod
+    def ghost_notes(
+        base_notes: List[Dict[str, Any]],
+        probability: float = 0.2,
+        subdivision: float = 0.25
+    ) -> List[Dict[str, Any]]:
+        """Add low-velocity ghost notes in empty grid slots."""
+        if not base_notes:
+            return base_notes
+        
+        notes = [dict(n) for n in base_notes]
+        occupied = {n["start_time"] for n in notes}
+        
+        # Find range
+        min_time = min(n["start_time"] for n in notes)
+        max_time = max(n["start_time"] for n in notes)
+        
+        current = min_time
+        while current < max_time:
+            # Check nearest 8th
+            grid = round(current / subdivision) * subdivision
+            snap_dist = abs(current - grid)
+            if snap_dist < 0.05:
+                current = grid
+            if current not in occupied and random.random() < probability:
+                # Sample velocity from nearby notes
+                nearby = [n for n in notes if abs(n["start_time"] - current) < 2.0]
+                avg_vel = sum(n["velocity"] for n in nearby) / max(len(nearby), 1)
+                ghost_vel = max(20, int(avg_vel * 0.3))
+                notes.append({
+                    "pitch": notes[0]["pitch"],
+                    "start_time": current,
+                    "duration": 0.125,
+                    "velocity": ghost_vel,
+                    "mute": False
+                })
+            current += subdivision
+        
+        return sorted(notes, key=lambda n: n["start_time"])
+    
+    @staticmethod
+    def accent_shift(
+        base_notes: List[Dict[str, Any]],
+        shift_amount: float = 0.15
+    ) -> List[Dict[str, Any]]:
+        """Randomly alter accent velocities."""
+        notes = [dict(n) for n in base_notes]
+        for n in notes:
+            if random.random() < 0.3:  # 30% accent probability
+                shift = int(n["velocity"] * shift_amount)
+                n["velocity"] = max(20, min(127, n["velocity"] + random.choice([-shift, shift])))
+        return notes
+    
+    @staticmethod
+    def density_change(
+        base_notes: List[Dict[str, Any]],
+        factor: float = 1.5
+    ) -> List[Dict[str, Any]]:
+        """Increase or decrease note density by removing/adding notes."""
+        notes = [dict(n) for n in base_notes]
+        if factor >= 1.0:
+            # Add more notes: subdivide where gaps exist
+            return notes  # ghost_notes handles adding
+        else:
+            # Remove notes: keep only every nth
+            keep_every = int(1.0 / max(factor, 0.1))
+            return [notes[i] for i in range(0, len(notes), keep_every)]
+    
+    @staticmethod
+    def pattern_displacement(
+        base_notes: List[Dict[str, Any]],
+        offset: float = 0.5
+    ) -> List[Dict[str, Any]]:
+        """Shift entire pattern by a rhythmic offset."""
+        notes = [dict(n) for n in base_notes]
+        for n in notes:
+            n["start_time"] += offset
+        return notes
+    
+    def _add_double_time(
+        self,
+        notes: List[Dict[str, Any]],
+        intensity: float
+    ) -> List[Dict[str, Any]]:
+        """Add extra hits in the final bar for build energy."""
+        if not notes:
+            return notes
+        max_time = max(n["start_time"] for n in notes)
+        bar_start = (max_time // 4) * 4
+        if bar_start < 0:
+            bar_start = 0
+        pitch = notes[0]["pitch"]
+        for beat in range(1, 5):
+            pos = bar_start + beat * 0.5
+            if pos <= max_time + 1:
+                vel = min(127, int(notes[0]["velocity"] * 0.7 * (1 + intensity)))
+                notes.append({
+                    "pitch": pitch,
+                    "start_time": pos,
+                    "duration": 0.15,
+                    "velocity": vel,
+                    "mute": False
+                })
+        return notes
+    
+    def _add_sparse_notes(
+        self,
+        notes: List[Dict[str, Any]],
+        intensity: float,
+        pitch_add: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Add occasional extra hits with slight pitch variation."""
+        if not notes:
+            return notes
+        pitch = notes[0]["pitch"] + pitch_add
+        max_time = max(n["start_time"] for n in notes)
+        for beat in range(0, int(max_time), 2):
+            if random.random() < intensity * 0.4:
+                vel = int(notes[0]["velocity"] * random.uniform(0.3, 0.6))
+                notes.append({
+                    "pitch": pitch,
+                    "start_time": beat + random.uniform(0.1, 0.9),
+                    "duration": 0.15,
+                    "velocity": max(20, vel),
+                    "mute": False
+                })
+        return notes
+    
+    def _add_accents(
+        self,
+        notes: List[Dict[str, Any]],
+        intensity: float
+    ) -> List[Dict[str, Any]]:
+        """Add accent hits at key rhythmic positions."""
+        if not notes:
+            return notes
+        pitch = notes[0].get("pitch", 42) + 1  # Open hat
+        max_time = max(n["start_time"] for n in notes)
+        # Add open hats on beat 4 of even bars
+        for bar in range(0, int(max_time // 4), 2):
+            pos = bar * 4 + 3.5
+            if random.random() < intensity:
+                notes.append({
+                    "pitch": pitch,
+                    "start_time": pos,
+                    "duration": 0.25,
+                    "velocity": 85,
+                    "mute": False
+                })
+        return notes
+    
+    def _add_grace_notes(
+        self,
+        notes: List[Dict[str, Any]],
+        intensity: float
+    ) -> List[Dict[str, Any]]:
+        """Add quick grace notes before downbeats."""
+        if not notes:
+            return notes
+        downbeats = [i * 4 for i in range(1, int(max(n["start_time"] for n in notes) / 4) + 1)]
+        pitch = notes[0]["pitch"]
+        for db in downbeats:
+            if random.random() < intensity * 0.3:
+                grace_pitch = pitch + random.choice([-1, 1]) * 2
+                notes.append({
+                    "pitch": grace_pitch,
+                    "start_time": db - 0.125,
+                    "duration": 0.1,
+                    "velocity": int(notes[0]["velocity"] * 0.5),
+                    "mute": False
+                })
+        return notes
+    
+    def _add_ornaments(
+        self,
+        notes: List[Dict[str, Any]],
+        intensity: float
+    ) -> List[Dict[str, Any]]:
+        """Add melodic ornaments (mordents, trills)."""
+        new_notes = [dict(n) for n in notes]
+        for note in notes:
+            if random.random() < intensity * 0.2:
+                # Quick neighbor note before or after
+                neighbor = note["pitch"] + random.choice([-2, 2, -1, 1])
+                pos = note["start_time"] - 0.125
+                if pos >= 0:
+                    new_notes.append({
+                        "pitch": neighbor,
+                        "start_time": pos,
+                        "duration": 0.1,
+                        "velocity": int(note["velocity"] * 0.5),
+                        "mute": False
+                    })
+        return sorted(new_notes, key=lambda n: n["start_time"])
+    
+    def loop_variation(
+        self,
+        original_notes: List[Dict[str, Any]],
+        loop_count: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate variation for a specific loop iteration.
+        
+        Variation becomes more pronounced with each loop.
+        
+        Args:
+            original_notes: The base note data
+            loop_count: Which loop iteration (0, 1, 2...)
+            
+        Returns:
+            Modified notes with accumulated variations
+        """
+        self._iteration = loop_count
+        if not original_notes or loop_count == 0:
+            return original_notes
+        
+        # Intensity grows with loop count but caps at 0.7
+        intensity = min(0.7, loop_count * 0.08)
+        
+        # Vary which techniques to apply each iteration
+        notes = [dict(n) for n in original_notes]
+        
+        if loop_count % 3 == 0 and intensity > 0.2:
+            # Apply ghost notes every 3rd loop
+            notes = self.ghost_notes(notes, probability=0.15 + intensity * 0.1)
+        
+        if loop_count % 2 == 0 and intensity > 0.3:
+            # Accent shifts on even loops
+            notes = self.accent_shift(notes, shift_amount=0.1 + intensity * 0.1)
+        
+        if loop_count > 4 and intensity > 0.5:
+            # More dramatic changes after 4+ loops
+            notes = self.pattern_displacement(notes, offset=0.25 * intensity)
+        
+        # Update variation memory
+        self._variation_memory.append({
+            "loop": loop_count,
+            "intensity": intensity,
+            "note_count": len(notes)
+        })
+        
+        return sorted(notes, key=lambda n: n["start_time"])
+    
+    def get_evolving_set(
+        self,
+        track_data: Dict[str, List[Dict[str, Any]]],
+        bars: int = 8
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Generate a pre-computed set of evolving variations.
+        
+        Args:
+            track_data: Dict of track_name -> note_list
+            bars: Number of bars to generate variations for
+            
+        Returns:
+            Dict with 'bars' containing per-bar variations per track
+        """
+        result = {}
+        for track_name, notes in track_data.items():
+            bar_variations = []
+            for bar in range(bars):
+                if bar == 0:
+                    bar_variations.append(notes)
+                else:
+                    varied = self.loop_variation(notes, bar)
+                    bar_variations.append(varied)
+            result[track_name] = bar_variations
+        return result
+
+
 class PatternEvolution:
     """
-    Pattern that evolves over time - morphs density and complexity.
-    
-    Instead of a static pattern, this generates patterns that change
-    over the duration of a clip (e.g., building energy, fading out).
-    
     Usage:
         gen = PatternEvolution(
             start_pulses=2,  # Sparse
