@@ -991,6 +991,20 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_browser_items_at_path":
                 path = params.get("path", "")
                 response["result"] = self.get_browser_items_at_path(path)
+            elif command_type == "get_crossfader":
+                response["result"] = self._get_crossfader()
+            elif command_type == "set_crossfader":
+                value = params.get("value", 0.5)
+                response["result"] = self._set_crossfader(value)
+            elif command_type == "get_track_crossfade_assign":
+                track_index = params.get("track_index", 0)
+                response["result"] = self._get_track_crossfade_assign(track_index)
+            elif command_type == "set_track_crossfade_assign":
+                track_index = params.get("track_index", 0)
+                assign = params.get("assign", 1)
+                response["result"] = self._set_track_crossfade_assign(track_index, assign)
+            elif command_type == "get_level_snapshot":
+                response["result"] = self._get_level_snapshot()
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -1045,6 +1059,10 @@ class AbletonMCP(ControlSurface):
             elif command_type == "set_master_volume":
                 volume = params.get("volume", 0.75)
                 self._set_master_volume(volume)
+
+            elif command_type == "set_crossfader":
+                value = params.get("value", 0.5)
+                self._set_crossfader(value)
 
             elif command_type == "set_send_amount":
                 track_index = params.get("track_index", 0)
@@ -4663,6 +4681,82 @@ class AbletonMCP(ControlSurface):
             }
         except Exception as e:
             return {"error": str(e)}
+
+    # ------------------------------------------------------------------
+    # Crossfader & Metering
+    # ------------------------------------------------------------------
+
+    def _get_crossfader(self):
+        """Get master crossfader position (0.0-1.0)"""
+        try:
+            crossfader = self._song.master_track.mixer_device.crossfader
+            return {"value": crossfader.value, "min": crossfader.min, "max": crossfader.max}
+        except Exception as e:
+            self.log_message("Error getting crossfader: " + str(e))
+            raise
+
+    def _set_crossfader(self, value):
+        """Set master crossfader position (0.0-1.0)"""
+        try:
+            value = max(0.0, min(1.0, value))
+            self._song.master_track.mixer_device.crossfader.value = value
+            return {"value": value}
+        except Exception as e:
+            self.log_message("Error setting crossfader: " + str(e))
+            raise
+
+    def _get_track_crossfade_assign(self, track_index):
+        """Get track crossfader assignment (0=A, 1=None, 2=B)"""
+        try:
+            track = self._song.tracks[track_index]
+            assign = track.mixer_device.crossfade_assign
+            names = {0: "A", 1: "None", 2: "B"}
+            return {"track_index": track_index, "crossfade_assign": assign, "name": names.get(assign, "Unknown")}
+        except Exception as e:
+            self.log_message("Error getting crossfade assign: " + str(e))
+            raise
+
+    def _set_track_crossfade_assign(self, track_index, assign):
+        """Set track crossfader assignment (0=A, 1=None, 2=B, or string name)"""
+        try:
+            track = self._song.tracks[track_index]
+            if isinstance(assign, str):
+                mapping = {"a": 0, "left": 0, "none": 1, "off": 1, "b": 2, "right": 2}
+                assign = mapping.get(assign.lower(), 1)
+            assign = max(0, min(2, int(assign)))
+            track.mixer_device.crossfade_assign = assign
+            return {"track_index": track_index, "crossfade_assign": assign}
+        except Exception as e:
+            self.log_message("Error setting crossfade assign: " + str(e))
+            raise
+
+    def _get_level_snapshot(self):
+        """Get current meter levels for master and all tracks"""
+        try:
+            master = self._song.master_track
+            master_info = {
+                "name": "Master",
+                "volume": master.mixer_device.volume.value,
+                "output_meter_left": getattr(master, "output_meter_left", 0.0),
+                "output_meter_right": getattr(master, "output_meter_right", 0.0),
+                "output_meter_level": getattr(master, "output_meter_level", 0.0),
+            }
+            tracks = []
+            for i, track in enumerate(self._song.tracks):
+                tracks.append({
+                    "index": i,
+                    "name": track.name,
+                    "mute": track.mute,
+                    "solo": track.solo,
+                    "volume": track.mixer_device.volume.value,
+                    "output_meter_left": getattr(track, "output_meter_left", 0.0),
+                    "output_meter_right": getattr(track, "output_meter_right", 0.0),
+                    "output_meter_level": getattr(track, "output_meter_level", 0.0),
+                })
+            return {"is_playing": self._song.is_playing, "master": master_info, "tracks": tracks}
+        except Exception as e:
+            self.log_message("Error getting level snapshot: " + str(e))
+            raise
 
     def _schedule_energy_curve_step(self):
         """Schedule a single step of the energy curve on the main thread."""
