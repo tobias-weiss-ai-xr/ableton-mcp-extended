@@ -1641,7 +1641,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
         Examples:
         - generate_melody_clip(0, 0, "C", "minor", 8.0, "medium")
         - generate_melody_clip(1, 0, "F#", "dorian", 16.0, "complex")
-        - generate_melody_clip(0, 0, "Am", "natural minor", 12.0, "simple")
+        - generate_melody_clip(0, 0, "A", "phrygian", 12.0, "simple")
 
         Dub techno tip: Use dorian or phrygian scales for atmospheric melodies
         """
@@ -1652,14 +1652,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
 
             # Validate inputs - normalize scale name to match SCALE_INTERVALS keys
             scale_key = scale.title()
-            valid_scales = [
-                "Major",
-                "Minor",
-                "Dorian",
-                "Phrygian",
-                "Lydian",
-                "Mixolydian",
-            ]
+            valid_scales = list(SCALE_INTERVALS.keys())
             if scale_key not in valid_scales:
                 return f"Error: Invalid scale '{scale}'. Choose from: {valid_scales}"
 
@@ -1674,23 +1667,20 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
 
             # Build scale
             scale_intervals = SCALE_INTERVALS.get(scale_key, SCALE_INTERVALS["Minor"])
-            scale_notes = [
-                (key_root_note + interval) % 12 for interval in scale_intervals
-            ]
 
             # Determine melody parameters based on complexity
             if complexity == "simple":
                 note_density = 0.5  # Notes per beat
-                max_note_repeats = 2
                 rhythm_pattern = ["1/4"]
+                rest_probability = 0.3
             elif complexity == "medium":
                 note_density = 1.0  # Notes per beat
-                max_note_repeats = 3
                 rhythm_pattern = ["1/4", "1/8"]
+                rest_probability = 0.15
             else:  # complex
                 note_density = 2.0  # Notes per beat
-                max_note_repeats = 4
                 rhythm_pattern = ["1/8", "1/16"]
+                rest_probability = 0.05
 
             # Generate melody
             melody_notes = []
@@ -1698,7 +1688,12 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
 
             # Select notes from scale within range
             min_note, max_note = range_notes
-            available_notes = [n for n in scale_notes if min_note <= n <= max_note]
+            root_pitch_class = key_root_note % 12
+            scale_notes = [
+                n for n in range(min_note, max_note + 1)
+                if (n % 12 - root_pitch_class) % 12 in scale_intervals
+            ]
+            available_notes = scale_notes
 
             if not available_notes:
                 return f"Error: No notes available in range {range_notes} for scale"
@@ -1708,23 +1703,25 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             note_index = 0
 
             while current_beat < length_beats and len(melody_notes) < total_notes:
-                # Select a note from the scale
-                note = random.choice(available_notes)
-
                 # Determine duration based on rhythm pattern
                 rhythm = random.choice(rhythm_pattern)
                 duration = {"1/4": 1.0, "1/8": 0.5, "1/16": 0.25}.get(rhythm, 0.5)
 
-                # Add note
-                melody_notes.append(
-                    {
-                        "pitch": max(min_note, min(max_note, note)),
-                        "start_time": round(current_beat, 3),
-                        "duration": duration,
-                        "velocity": random.randint(70, 100),
-                        "mute": False,
-                    }
-                )
+                # Skip occasional beats for rests (makes melodies sound more natural)
+                if random.random() >= rest_probability:
+                    # Select a note from the scale
+                    note = random.choice(available_notes)
+
+                    # Add note
+                    melody_notes.append(
+                        {
+                            "pitch": max(min_note, min(max_note, note)),
+                            "start_time": round(current_beat, 3),
+                            "duration": duration,
+                            "velocity": random.randint(70, 100),
+                            "mute": False,
+                        }
+                    )
 
                 current_beat += duration
                 note_index += 1
