@@ -1005,6 +1005,9 @@ class AbletonMCP(ControlSurface):
                 response["result"] = self._set_track_crossfade_assign(track_index, assign)
             elif command_type == "get_level_snapshot":
                 response["result"] = self._get_level_snapshot()
+            elif command_type == "get_track_sends":
+                track_index = params.get("track_index", 0)
+                response["result"] = self._get_track_sends(track_index)
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -4728,6 +4731,26 @@ class AbletonMCP(ControlSurface):
             return {"track_index": track_index, "crossfade_assign": assign}
         except Exception as e:
             self.log_message("Error setting crossfade assign: " + str(e))
+            raise
+
+    def _get_track_sends(self, track_index):
+        """Get all send amounts for a track with return track names."""
+        try:
+            track = self._song.tracks[track_index]
+            sends = []
+            for i, send in enumerate(track.mixer_device.sends):
+                name = ""
+                if i < len(self._song.return_tracks):
+                    name = self._song.return_tracks[i].name
+                sends.append({
+                    "send_index": i,
+                    "value": send.value,
+                    "name": name,
+                    "display_value": getattr(send, "display_value", None),
+                })
+            return {"track_index": track_index, "sends": sends}
+        except Exception as e:
+            self.log_message("Error getting track sends: " + str(e))
             raise
 
     def _get_level_snapshot(self):

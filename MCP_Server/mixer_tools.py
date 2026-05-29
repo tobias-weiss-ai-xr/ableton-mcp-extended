@@ -188,3 +188,81 @@ def register_mixer_tools(mcp: FastMCP, get_ableton_connection):
         except Exception as e:
             logger.error(f"Error getting level snapshot: {str(e)}")
             return json.dumps({"status": "error", "message": str(e)})
+
+    # ------------------------------------------------------------------
+    # Send/Return Tools
+    # ------------------------------------------------------------------
+
+    @mcp.tool()
+    def get_track_sends(ctx: Context, track_index: int) -> str:
+        """Get all send amounts for a track with return track names.
+
+        Returns each send's index, value (0.0-1.0), and destination return track name.
+
+        Parameters:
+        - track_index: Index of the track to query
+
+        Examples:
+        - get_track_sends(0)
+        """
+        try:
+            ableton = get_ableton_connection()
+            result = ableton.send_command("get_track_sends", {"track_index": track_index})
+            return json.dumps({"status": "success", "sends": result}, indent=2)
+        except Exception as e:
+            logger.error(f"Error getting track sends: {str(e)}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @mcp.tool()
+    def apply_send_sweep(
+        ctx: Context,
+        track_index: int,
+        send_index: int,
+        from_amount: float = 0.0,
+        to_amount: float = 1.0,
+        duration_beats: float = 16.0,
+        steps: int = 16,
+    ) -> str:
+        """Sweep a send amount from one value to another over time.
+
+        Creates smooth send automation for dub-style effect washes.
+        Uses UDP for real-time updates.
+
+        Parameters:
+        - track_index: Track to apply send on
+        - send_index: Send/return index to automate
+        - from_amount: Starting send value (0.0-1.0, default 0.0)
+        - to_amount: Ending send value (0.0-1.0, default 1.0)
+        - duration_beats: Sweep duration in beats (default 16.0)
+        - steps: Number of interpolation steps (default 16)
+
+        Examples:
+        - apply_send_sweep(0, 0, 0.0, 0.8, 16.0)
+        - apply_send_sweep(1, 0, 0.5, 0.0, 8.0, 8)
+        """
+        try:
+            ableton = get_ableton_connection()
+            bpm = _resolve_tempo(ableton)
+
+            for i in range(steps):
+                t = i / (steps - 1) if steps > 1 else 1.0
+                val = from_amount + (to_amount - from_amount) * t
+                ableton.send_command_udp("set_send_amount", {
+                    "track_index": track_index,
+                    "send_index": send_index,
+                    "amount": max(0.0, min(1.0, val)),
+                })
+                time.sleep(_beats_to_seconds(duration_beats / steps, bpm))
+
+            return json.dumps({
+                "status": "success",
+                "action": "send_sweep",
+                "track": track_index,
+                "send": send_index,
+                "from": from_amount,
+                "to": to_amount,
+                "duration_beats": duration_beats,
+            }, indent=2)
+        except Exception as e:
+            logger.error(f"Error in send sweep: {str(e)}")
+            return json.dumps({"status": "error", "message": str(e)})
