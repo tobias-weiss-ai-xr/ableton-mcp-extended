@@ -2699,3 +2699,232 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
         except Exception as e:
             logger.error(f"Error in arrangement sequence: {str(e)}")
             return json.dumps({"status": "error", "message": str(e)})
+
+    @mcp.tool()
+    def apply_strip_and_build(
+        ctx: Context,
+        track_indices: List[int],
+        strip_clip_indices: Optional[List[int]] = None,
+        build_phases: Optional[List[Dict[str, Any]]] = None,
+        strip_volume: float = 0.3,
+        phase_beats: float = 8.0,
+    ) -> str:
+        """
+        Strip a mix to minimal state then gradually rebuild layers.
+
+        Phase 1 fires minimal clips and lowers volumes to create space.
+        Phase 2 brings back each track with specified clips, volumes, and timing.
+
+        Parameters:
+        - track_indices: Tracks to affect (drums, bass, chords, etc.)
+        - strip_clip_indices: Minimal clips to fire during strip (one per track)
+        - build_phases: Ordered list of build steps, each: {"track_index": int, "clip_index": int, "volume": float, "delay_beats": float}
+        - strip_volume: Volume during stripped phase (default 0.3)
+        - phase_beats: Default beats between build phases (default 8.0)
+
+        Examples:
+        - apply_strip_and_build([0,1,4,5], [7,7,7,7], [{"track_index":1,"clip_index":2,"volume":0.8}])
+        """
+        try:
+            ableton = get_ableton_connection()
+            bpm = _get_tempo(ableton)
+
+            # Phase 1: Strip
+            for i, track_idx in enumerate(track_indices):
+                _step_volume(ableton, track_idx, strip_volume)
+                if strip_clip_indices and i < len(strip_clip_indices):
+                    ableton.send_command("fire_clip", {"track_index": track_idx, "clip_index": strip_clip_indices[i]})
+
+            time.sleep(_beats_to_seconds(phase_beats, bpm))
+
+            # Phase 2: Build
+            built = []
+            for phase in (build_phases or []):
+                t_idx = phase.get("track_index")
+                c_idx = phase.get("clip_index")
+                vol = phase.get("volume", 0.8)
+                delay = phase.get("delay_beats", phase_beats)
+
+                if t_idx is None:
+                    continue
+                if c_idx is not None:
+                    ableton.send_command("fire_clip", {"track_index": t_idx, "clip_index": c_idx})
+                _step_volume(ableton, t_idx, vol)
+                built.append({"track": t_idx, "clip": c_idx, "volume": vol})
+                time.sleep(_beats_to_seconds(delay, bpm))
+
+            return json.dumps({
+                "status": "success", "action": "strip_and_build",
+                "stripped_tracks": len(track_indices), "build_phases": len(built),
+            }, indent=2)
+        except Exception as e:
+            logger.error(f"Error in strip and build: {str(e)}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @mcp.tool()
+    def apply_bass_forward_mix(
+        ctx: Context,
+        bass_track_index: int,
+        other_track_indices: List[int],
+        bass_volume: float = 0.85,
+        other_volume: float = 0.55,
+        bass_device_index: int = 0,
+        bass_filter_param: Optional[int] = None,
+        bass_filter_value: Optional[float] = None,
+    ) -> str:
+        """
+        Set a bass-forward mix balance with optional filter emphasis.
+
+        Boosts bass volume while cutting other tracks back. Optionally sets
+        bass filter for sub-bass emphasis.
+
+        Parameters:
+        - bass_track_index: Track index for bass (volume boosted)
+        - other_track_indices: Other tracks to reduce in mix
+        - bass_volume: Bass track volume (default 0.85)
+        - other_volume: Volume for non-bass tracks (default 0.55)
+        - bass_device_index: Device index on bass track for filter (default 0)
+        - bass_filter_param: Optional parameter index for bass filter cutoff
+        - bass_filter_value: Filter value to set (lower = more sub-bass, default None)
+
+        Examples:
+        - apply_bass_forward_mix(1, [0,2,3,4,5])
+        - apply_bass_forward_mix(1, [0,2,3,4,5], 0.85, 0.55, 0, 170, 0.2)
+        """
+        try:
+            ableton = get_ableton_connection()
+            _step_volume(ableton, bass_track_index, bass_volume)
+            for t_idx in other_track_indices:
+                _step_volume(ableton, t_idx, other_volume)
+            if bass_filter_param is not None and bass_filter_value is not None:
+                _step_param(ableton, bass_track_index, bass_device_index, bass_filter_param, bass_filter_value)
+
+            return json.dumps({
+                "status": "success", "action": "bass_forward_mix",
+                "bass_track": bass_track_index, "bass_volume": bass_volume,
+                "other_tracks": len(other_track_indices), "other_volume": other_volume,
+                "bass_filter_set": bass_filter_param is not None,
+            }, indent=2)
+        except Exception as e:
+            logger.error(f"Error in bass forward mix: {str(e)}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @mcp.tool()
+    def apply_dub_drop(
+        ctx: Context,
+        track_indices: List[int],
+        device_index: int = 0,
+        parameter_index: int = 2,
+        drop_value: float = 0.2,
+        return_value: float = 0.8,
+        drop_instant: bool = True,
+        return_beats: float = 16.0,
+        steps: int = 8,
+    ) -> str:
+        """
+        Apply a dub-style drop with instant or gradual filter slam and return.
+
+        Drops parameter(s) to create tension, then slowly returns.
+        Replicates the classic dub techno drop-and-return pattern.
+
+        Parameters:
+        - track_indices: Tracks to apply drop to
+        - device_index: Device index on each track (default 0)
+        - parameter_index: Parameter to slam (default 2 = filter cutoff)
+        - drop_value: Target value for the drop (default 0.2 = closed filter)
+        - return_value: Final value after return (default 0.8)
+        - drop_instant: True = instant slam, False = gradual (default True)
+        - return_beats: Duration of slow return in beats (default 16.0)
+        - steps: Number of steps for gradual return (default 8)
+
+        Examples:
+        - apply_dub_drop([0,1,4], 0, 2, 0.15, True, 16.0)
+        - apply_dub_drop([0,1], 0, 2, 0.2, 0.8, False, 12.0, 6)
+        """
+        try:
+            ableton = get_ableton_connection()
+            bpm = _get_tempo(ableton)
+
+            # Drop phase
+            if drop_instant:
+                for t_idx in track_indices:
+                    _step_param(ableton, t_idx, device_index, parameter_index, drop_value)
+                time.sleep(_beats_to_seconds(1, bpm))
+            else:
+                drop_steps = max(4, steps // 2)
+                for i in range(drop_steps):
+                    t = i / (drop_steps - 1)
+                    val = return_value - (return_value - drop_value) * t
+                    for t_idx in track_indices:
+                        _step_param(ableton, t_idx, device_index, parameter_index, val)
+                    time.sleep(_beats_to_seconds(return_beats / drop_steps, bpm))
+
+            # Gradual return
+            for i in range(steps):
+                t = i / (steps - 1)
+                val = drop_value + (return_value - drop_value) * t
+                for t_idx in track_indices:
+                    _step_param(ableton, t_idx, device_index, parameter_index, val)
+                time.sleep(_beats_to_seconds(return_beats / steps, bpm))
+
+            return json.dumps({
+                "status": "success", "action": "dub_drop",
+                "track_indices": track_indices, "drop_instant": drop_instant,
+                "drop_value": drop_value, "return_value": return_value,
+                "return_beats": return_beats,
+            }, indent=2)
+        except Exception as e:
+            logger.error(f"Error in dub drop: {str(e)}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    @mcp.tool()
+    def apply_scene_progression(
+        ctx: Context,
+        scene_sequence: List[Dict[str, Any]],
+        transition_beats: float = 2.0,
+    ) -> str:
+        """
+        Sequence through multiple scenes with per-scene volume and filter settings.
+
+        Fires scenes in order with specified dwell time and optional
+        volume/filter adjustments per step. Builds a musical arrangement.
+
+        Parameters:
+        - scene_sequence: Ordered list of scene steps, each: {"scene_index": int, "dwell_beats": float, "track_volumes": {"track_idx": float}, "filter_params": [{"track": int, "device": int, "param": int, "value": float}]}
+        - transition_beats: Beats for transition/wash before each scene (default 2.0)
+
+        Examples:
+        - apply_scene_progression([{"scene_index":0,"dwell_beats":8},{"scene_index":1,"dwell_beats":16}])
+        """
+        try:
+            ableton = get_ableton_connection()
+            bpm = _get_tempo(ableton)
+            results = []
+
+            for step in scene_sequence:
+                scene_idx = step["scene_index"]
+                dwell = step.get("dwell_beats", 8.0)
+
+                # Apply volume adjustments
+                track_vols = step.get("track_volumes") or {}
+                for t_str, vol in track_vols.items():
+                    _step_volume(ableton, int(t_str), vol)
+
+                # Apply filter/parameter adjustments
+                for fp in step.get("filter_params") or []:
+                    _step_param(ableton, fp["track"], fp.get("device", 0), fp["param"], fp["value"])
+
+                # Fire scene
+                ableton.send_command("fire_scene", {"scene_index": scene_idx})
+
+                # Wait through transition + dwell
+                time.sleep(_beats_to_seconds(max(transition_beats, dwell), bpm))
+                results.append({"scene": scene_idx, "dwell": dwell})
+
+            return json.dumps({
+                "status": "success", "action": "scene_progression",
+                "scenes_fired": len(results), "transitions": results,
+            }, indent=2)
+        except Exception as e:
+            logger.error(f"Error in scene progression: {str(e)}")
+            return json.dumps({"status": "error", "message": str(e)})

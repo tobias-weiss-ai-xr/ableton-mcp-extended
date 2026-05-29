@@ -756,11 +756,13 @@ from MCP_Server.advanced_tools import (
     register_generation_tools
 )
 from MCP_Server.audio_analysis_tools import register_audio_analysis_tools
+from MCP_Server.mixer_tools import register_mixer_tools
 
 register_midi_effect_tools(mcp, get_ableton_connection)
 register_advanced_tools(mcp, get_ableton_connection)
 register_generation_tools(mcp, get_ableton_connection)
 register_audio_analysis_tools(mcp, get_ableton_connection)
+register_mixer_tools(mcp, get_ableton_connection)
 
 # Global connection reference is defined at module level (line 145)
 # get_ableton_connection() is defined at line 148
