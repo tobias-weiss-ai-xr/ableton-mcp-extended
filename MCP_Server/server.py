@@ -805,30 +805,41 @@ async def load_audio_effect(
                 {"error": f"No URI provided and effect_type '{effect_type}' not mapped"}
             )
 
-        # Load the effect via existing browser-item loading path
-        response = await load_browser_item(ctx, track_index, uri, position)
-        result = json.loads(response)
+        # Load the effect via TCP command to Remote Script
+        ableton = get_ableton_connection()
+        result = ableton.send_command("load_browser_item", {"track_index": track_index, "item_uri": uri})
+        loaded = result.get("status") == "success"
+        device_name = result.get("item_name", effect_type)
+        device_index = result.get("device_index", -1)
 
-        if not result.get("loaded", False):
+        if not loaded:
             return json.dumps(
                 {"error": f"Failed to load {effect_type} effect", "details": result}
             )
 
-        device_index = result.get("device_index", -1)
-
         # Apply preset if requested
         if preset_name and device_index > -1:
-            preset_response = await load_instrument_preset(
-                ctx, track_index, device_index, preset_name
-            )
-            preset_result = json.loads(preset_response)
-            if not preset_result.get("success", False):
+            try:
+                ableton = get_ableton_connection()
+                preset_result = ableton.send_command(
+                    "load_instrument_preset", {"track_index": track_index, "device_index": device_index, "preset_name": preset_name}
+                )
+                if not preset_result.get("success", True):
+                    return json.dumps(
+                        {
+                            "loaded": True,
+                            "device_index": device_index,
+                            "device_name": device_name,
+                            "preset_warning": f"Failed to apply preset: {preset_result.get('error', 'Unknown error')}",
+                        }
+                    )
+            except Exception as e:
                 return json.dumps(
                     {
                         "loaded": True,
                         "device_index": device_index,
-                        "device_name": result.get("device_name", effect_type),
-                        "preset_warning": f"Failed to apply preset: {preset_result.get('error', 'Unknown error')}",
+                        "device_name": device_name,
+                        "preset_warning": f"Failed to apply preset: {str(e)}",
                     }
                 )
 
@@ -837,7 +848,7 @@ async def load_audio_effect(
             {
                 "loaded": True,
                 "device_index": device_index,
-                "device_name": result.get("device_name", effect_type),
+                "device_name": device_name,
             }
         )
 
@@ -6424,3 +6435,28 @@ def get_grid_layout(ctx: Context, device: str, layout_type: str, **kwargs) -> st
 # =============================================================================
 # Generation tools are defined in advanced_tools.py register_generation_tools()
 # They are imported and registered via register_advanced_tools()
+
+
+# =============================================================================
+# ENTRY POINT - MCP SERVER MAIN
+# =============================================================================
+def main():
+    """
+    Main entry point for the Ableton MCP server.
+
+    This function starts the FastMCP server using stdio transport,
+    which is the standard for MCP (Model Context Protocol) communication.
+    The server receives JSON-RPC messages on stdin and sends responses
+    to stdout.
+
+    Usage:
+        - Entry point: `MCP_Server.server:main` (defined in pyproject.toml)
+        - CLI: `mcp run MCP_Server/server.py --transport stdio`
+        - Direct: `python -c "from MCP_Server.server import main; main()"`
+    """
+    mcp.run(transport="stdio")
+
+
+# Run the server if this file is executed directly
+if __name__ == "__main__":
+    main()
