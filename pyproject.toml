@@ -41,3 +41,16 @@ xy_controller = [
     "pynput>=1.7.6",
     "screeninfo>=0.8.1",
 ]
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["MCP_Server"]
+omit = ["MCP_Server/__init__.py"]

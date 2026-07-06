@@ -438,6 +438,9 @@ class AbletonMCP(ControlSurface):
                 "set_link_enabled",
                 "set_link_start_stop_sync",
                 "apply_energy_curve",
+                "apply_groove_to_clip",
+                "remove_groove_from_clip",
+                "set_global_groove_amount",
             ]:
                 # Use a thread-safe approach with a response queue
                 response_queue = queue.Queue()
@@ -738,6 +741,25 @@ class AbletonMCP(ControlSurface):
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
                             result = self._get_clip_envelopes(track_index, clip_index)
+                        elif command_type == "get_clip_envelope_points":
+                            p = command.get("params", {})
+                            result = self._get_clip_envelope_points(
+                                p.get("track_index", 0),
+                                p.get("clip_index", 0),
+                                p.get("device_index", 0),
+                                p.get("parameter_index", 0),
+                                p.get("num_samples", 64),
+                            )
+                        elif command_type == "set_clip_envelope_point":
+                            p = command.get("params", {})
+                            result = self._set_clip_envelope_point(
+                                p.get("track_index", 0),
+                                p.get("clip_index", 0),
+                                p.get("device_index", 0),
+                                p.get("parameter_index", 0),
+                                p.get("time", 0.0),
+                                p.get("value", 0.5),
+                            )
                         elif command_type == "mix_clip":
                             track_index = params.get("track_index", 0)
                             clip_index = params.get("clip_index", 0)
@@ -946,6 +968,24 @@ class AbletonMCP(ControlSurface):
                                 track_index, device_index, new_position
                             )
 
+                        elif command_type == "apply_groove_to_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            groove_name = params.get("groove_name", "")
+                            amount = params.get("amount", 1.0)
+                            result = self._apply_groove_to_clip(
+                                track_index, clip_index, groove_name, amount
+                            )
+                        elif command_type == "remove_groove_from_clip":
+                            track_index = params.get("track_index", 0)
+                            clip_index = params.get("clip_index", 0)
+                            result = self._remove_groove_from_clip(
+                                track_index, clip_index
+                            )
+                        elif command_type == "set_global_groove_amount":
+                            amount = params.get("amount", 1.0)
+                            result = self._set_global_groove_amount(amount)
+
                         # Put result in queue
                         response_queue.put({"status": "success", "result": result})
                     except Exception as e:
@@ -991,6 +1031,13 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_browser_items_at_path":
                 path = params.get("path", "")
                 response["result"] = self.get_browser_items_at_path(path)
+            elif command_type == "get_browser_recursive_children":
+                root_path = params.get("root_path", "")
+                max_depth = params.get("max_depth", 5)
+                max_items = params.get("max_items", 500)
+                response["result"] = self._get_recursive_browser_children(root_path, max_depth, max_items)
+            elif command_type == "get_available_grooves":
+                response["result"] = self._get_available_grooves()
             elif command_type == "get_crossfader":
                 response["result"] = self._get_crossfader()
             elif command_type == "set_crossfader":
@@ -1162,14 +1209,17 @@ class AbletonMCP(ControlSurface):
                     }
                 )
 
+            is_group = bool(getattr(track, "is_foldable", False))
+
             result = {
                 "index": track_index,
                 "name": track.name,
                 "is_audio_track": track.has_audio_input,
                 "is_midi_track": track.has_midi_input,
+                "is_group_track": is_group,
                 "mute": track.mute,
                 "solo": track.solo,
-                "arm": track.arm,
+                "arm": None if is_group else track.arm,
                 "volume": track.mixer_device.volume.value,
                 "panning": track.mixer_device.panning.value,
                 "clip_slots": clip_slots,
@@ -2063,6 +2113,11 @@ class AbletonMCP(ControlSurface):
     def _delete_track(self, track_index):
         """Delete a track by index"""
         try:
+            if len(self._song.tracks) <= 1:
+                raise ValueError(
+                    "Cannot delete the last remaining session track. "
+                    "Ableton must always have at least one track."
+                )
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")
             track = self._song.tracks[track_index]
@@ -3434,10 +3489,116 @@ class AbletonMCP(ControlSurface):
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
 
-            result = {"envelopes": []}
+            envelopes = []
+            if hasattr(clip, "automation_envelopes"):
+                for env in clip.automation_envelopes:
+                    try:
+                        param = env.parameter if hasattr(env, "parameter") else None
+                        env_info = {
+                            "parameter_name": param.name if param and hasattr(param, "name") else "Unknown",
+                            "parameter_index": list(track.devices[0].parameters).index(param) if param and len(track.devices) > 0 and param in track.devices[0].parameters else -1,
+                            "device_index": 0,
+                            "has_envelope": True,
+                        }
+                        envelopes.append(env_info)
+                    except Exception:
+                        envelopes.append({"parameter_name": "Unknown", "has_envelope": True})
+
+            result = {"envelopes": envelopes, "count": len(envelopes)}
             return result
         except Exception as e:
             self.log_message("Error getting clip envelopes: " + str(e))
+            raise
+
+    def _get_clip_envelope_points(self, track_index, clip_index, device_index, parameter_index, num_samples=64):
+        """Get automation envelope points by time-sampling"""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            clip_slot = track.clip_slots[clip_index]
+            if not clip_slot.has_clip:
+                raise Exception("No clip in slot")
+            clip = clip_slot.clip
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+            device = track.devices[device_index]
+
+            if parameter_index < 0 or parameter_index >= len(device.parameters):
+                raise IndexError("Parameter index out of range")
+            parameter = device.parameters[parameter_index]
+
+            # Find the envelope for this parameter
+            target_env = None
+            if hasattr(clip, "automation_envelopes"):
+                for env in clip.automation_envelopes:
+                    try:
+                        if hasattr(env, "parameter") and env.parameter == parameter:
+                            target_env = env
+                            break
+                    except Exception:
+                        continue
+
+            if target_env is None:
+                return {"parameter_name": parameter.name, "has_envelope": False, "points": []}
+
+            # Time-sample the envelope across the clip length
+            clip_length = clip.length if hasattr(clip, "length") else 4.0
+            if clip_length <= 0:
+                clip_length = 4.0
+
+            step = clip_length / max(num_samples, 1)
+            points = []
+            for i in range(num_samples):
+                t = i * step
+                try:
+                    val = target_env.value_at_time(t) if hasattr(target_env, "value_at_time") else None
+                    if val is not None:
+                        points.append({"time": round(t, 4), "value": round(val, 4)})
+                except Exception:
+                    pass
+
+            return {
+                "parameter_name": parameter.name,
+                "parameter_index": parameter_index,
+                "device_index": device_index,
+                "has_envelope": True,
+                "clip_length": clip_length,
+                "num_samples": len(points),
+                "points": points,
+            }
+        except Exception as e:
+            self.log_message("Error getting clip envelope points: " + str(e))
+            raise
+
+    def _set_clip_envelope_point(self, track_index, clip_index, device_index, parameter_index, time_val, value):
+        """Add or update an automation envelope point"""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            clip_slot = track.clip_slots[clip_index]
+            if not clip_slot.has_clip:
+                raise Exception("No clip in slot")
+            clip = clip_slot.clip
+
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+            device = track.devices[device_index]
+
+            if parameter_index < 0 or parameter_index >= len(device.parameters):
+                raise IndexError("Parameter index out of range")
+            parameter = device.parameters[parameter_index]
+
+            clip.create_automation_event(parameter, time_val, value)
+            return {"added": True, "time": time_val, "value": value}
+        except Exception as e:
+            self.log_message("Error setting clip envelope point: " + str(e))
             raise
 
     def _mix_clip(self, track_index, clip_index, source_track_index):
@@ -4132,6 +4293,179 @@ class AbletonMCP(ControlSurface):
             self.log_message(traceback.format_exc())
             raise
 
+    def _get_recursive_browser_children(self, root_path, max_depth=5, max_items=500):
+        """
+        Recursively walk browser children from a root path and return the full tree.
+
+        Args:
+            root_path: Root browser path (e.g. "Instruments", "Audio Effects", "Drums")
+            max_depth: Maximum recursion depth (default: 5)
+            max_items: Maximum items to return (default: 500) to prevent runaway
+
+        Returns:
+            Dictionary with recursive tree of browser items
+        """
+        try:
+            app = self.application()
+            if not app:
+                raise RuntimeError("Could not access Live application")
+            if not hasattr(app, "browser") or app.browser is None:
+                raise RuntimeError("Browser is not available in the Live application")
+
+            # Parse root_path parts
+            path_parts = root_path.split("/")
+            root_category = path_parts[0].lower() if path_parts else ""
+
+            # Map common category names to browser attributes
+            category_map = {
+                "instruments": "instruments",
+                "sounds": "sounds",
+                "drums": "drums",
+                "audio_effects": "audio_effects",
+                "midi_effects": "midi_effects",
+                "plugins": "user_library",
+            }
+
+            current_item = None
+            if root_category in category_map:
+                attr_name = category_map[root_category]
+                if hasattr(app.browser, attr_name):
+                    current_item = getattr(app.browser, attr_name)
+
+            if current_item is None:
+                # Try exact attribute match
+                for attr in dir(app.browser):
+                    if attr.lower() == root_category and not attr.startswith("_"):
+                        try:
+                            current_item = getattr(app.browser, attr)
+                            break
+                        except Exception:
+                            continue
+
+            if current_item is None:
+                return {
+                    "path": root_path,
+                    "error": "Unknown or unavailable category: " + root_category,
+                    "available_categories": [
+                        attr for attr in dir(app.browser)
+                        if not attr.startswith("_")
+                    ],
+                    "items": [],
+                }
+
+            # Navigate sub-path if deeper than root category
+            for i in range(1, len(path_parts)):
+                part = path_parts[i]
+                if not part:
+                    continue
+                if not hasattr(current_item, "children"):
+                    return {"path": root_path, "error": "Dead end at: " + "/".join(path_parts[:i]), "items": []}
+                found = False
+                for child in current_item.children:
+                    if hasattr(child, "name") and child.name.lower() == part.lower():
+                        current_item = child
+                        found = True
+                        break
+                if not found:
+                    return {"path": root_path, "error": "Path part not found: " + part, "items": []}
+
+            # Recursively collect tree
+            collected = {"items_count": 0, "max_items": max_items, "truncated": False}
+
+            def _walk(node, depth):
+                if depth > max_depth:
+                    return
+                if collected["items_count"] >= max_items:
+                    collected["truncated"] = True
+                    return
+
+                if not hasattr(node, "children"):
+                    return
+
+                children = []
+                for child in node.children:
+                    if collected["items_count"] >= max_items:
+                        collected["truncated"] = True
+                        break
+                    try:
+                        child_info = {
+                            "name": child.name if hasattr(child, "name") else "Unknown",
+                            "is_folder": hasattr(child, "children") and bool(child.children),
+                            "is_device": hasattr(child, "is_device") and child.is_device,
+                            "is_loadable": hasattr(child, "is_loadable") and child.is_loadable,
+                            "uri": child.uri if hasattr(child, "uri") else None,
+                        }
+                        collected["items_count"] += 1
+
+                        # Recurse into sub-folders
+                        if child_info["is_folder"]:
+                            sub_items = []
+                            sub_depth = depth + 1
+                            if sub_depth <= max_depth:
+                                for sub in child.children:
+                                    if collected["items_count"] >= max_items:
+                                        collected["truncated"] = True
+                                        break
+                                    try:
+                                        sub_info = {
+                                            "name": sub.name if hasattr(sub, "name") else "Unknown",
+                                            "is_folder": hasattr(sub, "children") and bool(sub.children),
+                                            "is_device": hasattr(sub, "is_device") and sub.is_device,
+                                            "is_loadable": hasattr(sub, "is_loadable") and sub.is_loadable,
+                                            "uri": sub.uri if hasattr(sub, "uri") else None,
+                                        }
+                                        collected["items_count"] += 1
+                                        if sub_info["is_folder"] and sub_depth < max_depth:
+                                            sub_sub = []
+                                            for s in sub.children:
+                                                if collected["items_count"] >= max_items:
+                                                    collected["truncated"] = True
+                                                    break
+                                                try:
+                                                    s_info = {
+                                                        "name": s.name if hasattr(s, "name") else "Unknown",
+                                                        "is_folder": hasattr(s, "children") and bool(s.children),
+                                                        "is_device": hasattr(s, "is_device") and s.is_device,
+                                                        "is_loadable": hasattr(s, "is_loadable") and s.is_loadable,
+                                                        "uri": s.uri if hasattr(s, "uri") else None,
+                                                    }
+                                                    collected["items_count"] += 1
+                                                    sub_sub.append(s_info)
+                                                except Exception:
+                                                    pass
+                                            sub_info["children"] = sub_sub
+                                        sub_items.append(sub_info)
+                                    except Exception:
+                                        pass
+                            child_info["children"] = sub_items
+                        children.append(child_info)
+                    except Exception:
+                        pass
+
+                return children
+
+            tree_items = _walk(current_item, 0)
+
+            result = {
+                "path": root_path,
+                "name": current_item.name if hasattr(current_item, "name") else root_category,
+                "items": tree_items or [],
+                "items_count": collected["items_count"],
+                "max_depth": max_depth,
+                "truncated": collected["truncated"],
+            }
+
+            self.log_message(
+                "Recursive browser scan: collected {0} items from {1}".format(
+                    collected["items_count"], root_path
+                )
+            )
+            return result
+        except Exception as e:
+            self.log_message("Error in recursive browser scan: " + str(e))
+            self.log_message(traceback.format_exc())
+            return {"path": root_path, "error": str(e), "items": []}
+
     def _detect_clip_key(self, track_index, clip_index):
         """
         Detect the musical key of a clip by analyzing its notes.
@@ -4821,3 +5155,91 @@ class AbletonMCP(ControlSurface):
                 state["duration_beats"] / state["steps"]
             ) * 480  # 480 ticks per beat
             self.schedule_message(int(delay), self._schedule_energy_curve_step)
+
+    # ------------------------------------------------------------------
+    # Groove Template Methods
+    # ------------------------------------------------------------------
+
+    def _get_available_grooves(self):
+        """Get list of available groove template names from Live's groove pool."""
+        try:
+            grooves = []
+            for groove in self._song.groove_pool:
+                grooves.append({
+                    "name": groove.name,
+                })
+            return {"grooves": grooves}
+        except Exception as e:
+            self.log_message("Error getting available grooves: " + str(e))
+            raise
+
+    def _apply_groove_to_clip(self, track_index, clip_index, groove_name, amount=1.0):
+        """Apply a groove template to a specific clip."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            clip_slot = track.clip_slots[clip_index]
+            if not clip_slot.has_clip:
+                raise Exception("No clip in slot")
+            clip = clip_slot.clip
+
+            # Find the groove by name
+            groove_obj = None
+            for groove in self._song.groove_pool:
+                if groove.name == groove_name:
+                    groove_obj = groove
+                    break
+            if groove_obj is None:
+                raise Exception(f"Groove '{groove_name}' not found in groove pool")
+
+            # Apply groove to clip
+            clip.groove = groove_obj
+            clip.groove_amount = amount
+
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "groove": groove_name,
+                "amount": amount,
+            }
+        except Exception as e:
+            self.log_message("Error applying groove to clip: " + str(e))
+            raise
+
+    def _remove_groove_from_clip(self, track_index, clip_index):
+        """Remove groove from a clip."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            clip_slot = track.clip_slots[clip_index]
+            if not clip_slot.has_clip:
+                raise Exception("No clip in slot")
+            clip = clip_slot.clip
+
+            clip.groove = None
+            clip.groove_amount = 0.0
+
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "groove_removed": True,
+            }
+        except Exception as e:
+            self.log_message("Error removing groove from clip: " + str(e))
+            raise
+
+    def _set_global_groove_amount(self, amount):
+        """Set the global groove amount (0.0 to 1.0)."""
+        try:
+            amount = max(0.0, min(1.0, amount))
+            self._song.groove_amount = amount
+            return {"global_groove_amount": amount}
+        except Exception as e:
+            self.log_message("Error setting global groove amount: " + str(e))
+            raise
