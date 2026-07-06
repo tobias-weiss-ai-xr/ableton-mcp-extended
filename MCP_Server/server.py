@@ -43,6 +43,12 @@ from MCP_Server.browser_cache import (
 )
 from MCP_Server.verify import wrap_ableton_connection
 from MCP_Server.als_parser import parse_als_file, detect_als_issues, suggest_als_changes
+from MCP_Server.connection_health import (
+    get_connection_health as _get_connection_health,
+    make_error_response,
+    RECONNECT_DELAYS,
+    MAX_RETRIES,
+)
 
 # ============================================================================
 # ABLETON CONNECTION CLASS
@@ -182,12 +188,119 @@ class AbletonConnection:
         else:
             raise Exception("No data received")
 
+    # ── Reconnection ──────────────────────────────────────────────────────
+
+    def _attempt_reconnect(self) -> bool:
+        """Attempt to reconnect with exponential backoff.
+
+        Returns True if reconnected successfully, False after all retries exhausted.
+        Updates connection_health state machine throughout.
+        """
+        ch = _get_connection_health()
+        ch.set_state("reconnecting", "Attempting reconnection")
+
+        for attempt, delay in enumerate(RECONNECT_DELAYS, 1):
+            logger.info(
+                "Reconnect attempt %d/%d (waiting %.0fs)",
+                attempt,
+                MAX_RETRIES,
+                delay,
+            )
+            # Log to connection.log via watchdog logging (available at INFO level)
+            _log_reconnect_attempt(attempt, MAX_RETRIES, "pending")
+
+            time.sleep(delay)
+
+            try:
+                # Create fresh socket
+                new_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                new_sock.settimeout(5.0)
+                new_sock.connect((self.host, self.port))
+
+                # Verify with get_session_info
+                test_cmd = json.dumps(
+                    {"type": "get_session_info", "params": {}}
+                ).encode("utf-8")
+                new_sock.sendall(test_cmd)
+                new_sock.settimeout(5.0)
+
+                chunks = []
+                while True:
+                    try:
+                        chunk = new_sock.recv(8192)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        json.loads(b"".join(chunks).decode("utf-8"))
+                        break
+                    except json.JSONDecodeError:
+                        continue
+
+                # Connection verified — swap socket
+                old_sock = self.sock
+                self.sock = new_sock
+                if old_sock:
+                    try:
+                        old_sock.close()
+                    except Exception:
+                        pass
+
+                ch.set_state("connected")
+                ch.record_reconnect()
+                _log_reconnect_attempt(attempt, MAX_RETRIES, "success")
+                logger.info("Reconnected to Ableton on attempt %d", attempt)
+                return True
+
+            except Exception as e:
+                logger.warning("Reconnect attempt %d failed: %s", attempt, str(e))
+                _log_reconnect_attempt(attempt, MAX_RETRIES, f"failed: {e}")
+                # Close the failed socket if it was created
+                try:
+                    new_sock.close()  # type: ignore[possibly-undefined]
+                except Exception:
+                    pass
+
+        # All retries exhausted
+        ch.set_state("disconnected", f"All {MAX_RETRIES} reconnection attempts failed")
+        _log_reconnect_attempt(MAX_RETRIES, MAX_RETRIES, "all_attempts_exhausted")
+        logger.error(
+            "All %d reconnection attempts to Ableton failed", MAX_RETRIES
+        )
+        return False
+
+    # ── send_command ──────────────────────────────────────────────────────
+
     def send_command(
         self, command_type: str, params: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Send a command to Ableton and return the response"""
+        """Send a command to Ableton and return the response.
+
+        If the connection drops, triggers automatic reconnection with exponential
+        backoff. After one successful reconnect, the original command is retried once.
+        """
+        ch = _get_connection_health()
+
+        # If we're currently reconnecting, fail fast
+        if ch.state == "reconnecting":
+            raise ConnectionError(
+                json.dumps(
+                    make_error_response(
+                        "LIVE_RECONNECTING",
+                        "Reconnecting to Ableton Live, try again shortly",
+                    )
+                )
+            )
+
         if not self.sock and not self.connect():
-            raise ConnectionError("Not connected to Ableton")
+            ch.set_state("disconnected", "Failed to establish initial connection")
+            raise ConnectionError(
+                json.dumps(
+                    make_error_response(
+                        "LIVE_DISCONNECTED",
+                        "No connection to Ableton Live",
+                    )
+                )
+            )
 
         command = {"type": command_type, "params": params or {}}
 
@@ -252,68 +365,117 @@ class AbletonConnection:
             "get_clip_notes",
         ]
 
-        try:
-            logger.info(f"Sending command: {command_type} with params: {params}")
+        def _do_send() -> Dict[str, Any]:
+            """Inner send — extracted for retry after reconnect."""
+            try:
+                logger.info(f"Sending command: {command_type} with params: {params}")
 
-            # Send the command
-            self.sock.sendall(json.dumps(command).encode("utf-8"))
-            logger.info(f"Command sent, waiting for response...")
+                # Send the command
+                self.sock.sendall(json.dumps(command).encode("utf-8"))
+                logger.info(f"Command sent, waiting for response...")
 
-            # For state-modifying commands, add a small delay to give Ableton time to process
-            if is_modifying_command:
-                # import time  # removed - using module-level import
-                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
+                # For state-modifying commands, add a small delay to give Ableton time to process
+                if is_modifying_command:
+                    # import time  # removed - using module-level import
+                    time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
 
-            # Set timeout based on command type
-            timeout = 15.0 if is_modifying_command else 10.0
-            self.sock.settimeout(timeout)
+                # Set timeout based on command type
+                timeout = 15.0 if is_modifying_command else 10.0
+                self.sock.settimeout(timeout)
 
-            # Receive the response
-            response_data = self.receive_full_response(self.sock)
-            logger.info(f"Received {len(response_data)} bytes of data")
+                # Receive the response
+                response_data = self.receive_full_response(self.sock)
+                logger.info(f"Received {len(response_data)} bytes of data")
 
-            # Parse the response
-            response = json.loads(response_data.decode("utf-8"))
-            logger.info(f"Response parsed, status: {response.get('status', 'unknown')}")
+                # Parse the response
+                response = json.loads(response_data.decode("utf-8"))
+                logger.info(f"Response parsed, status: {response.get('status', 'unknown')}")
 
-            if response.get("status") == "error":
-                logger.error(f"Ableton error: {response.get('message')}")
-                raise Exception(response.get("message", "Unknown error from Ableton"))
+                if response.get("status") == "error":
+                    logger.error(f"Ableton error: {response.get('message')}")
+                    raise Exception(response.get("message", "Unknown error from Ableton"))
 
-            # For state-modifying commands, add another small delay after receiving response
-            if is_modifying_command:
-                # import time  # removed - using module-level import
-                time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
+                # For state-modifying commands, add another small delay after receiving response
+                if is_modifying_command:
+                    # import time  # removed - using module-level import
+                    time.sleep(0.01)  # reduced from 0.1s  # 100ms delay
 
-            return response.get("result", {})
-        except socket.timeout:
-            logger.error("Socket timeout while waiting for response from Ableton")
-            self.sock = None
-            raise Exception("Timeout waiting for Ableton response")
-        except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
-            logger.error(f"Socket connection error: {str(e)}")
-            self.sock = None
-            raise Exception(f"Connection to Ableton lost: {str(e)}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON response from Ableton: {str(e)}")
-            if "response_data" in locals() and response_data:
-                logger.error(f"Raw response (first 200 bytes): {response_data[:200]}")
-            self.sock = None
-            raise Exception(f"Invalid response from Ableton: {str(e)}")
-        except Exception as e:
-            logger.error(f"Error communicating with Ableton: {str(e)}")
-            self.sock = None
-            raise Exception(f"Communication error with Ableton: {str(e)}")
+                return response.get("result", {})
+
+            except socket.timeout:
+                logger.error("Socket timeout while waiting for response from Ableton")
+                self.sock = None
+                raise ConnectionError(
+                    json.dumps(
+                        make_error_response(
+                            "TIMEOUT",
+                            f"Operation timed out after {timeout}s",
+                            {"retryable": True},
+                        )
+                    )
+                )
+            except (ConnectionError, BrokenPipeError, ConnectionResetError) as e:
+                logger.error(f"Socket connection error: {str(e)}")
+                self.sock = None
+                # Trigger reconnection
+                ch.set_state("reconnecting", str(e))
+                if self._attempt_reconnect():
+                    # Retry the original command once
+                    logger.info("Reconnected, retrying command: %s", command_type)
+                    return _do_send()
+                raise ConnectionError(
+                    json.dumps(
+                        make_error_response(
+                            "LIVE_DISCONNECTED",
+                            f"Connection to Ableton Live lost: {str(e)}",
+                        )
+                    )
+                )
+            except json.JSONDecodeError as e:
+                logger.error(f"Invalid JSON response from Ableton: {str(e)}")
+                if "response_data" in locals() and response_data:
+                    logger.error(f"Raw response (first 200 bytes): {response_data[:200]}")
+                self.sock = None
+                ch.record_error(f"Invalid JSON response: {str(e)}")
+                raise ConnectionError(
+                    json.dumps(
+                        make_error_response(
+                            "INTERNAL_ERROR",
+                            f"Invalid response from Ableton: {str(e)}",
+                        )
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Error communicating with Ableton: {str(e)}")
+                self.sock = None
+                ch.record_error(str(e))
+                raise ConnectionError(
+                    json.dumps(
+                        make_error_response(
+                            "INTERNAL_ERROR",
+                            f"Communication error with Ableton: {str(e)}",
+                        )
+                    )
+                )
+
+        return _do_send()
 
 
 # Global connection for resources
 _ableton_connection = None
 
 
-def get_ableton_connection():
-    """Get or create a persistent Ableton connection"""
-    global _ableton_connection
+def get_ableton_connection() -> AbletonConnection:
+    """Get or create a persistent Ableton connection.
 
+    Uses connection_health state machine for tracking. Distinguishes between
+    "was connected but dropped" (LIVE_DISCONNECTED) and "never was connected"
+    (LIVE_NOT_RUNNING).
+    """
+    global _ableton_connection
+    ch = _get_connection_health()
+
+    # Check if existing connection is still valid
     if _ableton_connection is not None:
         try:
             _ableton_connection.sock.settimeout(1.0)
@@ -328,18 +490,23 @@ def get_ableton_connection():
                 pass
             _ableton_connection = None
 
+    # No valid connection — try to establish one
     if _ableton_connection is None:
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
+        ch.set_state("connecting", "Attempting initial connection")
+        for attempt in range(1, MAX_RETRIES + 1):
             try:
                 logger.info(
-                    f"Connecting to Ableton (attempt {attempt}/{max_attempts})..."
+                    f"Connecting to Ableton (attempt {attempt}/{MAX_RETRIES})..."
                 )
                 _ableton_connection = AbletonConnection(host="127.0.0.1", port=9877)
                 if _ableton_connection.connect():
                     logger.info("Created new persistent connection to Ableton")
                     try:
+                        start = time.time()
                         _ableton_connection.send_command("get_session_info")
+                        latency = (time.time() - start) * 1000  # ms
+                        ch.set_state("connected")
+                        ch.record_ping(latency)
                         logger.info("Connection validated successfully")
                         wrap_ableton_connection(_ableton_connection)
                         return _ableton_connection
@@ -355,19 +522,19 @@ def get_ableton_connection():
                     _ableton_connection.disconnect()
                     _ableton_connection = None
 
-            if attempt < max_attempts:
-                import time
-
+            if attempt < MAX_RETRIES:
                 time.sleep(1.0)
 
-    # Safety check - should never happen, but ensures we never return None
-    if _ableton_connection is None:
-        logger.error("SAFETY CHECK: _ableton_connection is None after all attempts!")
-        raise Exception(
-            "Internal error: connection is None after successful connection attempt"
+    # All attempts failed — Ableton Live is not running
+    ch.set_state("disconnected", "Ableton Live is not running")
+    raise ConnectionError(
+        json.dumps(
+            make_error_response(
+                "LIVE_NOT_RUNNING",
+                "Ableton Live not detected. Ensure Live is running with the Remote Script.",
+            )
         )
-
-    return _ableton_connection
+    )
 
 
 # Use orjson for faster JSON serialization (3-10x faster than stdlib json)
@@ -466,22 +633,79 @@ def validate_parameter_change(
     return True, ""
 
 
+def _log_reconnect_attempt(attempt: int, max_attempts: int, result: str) -> None:
+    """Log a reconnection attempt to the connection log."""
+    logger.info(
+        "RECONNECT_ATTEMPT %d/%d - %s",
+        attempt,
+        max_attempts,
+        result,
+    )
+
+
 def handle_ableton_errors(func):
-    """Decorator to standardize error handling for MCP tools"""
+    """Decorator to standardize error handling for MCP tools.
+
+    Returns structured JSON error responses instead of raw tracebacks.
+    """
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except ConnectionError as e:
-            logger.error(f"Connection error in {func.__name__}: {str(e)}")
-            return f"Connection error: {str(e)}"
+            msg = str(e)
+            # Check if already a structured error response (JSON-encoded)
+            try:
+                parsed = json.loads(msg)
+                if "code" in parsed:
+                    return json.dumps(parsed)
+            except (json.JSONDecodeError, ValueError):
+                pass
+            logger.error(f"Connection error in {func.__name__}: {msg}")
+            return json.dumps(
+                make_error_response(
+                    "LIVE_DISCONNECTED",
+                    f"Connection to Ableton Live lost: {msg}",
+                )
+            )
         except socket.timeout:
             logger.error(f"Timeout in {func.__name__}")
-            return f"Timeout waiting for Ableton response"
+            return json.dumps(
+                make_error_response(
+                    "TIMEOUT",
+                    "Operation timed out waiting for Ableton response",
+                )
+            )
+        except IndexError as e:
+            logger.error(f"Index error in {func.__name__}: {str(e)}")
+            return json.dumps(
+                make_error_response(
+                    "INVALID_INDEX",
+                    str(e),
+                )
+            )
+        except FileNotFoundError as e:
+            logger.error(f"File not found in {func.__name__}: {str(e)}")
+            return json.dumps(
+                make_error_response(
+                    "FILE_NOT_FOUND",
+                    str(e),
+                )
+            )
         except Exception as e:
-            logger.error(f"Error in {func.__name__}: {str(e)}")
-            return f"Error: {str(e)}"
+            logger.error(
+                "Error in %s: %s\n%s",
+                func.__name__,
+                str(e),
+                traceback.format_exc(),
+            )
+            return json.dumps(
+                make_error_response(
+                    "INTERNAL_ERROR",
+                    str(e),
+                )
+            )
 
     return wrapper
 
@@ -782,6 +1006,38 @@ register_max_bridge_tools(mcp, get_ableton_connection)
 # ============================================================================
 
 
+@mcp.resource("live://status")
+def get_status_resource() -> str:
+    """Get connection status and health information.
+
+    Always works — returns connection info even when Ableton Live is not running.
+    Merges health state with session info when connected.
+    """
+    ch = _get_connection_health()
+    health = ch.get_health()
+
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_session_info")
+        # Merge health data into session info
+        result["connection_state"] = health["connection_state"]
+        result["last_ping_ms"] = health["last_ping_ms"]
+        result["uptime"] = health["uptime"]
+        result["reconnect_count"] = health["reconnect_count"]
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        # Graceful degradation: return health data even without Live
+        return json.dumps({
+            "connection_state": health["connection_state"],
+            "last_ping_ms": health["last_ping_ms"],
+            "uptime": health["uptime"],
+            "reconnect_count": health["reconnect_count"],
+            "last_error": health["last_error"],
+            "last_error_timestamp": health["last_error_timestamp"],
+            "info": "Ableton Live not connected — see connection_state for details",
+        })
+
+
 @mcp.resource("live://session/current")
 def get_session_resource() -> str:
     """Get current Ableton session state (tempo, time sig, track count, transport)"""
@@ -1046,6 +1302,71 @@ async def set_parameters_bulk(
             "error_messages": error_messages,
         }
     )
+
+
+# ============================================================================
+# Connection Health Tools
+# ============================================================================
+
+
+@mcp.tool()
+def get_connection_health(ctx: Context) -> str:
+    """Get connection health and diagnostics information.
+
+    Always works — returns health data even when Ableton Live is not connected.
+    Includes connection_state, last_ping_ms, uptime, reconnect_count, last_error.
+    """
+    ch = _get_connection_health()
+    return json.dumps(ch.get_health(), indent=2)
+
+
+@mcp.tool()
+def reset_connection(ctx: Context) -> str:
+    """Force a reconnection attempt to Ableton Live.
+
+    Disconnects any existing connection and attempts a fresh connection.
+    Returns the resulting health state after the attempt.
+    """
+    global _ableton_connection
+    ch = _get_connection_health()
+
+    # Disconnect any existing connection
+    if _ableton_connection is not None:
+        try:
+            _ableton_connection.disconnect()
+        except Exception:
+            pass
+        _ableton_connection = None
+
+    ch.set_state("reconnecting", "Forced reset by user")
+
+    # Attempt fresh connection
+    try:
+        result = get_ableton_connection()
+        if result:
+            return json.dumps({
+                "success": True,
+                "message": "Successfully reconnected to Ableton Live",
+                "health": ch.get_health(),
+            }, indent=2)
+    except ConnectionError as e:
+        msg = str(e)
+        try:
+            parsed = json.loads(msg)
+            return json.dumps({
+                "success": False,
+                "message": parsed.get("error", "Failed to reconnect"),
+                "code": parsed.get("code", "LIVE_NOT_RUNNING"),
+                "health": ch.get_health(),
+            }, indent=2)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return json.dumps({
+        "success": False,
+        "message": "Failed to reconnect to Ableton Live",
+        "health": ch.get_health(),
+    }, indent=2)
 
 
 # Core Tool endpoints

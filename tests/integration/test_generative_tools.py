@@ -14,6 +14,7 @@ Tests all new generative music features:
 
 import sys
 import json
+import pytest
 from typing import Dict, Any
 
 # Add project root to path
@@ -21,10 +22,12 @@ sys.path.insert(0, ".")
 
 try:
     from dub.mcp.client import MCPClient
+    _HAS_DUB = True
 except ImportError:
-    print("ERROR: Could not import MCPClient")
-    print("Make sure the dub module is available")
-    sys.exit(1)
+    print("INFO: dub module not available - integration tests will be skipped")
+    _HAS_DUB = False
+
+pytestmark = pytest.mark.skipif(not _HAS_DUB, reason="dub module not available")
 
 
 class GenerativeToolsTester:
