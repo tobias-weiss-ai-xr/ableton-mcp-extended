@@ -1,11 +1,11 @@
 """
 Setup session node - Create Ableton Live session with tracks and initial configuration.
 """
-from typing import Dict, Any, List
+from typing import List
 from agentic_mix.state import GraphState, SessionInfo
 from agentic_mix.tools import (
     delete_all_tracks, create_midi_track, set_track_name,
-    set_tempo, set_time_signature, get_all_tracks
+    set_tempo, set_time_signature
 )
 
 

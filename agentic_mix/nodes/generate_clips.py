@@ -3,11 +3,10 @@ Generate clips node - Create MIDI clips with music content.
 """
 from typing import List, Dict, Any
 import random
-from agentic_mix.state import GraphState, Section
+from agentic_mix.state import GraphState
 from agentic_mix.tools import (
     create_clip, add_notes_to_clip, create_drum_pattern,
-    generate_chord_progression_clip, generate_melody_clip,
-    create_generative_chain
+    generate_chord_progression_clip, generate_melody_clip
 )
 
 

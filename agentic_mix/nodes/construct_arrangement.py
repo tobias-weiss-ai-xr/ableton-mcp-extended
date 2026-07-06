@@ -1,7 +1,7 @@
 """
 Construct arrangement node - Build the section structure for the mix.
 """
-from typing import List, Dict, Any
+from typing import List
 import random
 from agentic_mix.state import GraphState, Section
 
