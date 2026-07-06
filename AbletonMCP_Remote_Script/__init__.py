@@ -1162,14 +1162,17 @@ class AbletonMCP(ControlSurface):
                     }
                 )
 
+            is_group = bool(getattr(track, "is_foldable", False))
+
             result = {
                 "index": track_index,
                 "name": track.name,
                 "is_audio_track": track.has_audio_input,
                 "is_midi_track": track.has_midi_input,
+                "is_group_track": is_group,
                 "mute": track.mute,
                 "solo": track.solo,
-                "arm": track.arm,
+                "arm": None if is_group else track.arm,
                 "volume": track.mixer_device.volume.value,
                 "panning": track.mixer_device.panning.value,
                 "clip_slots": clip_slots,
