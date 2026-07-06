@@ -41,6 +41,8 @@ from MCP_Server.browser_cache import (
     clear_browser_cache,
     get_cache_stats,
 )
+from MCP_Server.verify import wrap_ableton_connection
+from MCP_Server.als_parser import parse_als_file, detect_als_issues, suggest_als_changes
 
 # ============================================================================
 # ABLETON CONNECTION CLASS
@@ -316,6 +318,7 @@ def get_ableton_connection():
         try:
             _ableton_connection.sock.settimeout(1.0)
             _ableton_connection.sock.sendall(b"")
+            wrap_ableton_connection(_ableton_connection)
             return _ableton_connection
         except Exception as e:
             logger.warning(f"Existing connection is no longer valid: {str(e)}")
@@ -338,6 +341,7 @@ def get_ableton_connection():
                     try:
                         _ableton_connection.send_command("get_session_info")
                         logger.info("Connection validated successfully")
+                        wrap_ableton_connection(_ableton_connection)
                         return _ableton_connection
                     except Exception as e:
                         logger.error(f"Connection validation failed: {str(e)}")
@@ -757,15 +761,86 @@ from MCP_Server.advanced_tools import (
 )
 from MCP_Server.audio_analysis_tools import register_audio_analysis_tools
 from MCP_Server.mixer_tools import register_mixer_tools
+from MCP_Server.automation_tools import register_automation_tools
+from MCP_Server.groove_tools import register_groove_tools
+from MCP_Server.max_bridge import register_max_bridge_tools
 
 register_midi_effect_tools(mcp, get_ableton_connection)
 register_advanced_tools(mcp, get_ableton_connection)
 register_generation_tools(mcp, get_ableton_connection)
 register_audio_analysis_tools(mcp, get_ableton_connection)
 register_mixer_tools(mcp, get_ableton_connection)
+register_automation_tools(mcp, get_ableton_connection)
+register_groove_tools(mcp, get_ableton_connection)
+register_max_bridge_tools(mcp, get_ableton_connection)
 
 # Global connection reference is defined at module level (line 145)
 # get_ableton_connection() is defined at line 148
+
+# ============================================================================
+# MCP Resources (read-only state access via live:// URIs)
+# ============================================================================
+
+
+@mcp.resource("live://session/current")
+def get_session_resource() -> str:
+    """Get current Ableton session state (tempo, time sig, track count, transport)"""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_session_info")
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.resource("live://track/{track_index}")
+def get_track_resource(track_index: int) -> str:
+    """Get detailed info about a specific track"""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_track_info", {"track_index": track_index})
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.resource("live://device/{track_index}/{device_index}")
+def get_device_resource(track_index: int, device_index: int) -> str:
+    """Get device parameters for a specific device on a track"""
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_device_parameters", {
+            "track_index": track_index,
+            "device_index": device_index,
+        })
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.resource("live://clip/{track_index}/{clip_index}")
+def get_clip_resource(track_index: int, clip_index: int) -> str:
+    """Get details about a specific clip"""
+    try:
+        ableton = get_ableton_connection()
+        clips = ableton.send_command("get_all_clips_in_track", {"track_index": track_index})
+        # Filter to the requested clip index
+        if "clips" in clips and isinstance(clips["clips"], list):
+            for clip in clips["clips"]:
+                if clip.get("index") == clip_index:
+                    return json.dumps(clip, indent=2)
+        # If clips dict has the clip_index key
+        if str(clip_index) in clips:
+            return json.dumps(clips[str(clip_index)], indent=2)
+        # Return clip not found with available indices
+        available = [c.get("index") for c in clips.get("clips", []) if "index" in c]
+        return json.dumps({
+            "error": f"Clip {clip_index} not found on track {track_index}",
+            "available_clip_indices": available,
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
 
 # =============================================
 # AUDIO EFFECT MANAGEMENT COMMANDS (TCP)
@@ -2712,6 +2787,45 @@ def get_browser_items_at_path(ctx: Context, path: str) -> str:
         else:
             logger.error(f"Error getting browser items at path: {error_msg}")
             return f"Error getting browser items at path: {error_msg}"
+
+
+@mcp.tool()
+def scan_browser_recursive(
+    ctx: Context,
+    root_path: str = "Instruments",
+    max_depth: int = 5,
+    max_items: int = 500,
+) -> str:
+    """
+    Recursively scan the Ableton browser tree starting from a root category.
+
+    Walks the browser recursively up to max_depth levels, building a tree of
+    all discoverable items (folders, instruments, devices, presets).
+
+    Parameters:
+    - root_path: Root browser path (e.g. "Instruments", "Audio Effects",
+                 "MIDI Effects", "Sounds", "Drums", "Plugins")
+    - max_depth: Maximum recursion depth (default: 5, max: 10)
+    - max_items: Maximum items to return (default: 500, max: 2000)
+
+    Returns JSON tree with items, folders, and their children.
+    """
+    try:
+        ableton = get_ableton_connection()
+        result = ableton.send_command("get_browser_recursive_children", {
+            "root_path": root_path,
+            "max_depth": min(max_depth, 10),
+            "max_items": min(max_items, 2000),
+        })
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        error_msg = str(e)
+        if "Browser is not available" in error_msg:
+            return f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded."
+        elif "Unknown" in error_msg or "unavailable" in error_msg:
+            return f"Error: {error_msg}"
+        logger.error(f"Error scanning browser recursively: {error_msg}")
+        return f"Error scanning browser recursively: {error_msg}"
 
 
 @mcp.tool()
@@ -6465,3 +6579,95 @@ def get_grid_layout(ctx: Context, device: str, layout_type: str, **kwargs) -> st
 # =============================================================================
 # Generation tools are defined in advanced_tools.py register_generation_tools()
 # They are imported and registered via register_advanced_tools()
+
+
+@mcp.tool()
+def query_device_knowledge(ctx, device_name: str, parameter_name: str = "") -> str:
+    """
+    Query the device knowledge base for parameter schemas of Live devices.
+    
+    Parameters:
+    - device_name: Name of the device to look up (e.g. "Wavetable", "Operator", "EQ Eight")
+    - parameter_name: Optional parameter name filter (returns info for matching parameter only)
+    
+    Returns JSON with device name, class_name, categories, and parameter definitions.
+    """
+    try:
+        from MCP_Server.knowledge import get_device_knowledge as _get_knowledge
+        result = _get_knowledge(device_name, parameter_name)
+        return json.dumps(result, indent=2)
+    except Exception as e:
+        logger.error(f"Error in query_device_knowledge: {str(e)}")
+        return json.dumps({"error": str(e)}, indent=2)
+
+
+# =============================================================================
+# ALS FILE ANALYSIS TOOLS (Offline .als parser)
+# =============================================================================
+
+
+@mcp.tool()
+def analyze_als_project(ctx, path: str) -> str:
+    """
+    Parse an Ableton Live Set (.als) file offline and return a detailed breakdown.
+
+    Extracts tracks, devices, clips, tempo, time signature, and master/return
+    track settings from a .als file (gzipped XML).  Does NOT require Ableton
+    to be running.
+
+    Parameters:
+    - path: Absolute or relative filesystem path to the .als file
+            (e.g. "/Users/me/Projects/My Song/My Song.als")
+
+    Returns JSON string with full session structure including:
+    - ableton_version: Ableton Live version that created the file
+    - tempo: Session BPM (or null)
+    - time_signature: {numerator, denominator} (or null)
+    - tracks: Array of track objects (name, type, devices, clips)
+    - return_tracks: Array of return-track objects
+    - master_track: Master track with its device chain
+    """
+    try:
+        data = parse_als_file(path)
+        issues = detect_als_issues(data)
+        data["issues"] = issues
+        return json.dumps(data, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Error analyzing ALS project '{path}': {str(e)}")
+        return json.dumps({"error": str(e)}, indent=2)
+
+
+@mcp.tool()
+def suggest_als_improvements(ctx, path: str) -> str:
+    """
+    Analyze an Ableton Live Set (.als) file and return improvement suggestions.
+
+    Reads the .als file offline and produces actionable recommendations such as:
+    - Naming unnamed tracks
+    - Loading instruments on empty MIDI tracks
+    - Adding content to empty clips
+    - Removing unused return tracks
+    - Adding a limiter to the master track
+    - Setting a tempo if missing
+
+    Parameters:
+    - path: Absolute or relative filesystem path to the .als file
+
+    Returns JSON string with categorized suggestions and detected issues.
+    """
+    try:
+        data = parse_als_file(path)
+        issues = detect_als_issues(data)
+        suggestions = suggest_als_changes(data)
+        result = {
+            "file_path": path,
+            "tempo": data.get("tempo"),
+            "time_signature": data.get("time_signature"),
+            "track_count": len(data.get("tracks", [])),
+            "issues": issues,
+            "suggestions": suggestions,
+        }
+        return json.dumps(result, indent=2, default=str)
+    except Exception as e:
+        logger.error(f"Error suggesting ALS improvements for '{path}': {str(e)}")
+        return json.dumps({"error": str(e)}, indent=2)
