@@ -2063,6 +2063,11 @@ class AbletonMCP(ControlSurface):
     def _delete_track(self, track_index):
         """Delete a track by index"""
         try:
+            if len(self._song.tracks) <= 1:
+                raise ValueError(
+                    "Cannot delete the last remaining session track. "
+                    "Ableton must always have at least one track."
+                )
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")
             track = self._song.tracks[track_index]
