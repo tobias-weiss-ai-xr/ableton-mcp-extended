@@ -4,7 +4,7 @@ Graph state definition for LangGraph agentic mix pipeline.
 All state structures use TypedDict for LangGraph compatibility.
 Values accessed as dict keys: state["config"]["tempo"]
 """
-from typing import TypedDict, List, Dict, Any, Optional, Literal
+from typing import TypedDict, List, Dict, Any, Optional, Literal, Tuple
 
 
 # ============================================================================
@@ -16,6 +16,48 @@ EnergyCurveLiteral = Literal["gradual", "aggressive", "gentle"]
 KeyLiteral = Literal["Fm", "Cm", "Am", "Dm", "Gm", "Em", "F", "C", "D", "G", "E", "A"]
 SectionTypeLiteral = Literal["intro", "groove_a", "groove_b", "build", "drop", "break", "outro"]
 MixingTechniqueLiteral = Literal["dub_drop", "bass_forward", "strip_and_build", "send_sweep", "scene_transition", "none"]
+
+
+# ============================================================================
+# AudioAnalysisData: Single snapshot of audio readings from AudioAnalyzer
+# ============================================================================
+
+class AudioAnalysisData(TypedDict):
+    """Single snapshot of audio readings from AudioAnalyzer"""
+    timestamp: float
+    bpm: Optional[float]
+    beat: Optional[float]
+    rms: float
+    loudness_lufs: float
+    key: Optional[str]
+    key_confidence: Optional[float]
+    spectral_centroid_hz: float
+    spectral_rolloff_hz: float
+
+
+# ============================================================================
+# Adaptation: Action applied to a future section
+# ============================================================================
+
+class Adaptation(TypedDict, total=False):
+    """Action applied to a future section"""
+    type: str  # "energy_boost", "energy_reduct", "filter_adjust_down", etc.
+    target_section: int  # Section index to modify
+    value: float  # Magnitude of adjustment
+    tracks: Optional[List[int]]  # For track-specific adjustments
+    from_technique: Optional[str]  # For technique changes (renamed from 'from')
+    to_technique: Optional[str]  # For technique changes (renamed from 'to')
+
+
+# ============================================================================
+# FeedbackState: Accumulated feedback across sections
+# ============================================================================
+
+class FeedbackState(TypedDict):
+    """Accumulated feedback across sections"""
+    history: List[Tuple[int, AudioAnalysisData]]  # [(section_idx, snapshot), ...]
+    adaptations: List[Adaptation]  # Description of actions applied
+    energy_trend: List[float]  # RMS readings from each section
 
 
 # ============================================================================
@@ -162,3 +204,5 @@ class GraphState(TypedDict):
     feedback: List[str]
     errors: List[Dict[str, Any]]
     complete: bool
+    current_section_index: int  # which section we're executing (0-based)
+    audio_snapshot: Optional[AudioAnalysisData]  # latest analysis from current section
