@@ -198,7 +198,6 @@ class GraphState(TypedDict):
     config: Config
     session_info: SessionInfo
     arrangement: List[Section]
-    current_section: int
     track_states: List[TrackState]
     playback_metrics: PlaybackMetrics
     feedback: List[str]
