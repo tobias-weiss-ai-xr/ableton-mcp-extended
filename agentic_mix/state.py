@@ -39,7 +39,7 @@ class AudioAnalysisData(TypedDict):
 # Adaptation: Action applied to a future section
 # ============================================================================
 
-class Adaptation(TypedDict, total=False):
+class Adaptation(TypedDict):
     """Action applied to a future section"""
     type: str  # "energy_boost", "energy_reduct", "filter_adjust_down", etc.
     target_section: int  # Section index to modify
