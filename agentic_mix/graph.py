@@ -2,29 +2,48 @@
 Main LangGraph workflow for the agentic mix pipeline.
 
 Defines the graph structure with nodes and edges connecting them.
+Audio feedback loop: execute_section -> analyze_section -> [loop|end]
 """
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from .state import GraphState, Config, SessionInfo, TrackState, PlaybackMetrics
+from .state import (
+    GraphState, Config, create_session_info, create_track_state,
+    create_playback_metrics,
+)
 from .nodes.configure import configure_node
 from .nodes.setup_session import setup_session_node
 from .nodes.generate_clips import generate_clips_node
 from .nodes.construct_arrangement import construct_arrangement_node
-from .nodes.execute_mix_loop import execute_mix_loop_node
-from .nodes.analyze_adapt import analyze_and_adapt_node
+from .nodes.execute_section import execute_section_node
+from .nodes.analyze_section import analyze_section_node
+
+
+def more_sections(state: GraphState) -> str:
+    """Conditional edge: loop back to execute_section if more sections remain.
+
+    Returns:
+        "execute_section" if there are more sections to process,
+        END otherwise.
+    """
+    current_idx = state["current_section_index"]
+    if current_idx < len(state["arrangement"]) - 1:
+        return "execute_section"
+    return END
 
 
 def create_mix_pipeline() -> StateGraph:
     """
     Create the LangGraph workflow for agentic Ableton mix generation.
 
-    Graph structure:
-    START → configure → setup_session → generate_clips → construct_arrangement
-          → execute_mix_loop → analyze_adapt → END
+    Graph structure with audio feedback loop:
+    START -> configure -> setup_session -> generate_clips
+         -> construct_arrangement
+         -> execute_section -> analyze_section
+         -> [more sections? -> execute_section, OR -> END]
 
-    Each node processes the GraphState and passes it to the next node.
-    Conditional edges can be added for branching logic.
+    Each section is executed and analyzed in sequence, with audio analysis
+    providing feedback to adapt the next section.
     """
     # Initialize the graph
     workflow = StateGraph(GraphState)
@@ -34,17 +53,26 @@ def create_mix_pipeline() -> StateGraph:
     workflow.add_node("setup_session", setup_session_node)
     workflow.add_node("generate_clips", generate_clips_node)
     workflow.add_node("construct_arrangement", construct_arrangement_node)
-    workflow.add_node("execute_mix_loop", execute_mix_loop_node)
-    workflow.add_node("analyze_adapt", analyze_and_adapt_node)
+    workflow.add_node("execute_section", execute_section_node)
+    workflow.add_node("analyze_section", analyze_section_node)
 
     # Define edges
     workflow.set_entry_point("configure")
     workflow.add_edge("configure", "setup_session")
     workflow.add_edge("setup_session", "generate_clips")
     workflow.add_edge("generate_clips", "construct_arrangement")
-    workflow.add_edge("construct_arrangement", "execute_mix_loop")
-    workflow.add_edge("execute_mix_loop", "analyze_adapt")
-    workflow.add_edge("analyze_adapt", END)
+    workflow.add_edge("construct_arrangement", "execute_section")
+    workflow.add_edge("execute_section", "analyze_section")
+
+    # Conditional loop: analyze -> execute or end
+    workflow.add_conditional_edges(
+        "analyze_section",
+        more_sections,
+        {
+            "execute_section": "execute_section",
+            END: END,
+        },
+    )
 
     # Compile the graph
     # MemorySaver allows state persistence across runs
@@ -64,17 +92,18 @@ def run_pipeline(config: Config) -> Dict[str, Any]:
     Returns:
         Dictionary with pipeline state and feedback
     """
-    # Initialize state
+    # Initialize state with all required GraphState fields
     initial_state: GraphState = {
         "config": config,
-        "session_info": SessionInfo(),
+        "session_info": create_session_info(),
         "arrangement": [],
-        "current_section": 0,
-        "track_states": [TrackState() for _ in range(config.track_count)],
-        "playback_metrics": PlaybackMetrics(),
-        "feedback": [],
+        "track_states": [create_track_state() for _ in range(config["track_count"])],
+        "playback_metrics": create_playback_metrics(),
+        "feedback": {"history": [], "adaptations": [], "energy_trend": []},
+        "errors": [],
         "complete": False,
-        "error": None
+        "current_section_index": 0,
+        "audio_snapshot": None,
     }
 
     # Create and run the pipeline
@@ -87,6 +116,6 @@ def run_pipeline(config: Config) -> Dict[str, Any]:
         "state": final_state,
         "feedback": final_state["feedback"],
         "complete": final_state["complete"],
-        "error": final_state["error"],
-        "metrics": final_state["playback_metrics"]
+        "errors": final_state["errors"],
+        "metrics": final_state["playback_metrics"],
     }

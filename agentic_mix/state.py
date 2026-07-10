@@ -200,8 +200,8 @@ class GraphState(TypedDict):
     arrangement: List[Section]
     track_states: List[TrackState]
     playback_metrics: PlaybackMetrics
-    feedback: List[str]
-    errors: List[Dict[str, Any]]
+    feedback: FeedbackState
+    errors: List[str]
     complete: bool
     current_section_index: int  # which section we're executing (0-based)
     audio_snapshot: Optional[AudioAnalysisData]  # latest analysis from current section
