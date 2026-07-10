@@ -12,6 +12,9 @@ wheels/
 .coverage
 htmlcov/
 
+# Git worktrees
+.worktrees/
+
 # Virtual environments
 .venv
 venv/
