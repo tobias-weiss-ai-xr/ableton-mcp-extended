@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 import os
+
+from mcp.server.fastmcp import Context
 import socket
 from typing import Any
 
@@ -231,8 +233,6 @@ def register_max_bridge_tools(mcp: Any, get_ableton_connection: Any) -> None:
     get_ableton_connection:
         Callable that returns the current ``AbletonConnection``.
     """
-    from mcp.server.fastmcp import Context
-
     # ---------- test_max_bridge -------------------------------------------------
 
     @mcp.tool()

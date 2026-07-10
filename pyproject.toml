@@ -23,14 +23,14 @@ dependencies = [
 
 [project.scripts]
 ableton-mcp-extended = "MCP_Server.server:main"
-langgraph-mix = "langgraph.cli:main"
+langgraph-mix = "agentic_mix.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["MCP_Server", "elevenlabs_mcp", "langgraph"]
+packages = ["MCP_Server", "elevenlabs_mcp", "agentic_mix"]
 
 [project.urls]
 "Homepage" = "https://github.com/uisato/ableton-mcp-extended"
