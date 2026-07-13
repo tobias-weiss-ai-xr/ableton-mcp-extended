@@ -372,9 +372,9 @@ def setup_random_pattern(
     # We distribute the jump probability among other clips
     jump_probability = 1.0 - stay_probability
     if num_clips > 1:
-        jump_per_clip = jump_probability / (num_clips - 1)
+        jump_probability / (num_clips - 1)
     else:
-        jump_per_clip = 0.0
+        pass
 
     for clip_idx in range(clip_range_start, clip_range_end + 1):
 

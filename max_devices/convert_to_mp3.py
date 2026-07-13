@@ -9,7 +9,6 @@ Usage:
     python convert_to_mp3.py input.wav [output.mp3]
 """
 
-import os
 import sys
 from pathlib import Path
 import subprocess
@@ -96,7 +95,7 @@ def convert_wav_to_mp3(input_file, output_file=None):
         input_size = input_path.stat().st_size / (1024 * 1024)
         output_size = output_file.stat().st_size / (1024 * 1024)
 
-        print(f"\n[ Conversion complete!")
+        print("\n[ Conversion complete!")
         print(f"[ Input:  {input_size:.2f} MB")
         print(f"[ Output: {output_size:.2f} MB")
         print(f"[ Compression: {(1 - output_size / input_size) * 100:.1f}% reduction")

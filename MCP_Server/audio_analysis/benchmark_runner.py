@@ -10,7 +10,7 @@ Date: 2025-02-10
 
 import argparse
 import sys
-from typing import Optional
+import time
 
 from .benchmarks import BenchmarkSuite
 from .benchmark_report import generate_report
@@ -93,7 +93,6 @@ def create_mock_controller(poll_rate_hz: int = 10):
 
 def run_polling_benchmarks(suite: BenchmarkSuite, duration: float = 5.0):
     """Run polling-related benchmarks."""
-    import time
 
     print(f"Running polling benchmarks ({duration}s each)...")
     print()
@@ -136,7 +135,6 @@ def run_rule_evaluation_benchmarks(suite: BenchmarkSuite, iterations: int = 100)
 
 def run_latency_benchmarks(suite: BenchmarkSuite, iterations: int = 100):
     """Run end-to-end latency benchmarks."""
-    import time
 
     print(f"Running latency benchmarks ({iterations} iterations)...")
     print()
@@ -156,7 +154,6 @@ def run_latency_benchmarks(suite: BenchmarkSuite, iterations: int = 100):
 
 def run_cpu_benchmarks(suite: BenchmarkSuite, duration: float = 5.0):
     """Run CPU usage benchmarks."""
-    import time
 
     print(f"Running CPU benchmarks ({duration}s)...")
     print()
@@ -173,7 +170,7 @@ def run_cpu_benchmarks(suite: BenchmarkSuite, duration: float = 5.0):
                 f"  - CPU usage: {result.mean_value:.2f}% mean, {result.max_value:.2f}% max"
             )
         else:
-            print(f"  - CPU usage: N/A (psutil not available)")
+            print("  - CPU usage: N/A (psutil not available)")
     except Exception as e:
         print(f"  - CPU usage: Skipped ({e})")
 
@@ -297,7 +294,7 @@ Examples:
         print("=" * 80)
         print("AUDIO ANALYSIS SYSTEM - BENCHMARK SUITE")
         print("=" * 80)
-        print(f"\nConfiguration:")
+        print("\nConfiguration:")
         print(f"  Duration:   {args.duration}s")
         print(f"  Iterations: {args.iterations}")
         print(f"  Type:       {args.type}")
@@ -331,7 +328,6 @@ Examples:
 
     # Generate reports
     if args.output_dir:
-        import os
         from pathlib import Path
 
         output_path = Path(args.output_dir)
@@ -365,7 +361,7 @@ Examples:
         )
 
         if not args.quiet:
-            print(f"\nReports generated:")
+            print("\nReports generated:")
             for fmt, path in outputs.items():
                 print(f"  {fmt:10s}: {path}")
 

@@ -59,7 +59,7 @@ def main():
         for device in bass_info["devices"]:
             if "Utility" in device.get("name", ""):
                 utility_present = True
-                print(f"✅ Found Utility device on bass track")
+                print("✅ Found Utility device on bass track")
                 break
 
     if not utility_present:
@@ -89,11 +89,11 @@ def main():
     if "modulator_id" in sc_result:
         mod_id = sc_result["modulator_id"]
         print(f"✅ Sidechain created (ID: {mod_id}) 🎉")
-        print(f"📊 Parameters:")
+        print("📊 Parameters:")
         print(f"   • Source: Track {KICK_TRACK} (kick)")
         print(f"   • Target: Track {BASS_TRACK} (bass)")
         print(f"   • Duck Amount: {DUCK_AMOUNT * 100}% volume reduction")
-        print(f"   • Active: ON")
+        print("   • Active: ON")
         print("\n🎧 Listen to the bass pump when kick plays! ")
         print("Kick → Bass volume ducks → Music swells fill space")
         print("\n🔊 Pro tip: adjust DUCK_AMOUNT (0.1–0.95) for different styles")

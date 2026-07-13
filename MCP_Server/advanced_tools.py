@@ -71,7 +71,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "set_clip_follow_action",
                 {
                     "track_index": track_index,
@@ -117,7 +117,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command("set_master_volume", {"volume": volume})
+            ableton.send_command("set_master_volume", {"volume": volume})
             return f"Set master volume to {volume}"
         except Exception as e:
             logger.error(f"Error setting master volume: {str(e)}")
@@ -204,7 +204,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "set_note_velocity",
                 {
                     "track_index": track_index,
@@ -237,7 +237,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "set_note_duration",
                 {
                     "track_index": track_index,
@@ -270,7 +270,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "set_note_pitch",
                 {
                     "track_index": track_index,
@@ -318,7 +318,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "mix_clip",
                 {
                     "track_index": track_index,
@@ -347,7 +347,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "stretch_clip",
                 {
                     "track_index": track_index,
@@ -371,7 +371,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "crop_clip", {"track_index": track_index, "clip_index": clip_index}
             )
             return f"Cropped clip at track {track_index}, slot {clip_index}"
@@ -398,7 +398,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "duplicate_clip_to",
                 {
                     "track_index": track_index,
@@ -422,7 +422,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "group_tracks", {"track_indices": track_indices}
             )
             return f"Grouped {len(track_indices)} tracks"
@@ -440,7 +440,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "ungroup_tracks", {"track_index": track_index}
             )
             return f"Ungrouped track {track_index}"
@@ -462,7 +462,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "set_clip_warp_mode",
                 {
                     "track_index": track_index,
@@ -513,7 +513,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "add_warp_marker",
                 {
                     "track_index": track_index,
@@ -540,7 +540,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command(
+            ableton.send_command(
                 "delete_warp_marker",
                 {
                     "track_index": track_index,
@@ -570,7 +570,7 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
         for op in operations:
             try:
                 ableton = get_ableton_connection()
-                result = ableton.send_command(
+                ableton.send_command(
                     "set_device_parameter",
                     {
                         "track_index": op["track_index"],
@@ -791,15 +791,6 @@ def register_advanced_tools(mcp: FastMCP, get_ableton_connection):
 
             # Define key relationships (simplified Camelot wheel)
             # Format: key -> list of compatible keys
-            key_compatibility = {
-                "C": ["C", "Am", "F", "G"],  # C major related keys
-                "Am": ["Am", "C", "Em", "Dm"],  # A minor related keys
-                "F": ["F", "Dm", "C", "G"],  # F major related keys
-                "G": ["G", "Em", "C", "D"],  # G major related keys
-                "Dm": ["Dm", "Am", "G", "C"],  # D minor related keys
-                "Em": ["Em", "Am", "Bm", "A"],  # E minor related keys
-                "default": ["C", "Am", "F", "G", "Dm", "Em"],  # Default compatible keys
-            }
 
             for clip_index in clip_indices:
                 # Assign a "key" to each clip (simplified - in real use, clips would have actual key info)
@@ -1028,8 +1019,7 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
         try:
             # Import generation module
             from MCP_Server.music_generation import (
-                Scale, ScaleType, ClipGenerator, MIDINote,
-                euclidean_rhythm, GenerationPipeline, GrooveGenerator
+                Scale, ScaleType, ClipGenerator, MIDINote
             )
 
             # Map scale type
@@ -1131,8 +1121,8 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             from MCP_Server.music_generation import (
-                Scale, ScaleType, Chord, ChordProgression,
-                ClipGenerator, GrooveGenerator, MIDINote
+                ChordProgression,
+                ClipGenerator, MIDINote
             )
 
             # Parse key
@@ -1257,9 +1247,11 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
             # Get appropriate velocity pattern
             groove_func = GrooveGenerator.basic_pattern
             if drum_type == "kick":
-                groove_func = lambda v: [v, v - 30, v - 25, v - 35] * 4
+                def groove_func(v):
+                    return [v, v - 30, v - 25, v - 35] * 4
             elif drum_type == "hat":
-                groove_func = lambda v: [v - 10, v - 25, v - 15, v - 30] * 4
+                def groove_func(v):
+                    return [v - 10, v - 25, v - 15, v - 30] * 4
 
             velocity_pattern = groove_func(velocity)
 
@@ -1476,7 +1468,7 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             from MCP_Server.music_generation import (
-                ClipGenerator, MIDINote
+                ClipGenerator
             )
 
             gen = ClipGenerator(tempo=126.0, length_beats=length_beats)
@@ -1556,7 +1548,7 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
                     else:
                         existing_notes = [parsed]
                 except json.JSONDecodeError:
-                    return f"Error: Could not parse existing clip notes"
+                    return "Error: Could not parse existing clip notes"
             elif isinstance(notes_result, list):
                 existing_notes = notes_result
             else:
@@ -1695,7 +1687,7 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
         - generate_arrangement("dub_techno", "Fm", 8)
         """
         try:
-            from MCP_Server.music_generation import ArrangementGenerator, InstrumentDefaults
+            from MCP_Server.music_generation import ArrangementGenerator
             import json
 
             arr = ArrangementGenerator(126.0, key)
@@ -1747,8 +1739,6 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             from MCP_Server.music_generation import GenerationPipeline
-            import json
-            import os
 
             # Generate using pipeline
             tracks = GenerationPipeline.dub_techno_session(
@@ -1778,13 +1768,6 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
             note_count = sum(len(n) for n in tracks.values())
 
             # Record in memory
-            mem_data = {
-                "genre": "dub_techno",
-                "params": {"scene_type": scene_type, "key": key, "length_beats": length_beats},
-                "quality": quality_rating,
-                "track_count": 8,
-                "note_count": note_count,
-            }
 
             return f"Scene {scene_index} ({scene_type}) generated with {note_count} notes (rating: {quality_rating}/10)"
 
@@ -1970,7 +1953,7 @@ def register_generation_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             from MCP_Server.music_generation import (
-                Scale, ScaleType, Phrase, PhraseComposer, MIDINote
+                Scale, ScaleType, Phrase, PhraseComposer
             )
 
             # Parse key (e.g., "Fm" -> root F, minor)

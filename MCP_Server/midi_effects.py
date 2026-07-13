@@ -2,7 +2,7 @@
 # Handles MIDI effect devices: Arpeggiator, Scale, Chord, Pitch, Velocity, etc.
 
 from mcp.server.fastmcp import FastMCP, Context
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 import json
 import logging
 
@@ -396,7 +396,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             root, scale_name = key_map[key]
 
             # Load scale effect
-            load_result = load_midi_effect.func(ctx, track_index, "scale")
+            load_midi_effect.func(ctx, track_index, "scale")
 
             return (
                 f"Applied {NOTE_NAMES[root]} {scale_name} scale to track {track_index}"
@@ -479,7 +479,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             intervals = MIDI_EFFECT_PRESETS["chord"][preset_name]["semitones"]
 
             # Load chord effect
-            load_result = load_midi_effect.func(ctx, track_index, "chord")
+            load_midi_effect.func(ctx, track_index, "chord")
 
             return f"Applied {preset_name} chord preset (intervals: {intervals})"
 
@@ -703,7 +703,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
                                 break
                 except Exception as e:
                     logger.warning(f"Could not auto-detect device index: {str(e)}")
-                    return f"Error: Could not auto-detect device index. Please provide device_index parameter."
+                    return "Error: Could not auto-detect device index. Please provide device_index parameter."
 
             if device_index is None:
                 return f"Error: Device not found on track {track_index}. Please provide device_index."
@@ -797,8 +797,8 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             elif effect_key == "velocity":
                 # Set velocity parameters
                 drive = preset_config.get("drive", 0)
-                operation = preset_config.get("operation", "add")
-                compand = preset_config.get("compand", None)
+                preset_config.get("operation", "add")
+                preset_config.get("compand", None)
                 random_val = preset_config.get("random", 0)
 
                 # Set drive
@@ -1017,9 +1017,9 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             if "scale" in chain_config["effects"]:
                 scale_info = chain_config["presets"]["scale"]
                 # Determine preset based on key
-                scale_preset = scale_info["preset"]
+                scale_info["preset"]
                 if key in scale_info.get("key_map", {}):
-                    scale_preset = scale_info["key_map"][key]
+                    scale_info["key_map"][key]
 
                 # Load scale effect
                 load_result = load_midi_effect.func(ctx, track_index, "scale")
@@ -1031,21 +1031,21 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
 
             # 2. Load and configure Chord effect
             if "chord" in chain_config["effects"]:
-                chord_preset = chain_config["presets"]["chord"]["preset"]
+                chain_config["presets"]["chord"]["preset"]
                 load_result = load_midi_effect.func(ctx, track_index, "chord")
                 results.append(f"Chord: {load_result}")
                 device_indices["chord"] = "auto"
 
             # 3. Load and configure Velocity effect
             if "velocity" in chain_config["effects"]:
-                velocity_preset = chain_config["presets"]["velocity"]["preset"]
+                chain_config["presets"]["velocity"]["preset"]
                 load_result = load_midi_effect.func(ctx, track_index, "velocity")
                 results.append(f"Velocity: {load_result}")
                 device_indices["velocity"] = "auto"
 
             # 4. Load and configure Arpeggiator (optional)
             if include_arpeggiator and "arpeggiator" in chain_config.get("presets", {}):
-                arp_preset = chain_config["presets"]["arpeggiator"]["preset"]
+                chain_config["presets"]["arpeggiator"]["preset"]
                 load_result = load_midi_effect.func(ctx, track_index, "arpeggiator")
                 results.append(f"Arpeggiator: {load_result}")
                 device_indices["arpeggiator"] = "auto"
@@ -1061,7 +1061,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
                     "include_arpeggiator": include_arpeggiator,
                     "device_indices": device_indices,
                     "results": results,
-                    "next_steps": f"Use apply_midi_effect_preset() to configure each effect with specific presets",
+                    "next_steps": "Use apply_midi_effect_preset() to configure each effect with specific presets",
                 },
                 indent=2,
             )
@@ -1106,8 +1106,8 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             "1/32": 0.71,
         }
 
-        start_val = rate_map.get(start_rate, 0.42)
-        end_val = rate_map.get(end_rate, 0.57)
+        rate_map.get(start_rate, 0.42)
+        rate_map.get(end_rate, 0.57)
 
         # This would need to be run as a background automation
         # For now, return instructions
@@ -1311,7 +1311,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
 
             # Add notes to clip
             if notes_to_add:
-                result = ableton.send_command(
+                ableton.send_command(
                     "add_notes_to_clip",
                     {
                         "track_index": track_index,
@@ -1428,7 +1428,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
             # Build scale
             scale_key = key_mode.title()
             scale_intervals = SCALE_INTERVALS.get(scale_key, SCALE_INTERVALS["Major"])
-            scale_notes = [
+            [
                 (key_root_note + interval) % 12 for interval in scale_intervals
             ]
 
@@ -1578,7 +1578,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
 
             # Add notes to clip
             if all_notes:
-                result = ableton.send_command(
+                ableton.send_command(
                     "add_notes_to_clip",
                     {
                         "track_index": track_index,
@@ -1741,7 +1741,7 @@ def register_midi_effect_tools(mcp: FastMCP, get_ableton_connection):
 
             # Add notes to clip
             if melody_notes:
-                result = ableton.send_command(
+                ableton.send_command(
                     "add_notes_to_clip",
                     {
                         "track_index": track_index,
@@ -2131,7 +2131,6 @@ def _note_name_to_midi(note_name: str) -> Optional[int]:
         "D#": 3,
         "Eb": 3,
         "E": 4,
-        "Eb": 3,
         "F": 5,
         "F#": 6,
         "Gb": 6,

@@ -29,7 +29,6 @@ from MCP_Server.audio_analysis import (
     AudioAnalyzer,
     AudioAnalyzerConfig,
     AudioAnalysisCondition,
-    AudioConditionType,
 )
 
 
@@ -98,7 +97,7 @@ def main():
             analysis = analyzer.get_analysis()
 
             # Clear and display
-            print(f"\033[H\033[J", end="")  # Clear screen
+            print("\033[H\033[J", end="")  # Clear screen
             print("=" * 60)
             print("  REAL-TIME AUDIO ANALYSIS")
             print("=" * 60)

@@ -38,7 +38,7 @@ def main():
     scenes = scenes_result.get("scenes", [])
     scene_count = scenes_result.get("count", len(scenes))
 
-    print(f"\nScenes [16/16] | Phase A [4/4] | Phase B [4/4] | Phase C [4/4] | Phase D [4/4]")
+    print("\nScenes [16/16] | Phase A [4/4] | Phase B [4/4] | Phase C [4/4] | Phase D [4/4]")
     print(f"Total scenes returned: {scene_count}")
 
     # Verify exactly 16 scenes (indices 0-15)
@@ -103,7 +103,7 @@ def main():
     verdict = "APPROVE" if all_pass else "REJECT"
 
     print("\n" + "=" * 60)
-    print(f"Scenes [16/16] | Phase A [4/4] | Phase B [4/4] | Phase C [4/4] | Phase D [4/4]")
+    print("Scenes [16/16] | Phase A [4/4] | Phase B [4/4] | Phase C [4/4] | Phase D [4/4]")
     print(f"VERDICT: {verdict}")
     print("=" * 60)
 

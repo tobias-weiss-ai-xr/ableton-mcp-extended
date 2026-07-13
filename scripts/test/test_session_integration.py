@@ -12,10 +12,8 @@ Tests cover:
 
 import json
 import os
-import tempfile
 import pytest
 from datetime import datetime
-import time
 
 
 # =============================================================================
@@ -30,7 +28,6 @@ def test_session_save_load_full_cycle():
     from MCP_Server.server import (
         save_session_template,
         load_session_template,
-        get_session_overview,
     )
     from mcp.server.fastmcp import Context
 
@@ -47,7 +44,7 @@ def test_session_save_load_full_cycle():
             pytest.skip(f"Unable to connect to Ableton: {save_result_json[:100]}")
 
         # Verify save succeeded
-        assert save_result["success"] == True, (
+        assert save_result["success"], (
             f"Save failed: {save_result.get('error')}"
         )
         assert os.path.exists(template_path), (
@@ -74,7 +71,7 @@ def test_session_save_load_full_cycle():
         load_result = json.loads(load_result_json)
 
         # Verify load succeeded
-        assert load_result["success"] == True, (
+        assert load_result["success"], (
             f"Load failed: {load_result.get('error')}"
         )
         assert "loaded_tracks_count" in load_result
@@ -122,7 +119,7 @@ def test_session_save_load_partial():
         # Phase 2: Save session
         save_result_json = save_session_template(ctx, template_path)
         save_result = json.loads(save_result_json)
-        assert save_result["success"] == True
+        assert save_result["success"]
 
         # Phase 3: Load WITHOUT clearing existing
         load_result_json = load_session_template(
@@ -130,7 +127,7 @@ def test_session_save_load_partial():
         )
         load_result = json.loads(load_result_json)
 
-        assert load_result["success"] == True
+        assert load_result["success"]
         assert "loaded_tracks_count" in load_result
 
         # Phase 4: Verify tracks were added (track count should increase or stay same)
@@ -207,7 +204,7 @@ def test_preset_bank_save_load_cycle():
         list_json = list_preset_banks(ctx)
         list_result = json.loads(list_json)
 
-        assert list_result["success"] == True
+        assert list_result["success"]
         assert "banks" in list_result
         assert bank_name in list_result["banks"], "Bank not listed"
 
@@ -217,17 +214,16 @@ def test_preset_bank_save_load_cycle():
         )
         load_result = json.loads(load_result_json)
 
-        assert load_result["success"] == True
+        assert load_result["success"]
         assert "loaded_presets_count" in load_result
         assert load_result["loaded_presets_count"] >= 1
 
         # Phase 5: Verify parameters were restored
-        original_params = None
         try:
             get_params_json = get_device_parameters(ctx, track_index=0, device_index=0)
             get_params = json.loads(get_params_json)
             if get_params.get("success"):
-                original_params = get_params.get("parameters", [])
+                get_params.get("parameters", [])
         except:
             pass
 
@@ -265,7 +261,7 @@ def test_session_preset_combined_workflow():
         # Phase 1: Save session
         session_save_json = save_session_template(ctx, template_path)
         session_save = json.loads(session_save_json)
-        assert session_save["success"] == True
+        assert session_save["success"]
         assert os.path.exists(template_path)
 
         # Phase 2: Save preset bank
@@ -285,14 +281,14 @@ def test_session_preset_combined_workflow():
             ctx, template_path, clear_existing=False
         )
         session_load = json.loads(session_load_json)
-        assert session_load["success"] == True
+        assert session_load["success"]
 
         # Phase 4: Load preset bank onto restored session
         preset_load_json = load_preset_bank(
             ctx, bank_name=bank_name, track_index=0, device_index=0
         )
         preset_load = json.loads(preset_load_json)
-        assert preset_load["success"] == True
+        assert preset_load["success"]
 
         # Both files exist and both load operations succeeded
         assert os.path.exists(template_path), "Session template should still exist"
@@ -324,7 +320,7 @@ def test_load_nonexistent_session_file():
     )
     load_result = json.loads(load_result_json)
 
-    assert load_result["success"] == False
+    assert not load_result["success"]
     assert "error" in load_result
     assert (
         "not found" in load_result["error"].lower()
@@ -351,7 +347,7 @@ def test_load_malformed_session_json():
         )
         load_result = json.loads(load_result_json)
 
-        assert load_result["success"] == False
+        assert not load_result["success"]
         assert "error" in load_result
 
     finally:
@@ -363,7 +359,7 @@ def test_load_session_with_missing_devices():
     """Test loading a session with devices that may not be available"""
     template_path = "test_missing_devices.json"
 
-    from MCP_Server.server import load_session_template, get_all_tracks
+    from MCP_Server.server import load_session_template
     from mcp.server.fastmcp import Context
 
     ctx = Context()
@@ -420,7 +416,7 @@ def test_load_session_with_missing_devices():
         load_result = json.loads(load_result_json)
 
         # Load should succeed but may report errors
-        assert load_result["success"] == True or "error" in load_result
+        assert load_result["success"] or "error" in load_result
 
         if load_result.get("errors"):
             # Should have errors about missing device
@@ -446,7 +442,7 @@ def test_load_nonexistent_preset_bank():
     load_result_json = load_preset_bank(ctx, bank_name=nonexistent_bank)
     load_result = json.loads(load_result_json)
 
-    assert load_result["success"] == False
+    assert not load_result["success"]
     assert "error" in load_result
 
 
@@ -471,7 +467,7 @@ def test_load_malformed_preset_bank():
         load_result_json = load_preset_bank(ctx, bank_name=bank_name)
         load_result = json.loads(load_result_json)
 
-        assert load_result["success"] == False
+        assert not load_result["success"]
         assert "error" in load_result
 
     finally:
@@ -491,7 +487,6 @@ def test_complex_session_multiple_tracks():
     from MCP_Server.server import (
         save_session_template,
         load_session_template,
-        get_session_overview,
     )
     from mcp.server.fastmcp import Context
 
@@ -501,7 +496,7 @@ def test_complex_session_multiple_tracks():
         # Phase 1: Save current session (whatever exists)
         save_result_json = save_session_template(ctx, template_path)
         save_result = json.loads(save_result_json)
-        assert save_result["success"] == True
+        assert save_result["success"]
 
         # Phase 2: Verify saved structure
         with open(template_path) as f:
@@ -530,7 +525,7 @@ def test_complex_session_multiple_tracks():
             ctx, template_path, clear_existing=False
         )
         load_result = json.loads(load_result_json)
-        assert load_result["success"] == True
+        assert load_result["success"]
 
     finally:
         if os.path.exists(template_path):
@@ -554,7 +549,7 @@ def test_session_persistence_across_operations():
         # Phase 1: Save session 1
         save_result1_json = save_session_template(ctx, template_path1)
         save_result1 = json.loads(save_result1_json)
-        assert save_result1["success"] == True
+        assert save_result1["success"]
 
         # Phase 2: Save session 2 (different timestamp)
         # Add a small delay to ensure different timestamps
@@ -564,7 +559,7 @@ def test_session_persistence_across_operations():
 
         save_result2_json = save_session_template(ctx, template_path2)
         save_result2 = json.loads(save_result2_json)
-        assert save_result2["success"] == True
+        assert save_result2["success"]
 
         # Phase 3: Verify both files exist and have different content
         assert os.path.exists(template_path1)
@@ -585,13 +580,13 @@ def test_session_persistence_across_operations():
             ctx, template_path1, clear_existing=False
         )
         load_result1 = json.loads(load_result1_json)
-        assert load_result1["success"] == True
+        assert load_result1["success"]
 
         load_result2_json = load_session_template(
             ctx, template_path2, clear_existing=False
         )
         load_result2 = json.loads(load_result2_json)
-        assert load_result2["success"] == True
+        assert load_result2["success"]
 
     finally:
         for path in [template_path1, template_path2]:
@@ -620,7 +615,7 @@ def test_empty_session_save_load():
         # Phase 1: Save current session (may be minimal)
         save_result_json = save_session_template(ctx, template_path)
         save_result = json.loads(save_result_json)
-        assert save_result["success"] == True
+        assert save_result["success"]
 
         # Phase 2: Verify minimal JSON structure
         with open(template_path) as f:
@@ -636,7 +631,7 @@ def test_empty_session_save_load():
             ctx, template_path, clear_existing=False
         )
         load_result = json.loads(load_result_json)
-        assert load_result["success"] == True
+        assert load_result["success"]
 
     finally:
         if os.path.exists(template_path):
@@ -676,15 +671,15 @@ def test_concurrent_preset_banks():
         if not save_result1.get("success"):
             pytest.skip(f"Device not available: {save_result1.get('error')}")
 
-        assert save_result1["success"] == True
-        assert save_result2["success"] == True
+        assert save_result1["success"]
+        assert save_result2["success"]
         assert os.path.exists(bank_path1)
         assert os.path.exists(bank_path2)
 
         # Phase 2: List banks - both should appear
         list_json = list_preset_banks(ctx)
         list_result = json.loads(list_json)
-        assert list_result["success"] == True
+        assert list_result["success"]
         assert bank_name1 in list_result["banks"]
         assert bank_name2 in list_result["banks"]
 
@@ -693,13 +688,13 @@ def test_concurrent_preset_banks():
             ctx, bank_name=bank_name1, track_index=0, device_index=0
         )
         load_result1 = json.loads(load_result1_json)
-        assert load_result1["success"] == True
+        assert load_result1["success"]
 
         load_result2_json = load_preset_bank(
             ctx, bank_name=bank_name2, track_index=0, device_index=0
         )
         load_result2 = json.loads(load_result2_json)
-        assert load_result2["success"] == True
+        assert load_result2["success"]
 
     finally:
         for path in [bank_path1, bank_path2]:

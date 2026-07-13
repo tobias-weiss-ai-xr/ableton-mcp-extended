@@ -76,7 +76,7 @@ def test_drum_rack_uris():
 
         if result.get("status") == "success":
             res = result.get("result", {})
-            print(f"  [OK] SUCCESS")
+            print("  [OK] SUCCESS")
             print(f"    Item: {res.get('item_name')}")
             print(f"    Track: {res.get('track_name')}")
             results.append({"name": test["name"], "success": True})

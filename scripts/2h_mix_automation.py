@@ -13,7 +13,6 @@ import socket
 import json
 import time
 import random
-import sys
 from datetime import datetime, timedelta
 
 HOST = "127.0.0.1"
@@ -230,7 +229,6 @@ ACTIONS = [
 
 def energy_at_minute(minute):
     """Return target energy (0.0-1.0) based on elapsed minute."""
-    total = DURATION_MINUTES
     # Arc: intro (0-15min), build (15-30), peak (30-60), break (60-75), build (75-90), outro (90-120)
     if minute < 15:
         return 0.2 + minute / 15 * 0.3  # 0.2 → 0.5
@@ -330,7 +328,7 @@ def main():
             timestamp = datetime.now().strftime('%H:%M:%S')
             result = func(**kwargs)
             elapsed_min = int(elapsed)
-            remaining_min = int(remaining)
+            int(remaining)
             pct = (elapsed / DURATION_MINUTES) * 100
 
             print(f"  [{timestamp}] +{elapsed_min}m (E:{current_energy:.1f}) [{pct:3.0f}%] {result}")
@@ -353,7 +351,7 @@ def main():
 
     elapsed_total = (datetime.now() - start_time).total_seconds() / 60.0
     print(f"\n{'=' * 60}")
-    print(f"  MIX COMPLETE")
+    print("  MIX COMPLETE")
     print(f"  Duration: {elapsed_total:.0f} minutes")
     print(f"  Actions: {actions_taken}")
     print(f"  Avg action interval: {elapsed_total / max(actions_taken, 1):.1f} min")

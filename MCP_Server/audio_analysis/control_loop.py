@@ -15,10 +15,9 @@ Architecture:
 import time
 import signal
 import logging
-from typing import Optional, List, Dict, Any, Callable
-from pathlib import Path
+from typing import Optional, List, Dict, Any
 
-from .polling import AudioAnalysisPoller, ParameterConfig, ParameterSnapshot
+from .polling import AudioAnalysisPoller, ParameterConfig
 from .analyzer import AudioAnalyzer
 from .rules import RuleEngine, RuleSet
 
@@ -314,7 +313,7 @@ class AudioAnalysisController:
 
         # Poller status
         poller = status["poller"]
-        print(f"\nPOLLER:")
+        print("\nPOLLER:")
         print(f"  Target rate: {poller['update_rate_hz']:.1f} Hz")
         print(f"  Actual rate: {poller['actual_rate_hz']:.1f} Hz")
         print(f"  Total polls: {poller['total_polls']}")
@@ -323,7 +322,7 @@ class AudioAnalysisController:
 
         # Engine status
         engine = status["engine"]
-        print(f"\nENGINE:")
+        print("\nENGINE:")
         print(f"  Rule sets loaded: {engine['loaded_rulesets']}")
         print(f"  Total rules: {engine['total_rules']}")
         print(f"  Total evaluations: {engine['total_evaluations']}")

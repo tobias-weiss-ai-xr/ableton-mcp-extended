@@ -11,7 +11,7 @@ Thread-safe via threading.Lock.
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal, Optional
 
 # ── Types ────────────────────────────────────────────────────────────────────
 

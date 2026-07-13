@@ -251,7 +251,7 @@ def manual_control_example():
         ),
     ]
 
-    controller = AudioAnalysisController(
+    AudioAnalysisController(
         track_index=0,
         device_index=0,
         params_to_poll=params_to_poll,

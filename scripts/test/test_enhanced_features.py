@@ -5,7 +5,6 @@ Tests all new automation capabilities
 
 import socket
 import json
-import time
 
 
 def send_command(cmd_type, params=None):
@@ -62,7 +61,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Get all tracks")
+        print("✗ FAIL | Get all tracks")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -73,7 +72,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Get master track info")
+        print("✗ FAIL | Get master track info")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -84,7 +83,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Get return tracks")
+        print("✗ FAIL | Get return tracks")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -105,7 +104,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Get all scenes")
+        print("✗ FAIL | Get all scenes")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -126,7 +125,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Create scene")
+        print("✗ FAIL | Create scene")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -177,7 +176,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Create clip")
+        print("✗ FAIL | Create clip")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -198,7 +197,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Quantize clip")
+        print("✗ FAIL | Quantize clip")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -212,7 +211,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Transpose clip")
+        print("✗ FAIL | Transpose clip")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -231,7 +230,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Set clip loop")
+        print("✗ FAIL | Set clip loop")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -298,7 +297,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Add notes to clip")
+        print("✗ FAIL | Add notes to clip")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -317,7 +316,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Set time signature")
+        print("✗ FAIL | Set time signature")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -328,7 +327,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Set metronome")
+        print("✗ FAIL | Set metronome")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -339,7 +338,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Undo")
+        print("✗ FAIL | Undo")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -350,7 +349,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Redo")
+        print("✗ FAIL | Redo")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -369,7 +368,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Get playhead position")
+        print("✗ FAIL | Get playhead position")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -382,7 +381,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Set loop")
+        print("✗ FAIL | Set loop")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -393,7 +392,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Create locator")
+        print("✗ FAIL | Create locator")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -412,7 +411,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Set track pan")
+        print("✗ FAIL | Set track pan")
         print(f"         Exception: {e}")
         failed += 1
 
@@ -423,7 +422,7 @@ def main():
         else:
             failed += 1
     except Exception as e:
-        print(f"✗ FAIL | Set master volume")
+        print("✗ FAIL | Set master volume")
         print(f"         Exception: {e}")
         failed += 1
 

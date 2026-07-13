@@ -46,7 +46,7 @@ try:
     conn = AbletonConnection(host="127.0.0.1", port=9877)
     udp_port = getattr(conn, "udp_port", 9878)
 
-    print(f"Setting up connection to Ableton:")
+    print("Setting up connection to Ableton:")
     print(f"  - TCP port: {conn.port} (reliable, request/response)")
     print(f"  - UDP port: {udp_port} (fire-and-forget, low latency)")
     print()
@@ -65,7 +65,7 @@ try:
     print()
 
 except Exception as e:
-    print(f"Note: This example requires Ableton Live with Remote Script running")
+    print("Note: This example requires Ableton Live with Remote Script running")
     print(f"Error: {e}")
     print()
 
@@ -95,11 +95,11 @@ try:
     print(f"  - Total time: {elapsed:.2f}ms")
     print(f"  - Average per command: {avg_ms:.3f}ms")
     print(f"  - Commands per second: {1000 / avg_ms:.1f} Hz")
-    print(f"  - Final volume: 1.5")
+    print("  - Final volume: 1.5")
     print()
 
 except Exception as e:
-    print(f"Note: This example requires Ableton Live with Remote Script running")
+    print("Note: This example requires Ableton Live with Remote Script running")
     print(f"Error: {e}")
     print()
 

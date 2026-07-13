@@ -8,9 +8,6 @@ native .advpt preset files, not the JSON-based preset banks.
 import pytest
 import json
 import socket
-import time
-import os
-from pathlib import Path
 
 
 # Ableton MCP connection settings
@@ -58,7 +55,6 @@ class TestSaveDevicePreset:
         tracks = response["result"].get("tracks", [])
         test_track = None
         test_device_index = None
-        test_device_name = None
 
         for track_info in tracks:
             track_idx = track_info["index"]
@@ -78,13 +74,13 @@ class TestSaveDevicePreset:
                         ):
                             test_track = track_idx
                             test_device_index = dev["index"]
-                            test_device_name = dev.get("name", "Unknown")
+                            dev.get("name", "Unknown")
                             break
                     # If no instrument found, use first device
                     if test_track is None:
                         test_track = track_idx
                         test_device_index = track["devices"][0]["index"]
-                        test_device_name = track["devices"][0].get("name", "Unknown")
+                        track["devices"][0].get("name", "Unknown")
                     break
 
         # If no device found, skip test (need Ableton session with devices)

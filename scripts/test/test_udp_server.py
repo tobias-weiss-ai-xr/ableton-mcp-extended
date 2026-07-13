@@ -5,7 +5,6 @@ Integration test for UDP server in AbletonMCP Remote Script.
 
 import socket
 import json
-import time
 import sys
 
 

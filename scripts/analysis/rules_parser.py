@@ -154,7 +154,7 @@ class RulesParser:
     ) -> Condition:
         """Parse a condition from the YAML data."""
         if "operator" not in condition_data:
-            raise RulesParseError(f"Missing 'operator' in condition")
+            raise RulesParseError("Missing 'operator' in condition")
 
         operator = condition_data["operator"]
 
@@ -163,7 +163,7 @@ class RulesParser:
             if operator == "NOT":
                 # NOT has a single condition
                 if "condition" not in condition_data:
-                    raise RulesParseError(f"NOT operator requires 'condition' field")
+                    raise RulesParseError("NOT operator requires 'condition' field")
                 sub_condition = self._parse_condition(
                     condition_data["condition"], context
                 )
@@ -223,7 +223,7 @@ class RulesParser:
     def _parse_action(self, action_data: Dict[str, Any], context: str) -> Action:
         """Parse an action from the YAML data."""
         if "type" not in action_data:
-            raise RulesParseError(f"Missing 'type' in action")
+            raise RulesParseError("Missing 'type' in action")
 
         action_type = action_data["type"]
 
@@ -236,7 +236,7 @@ class RulesParser:
         params = {}
         if "params" in action_data:
             if not isinstance(action_data["params"], dict):
-                raise RulesParseError(f"'params' must be a dictionary")
+                raise RulesParseError("'params' must be a dictionary")
             params = action_data["params"]
 
         return Action(type=action_type, params=params)

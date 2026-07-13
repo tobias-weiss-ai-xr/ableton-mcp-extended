@@ -22,10 +22,10 @@ Usage:
 import socket
 import json
 import time
-from typing import List, Dict, Any, Optional, Callable
+from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 
-from rules_parser import Rule, Condition, Action, RulesParseError
+from rules_parser import Rule, Condition, Action
 
 
 @dataclass
@@ -435,7 +435,7 @@ class PollingRulesEngine(RulesEngine):
         if duration_seconds > 0:
             print(f"[ENGINE] Duration: {duration_seconds} seconds")
         else:
-            print(f"[ENGINE] Duration: infinite (Ctrl+C to stop)")
+            print("[ENGINE] Duration: infinite (Ctrl+C to stop)")
 
         self.running = True
         start_time = time.time()

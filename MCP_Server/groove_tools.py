@@ -1,7 +1,6 @@
 """MCP tools for groove template manipulation."""
 
 from mcp.server.fastmcp import FastMCP, Context
-from typing import List, Dict, Any, Optional
 import json
 import logging
 

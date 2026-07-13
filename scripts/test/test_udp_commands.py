@@ -42,7 +42,7 @@ print("=" * 50)
 print("\n[1] Testing TCP connection...")
 response = send_tcp("get_session_info")
 if response.get("status") == "success":
-    print(f"[OK] Connected to Ableton")
+    print("[OK] Connected to Ableton")
     print(f"    Tempo: {response['result']['tempo']} BPM")
     print(f"    Tracks: {response['result']['track_count']}")
 else:

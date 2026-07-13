@@ -19,28 +19,10 @@ from typing import AsyncIterator, Dict, Any, List, Union
 import time
 from datetime import datetime, timezone
 import functools
-import socket
-import json
-import logging
-from dataclasses import dataclass
-from contextlib import asynccontextmanager
-from typing import AsyncIterator, Dict, Any, List, Union
-import time
-from datetime import datetime, timezone
-import functools
 
 # Global audio analyzer instance
 _audio_analyzer = None
 
-# SQLite-based browser cache for instruments/effects
-# Replaces in-memory cache with persistent storage
-from MCP_Server.browser_cache import (
-    is_cache_valid,
-    update_cache,
-    get_cache,
-    clear_browser_cache,
-    get_cache_stats,
-)
 from MCP_Server.verify import wrap_ableton_connection
 from MCP_Server.als_parser import parse_als_file, detect_als_issues, suggest_als_changes
 from MCP_Server.connection_health import (
@@ -372,7 +354,7 @@ class AbletonConnection:
 
                 # Send the command
                 self.sock.sendall(json.dumps(command).encode("utf-8"))
-                logger.info(f"Command sent, waiting for response...")
+                logger.info("Command sent, waiting for response...")
 
                 # For state-modifying commands, add a small delay to give Ableton time to process
                 if is_modifying_command:
@@ -539,6 +521,7 @@ def get_ableton_connection() -> AbletonConnection:
 
 # Use orjson for faster JSON serialization (3-10x faster than stdlib json)
 try:
+    import orjson
 
     def json_dumps(obj, indent=None):
         """Fast JSON serialization using orjson with fallback"""
@@ -955,7 +938,7 @@ async def server_lifespan(server: FastMCP) -> AsyncIterator[Dict[str, Any]]:
         logger.info("AbletonMCP server starting up")
 
         try:
-            ableton = get_ableton_connection()
+            get_ableton_connection()
             logger.info("Successfully connected to Ableton on startup")
         except Exception as e:
             logger.warning(f"Could not connect to Ableton on startup: {str(e)}")
@@ -1025,7 +1008,7 @@ def get_status_resource() -> str:
         result["uptime"] = health["uptime"]
         result["reconnect_count"] = health["reconnect_count"]
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except Exception:
         # Graceful degradation: return health data even without Live
         return json.dumps({
             "connection_state": health["connection_state"],
@@ -1512,7 +1495,7 @@ def create_clip(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "create_clip",
             {"track_index": track_index, "clip_index": clip_index, "length": length},
         )
@@ -1614,7 +1597,7 @@ def add_notes_to_clip(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "add_notes_to_clip",
             {"track_index": track_index, "clip_index": clip_index, "notes": notes},
         )
@@ -2023,7 +2006,7 @@ def set_clip_name(ctx: Context, track_index: int, clip_index: int, name: str) ->
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_clip_name",
             {"track_index": track_index, "clip_index": clip_index, "name": name},
         )
@@ -2043,7 +2026,7 @@ def set_tempo(ctx: Context, tempo: float) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_tempo", {"tempo": tempo})
+        ableton.send_command("set_tempo", {"tempo": tempo})
         return f"Set tempo to {tempo} BPM"
     except Exception as e:
         logger.error(f"Error setting tempo: {str(e)}")
@@ -2088,7 +2071,7 @@ def set_global_quantization(ctx: Context, value: str = "1 Bar") -> str:
             return f"Invalid quantization value. Valid options: {valid_values}"
 
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_global_quantization", {"value": value})
+        ableton.send_command("set_global_quantization", {"value": value})
         return f"Global quantization set to: {value}"
     except Exception as e:
         logger.error(f"Error setting global quantization: {str(e)}")
@@ -2123,7 +2106,7 @@ def set_link_enabled(ctx: Context, enabled: bool = True) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_link_enabled", {"enabled": enabled})
+        ableton.send_command("set_link_enabled", {"enabled": enabled})
         status = "enabled" if enabled else "disabled"
         return f"Ableton Link {status}"
     except Exception as e:
@@ -2143,7 +2126,7 @@ def set_link_start_stop_sync(ctx: Context, enabled: bool = True) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_link_start_stop_sync", {"enabled": enabled})
+        ableton.send_command("set_link_start_stop_sync", {"enabled": enabled})
         status = "enabled" if enabled else "disabled"
         return f"Link start/stop sync {status}"
     except Exception as e:
@@ -2192,7 +2175,7 @@ def fire_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "fire_clip", {"track_index": track_index, "clip_index": clip_index}
         )
         return f"Started playing clip at track {track_index}, slot {clip_index}"
@@ -2422,7 +2405,7 @@ def create_generative_session(
                     },
                 )
                 # Generate bass clip
-                bass_range = config.get("bass", {}).get("range", (36, 60))
+                config.get("bass", {}).get("range", (36, 60))
                 # Create bass notes (simplified)
                 ableton.send_command(
                     "create_clip",
@@ -2507,7 +2490,7 @@ def stop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "stop_clip", {"track_index": track_index, "clip_index": clip_index}
         )
         return f"Stopped clip at track {track_index}, slot {clip_index}"
@@ -2521,7 +2504,7 @@ def start_playback(ctx: Context) -> str:
     """Start playing the Ableton session."""
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("start_playback")
+        ableton.send_command("start_playback")
         return "Started playback"
     except Exception as e:
         logger.error(f"Error starting playback: {str(e)}")
@@ -2533,7 +2516,7 @@ def stop_playback(ctx: Context) -> str:
     """Stop playing the Ableton session."""
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("stop_playback")
+        ableton.send_command("stop_playback")
         return "Stopped playback"
     except Exception as e:
         logger.error(f"Error stopping playback: {str(e)}")
@@ -2545,7 +2528,7 @@ def start_recording(ctx: Context) -> str:
     """Start recording. Playback will also start if not already playing."""
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("start_recording")
+        ableton.send_command("start_recording")
         return "Started recording"
     except Exception as e:
         logger.error(f"Error starting recording: {str(e)}")
@@ -2557,7 +2540,7 @@ def stop_recording(ctx: Context) -> str:
     """Stop recording. Playback continues."""
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("stop_recording")
+        ableton.send_command("stop_recording")
         return "Stopped recording"
     except Exception as e:
         logger.error(f"Error stopping recording: {str(e)}")
@@ -2695,7 +2678,7 @@ def set_playhead_position(ctx: Context, bar: int, beat: float = 0.0) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_playhead_position", {"bar": bar, "beat": beat}
         )
         return f"Set playhead to bar {bar}.{beat}"
@@ -2817,11 +2800,11 @@ def trigger_scene(ctx: Context, scene_index: int) -> str:
         # Fire all clips for this scene
         for track_index, clip_index in scene["clips"]:
             if clip_index >= 0:
-                result = ableton.send_command(
+                ableton.send_command(
                     "fire_clip", {"track_index": track_index, "clip_index": clip_index}
                 )
             else:
-                result = ableton.send_command(
+                ableton.send_command(
                     "stop_clip", {"track_index": track_index, "clip_index": 0}
                 )
 
@@ -2900,7 +2883,7 @@ def fire_scene_with_transpose(
                 transposed_tracks.append(
                     {"track_index": track_index, "name": track.get("name")}
                 )
-            except Exception as e:
+            except Exception:
                 # Clip might not exist in this track, skip silently
                 pass
 
@@ -3070,10 +3053,10 @@ def get_browser_tree(ctx: Context, category_type: str = "all") -> str:
         error_msg = str(e)
         if "Browser is not available" in error_msg:
             logger.error(f"Browser is not available in Ableton: {error_msg}")
-            return f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again."
+            return "Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again."
         elif "Could not access Live application" in error_msg:
             logger.error(f"Could not access Live application: {error_msg}")
-            return f"Error: Could not access Ableton Live application. Make sure Ableton Live is running and Remote Script is loaded."
+            return "Error: Could not access Ableton Live application. Make sure Ableton Live is running and Remote Script is loaded."
         else:
             logger.error(f"Error getting browser tree: {error_msg}")
             return f"Error getting browser tree: {error_msg}"
@@ -3106,10 +3089,10 @@ def get_browser_items_at_path(ctx: Context, path: str) -> str:
         error_msg = str(e)
         if "Browser is not available" in error_msg:
             logger.error(f"Browser is not available in Ableton: {error_msg}")
-            return f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again."
+            return "Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded and try again."
         elif "Could not access Live application" in error_msg:
             logger.error(f"Could not access Live application: {error_msg}")
-            return f"Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded."
+            return "Error: Could not access the Ableton Live application. Make sure Ableton Live is running and the Remote Script is loaded."
         elif "Unknown or unavailable category" in error_msg:
             logger.error(f"Invalid browser category: {error_msg}")
             return f"Error: {error_msg}. Please check the available categories using get_browser_tree."
@@ -3153,7 +3136,7 @@ def scan_browser_recursive(
     except Exception as e:
         error_msg = str(e)
         if "Browser is not available" in error_msg:
-            return f"Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded."
+            return "Error: The Ableton browser is not available. Make sure Ableton Live is fully loaded."
         elif "Unknown" in error_msg or "unavailable" in error_msg:
             return f"Error: {error_msg}"
         logger.error(f"Error scanning browser recursively: {error_msg}")
@@ -3262,7 +3245,7 @@ def load_drum_kit(ctx: Context, track_index: int, rack_uri: str, kit_path: str) 
 
         # Step 4: Load the first loadable kit
         kit_uri = loadable_kits[0].get("uri")
-        load_result = ableton.send_command(
+        ableton.send_command(
             "load_browser_item", {"track_index": track_index, "item_uri": kit_uri}
         )
 
@@ -3287,7 +3270,7 @@ def get_device_parameters(ctx: Context, track_index: int, device_index: int) -> 
             "get_device_parameters",
             {"track_index": track_index, "device_index": device_index},
         )
-        device_name = result.get("device_name", "Unknown")
+        result.get("device_name", "Unknown")
         return json.dumps(result, indent=2)
     except Exception as e:
         logger.error(f"Error getting device parameters: {str(e)}")
@@ -3538,7 +3521,7 @@ def apply_filter_buildup(
     Returns summary of applied changes.
     """
     # SAFEGUARD: Never disable instruments via filter buildup (except Track 0 Drums)
-    if device_index == 0 and parameter_index == 0 and track_index != 0:
+    if device_index == 0 and parameter_index == 0 and any(ti != 0 for ti in track_indices):
         logger.warning(
             f"SAFEGUARD: Blocked instrument disable attempt in apply_filter_buildup (device_index={device_index}, parameter_index={parameter_index})"
         )
@@ -3550,7 +3533,7 @@ def apply_filter_buildup(
     try:
         ableton = get_ableton_connection()
 
-        step_duration = duration_beats / steps
+        duration_beats / steps
         value_range = end_value - start_value
 
         results = []
@@ -3943,7 +3926,7 @@ def set_track_color(ctx: Context, track_index: int, color_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_track_color", {"track_index": track_index, "color_index": color_index}
         )
         return f"Set track {track_index} color to index {color_index}"
@@ -3963,7 +3946,7 @@ def set_track_fold(ctx: Context, track_index: int, folded: bool = True) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_track_fold", {"track_index": track_index, "folded": folded}
         )
         return f"Set track {track_index} fold state to {'folded' if folded else 'unfolded'}"
@@ -4002,7 +3985,7 @@ def delete_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "delete_clip", {"track_index": track_index, "clip_index": clip_index}
         )
         return f"Deleted clip at track {track_index}, slot {clip_index}"
@@ -4022,7 +4005,7 @@ def duplicate_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "duplicate_clip", {"track_index": track_index, "clip_index": clip_index}
         )
         return f"Duplicated clip at track {track_index}, slot {clip_index}"
@@ -4050,7 +4033,7 @@ def move_clip(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "move_clip",
             {
                 "track_index": track_index,
@@ -4110,7 +4093,7 @@ def quantize_clip(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "quantize_clip",
             {
                 "track_index": track_index,
@@ -4138,7 +4121,7 @@ def transpose_clip(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "transpose_clip",
             {
                 "track_index": track_index,
@@ -4462,7 +4445,7 @@ def set_clip_loop(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_clip_loop",
             {
                 "track_index": track_index,
@@ -4491,7 +4474,7 @@ def set_clip_launch_mode(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_clip_launch_mode",
             {
                 "track_index": track_index,
@@ -4533,7 +4516,7 @@ def delete_scene(ctx: Context, scene_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("delete_scene", {"scene_index": scene_index})
+        ableton.send_command("delete_scene", {"scene_index": scene_index})
         return f"Deleted scene at index {scene_index}"
     except Exception as e:
         logger.error(f"Error deleting scene: {str(e)}")
@@ -4568,7 +4551,7 @@ def set_scene_name(ctx: Context, scene_index: int, name: str) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_scene_name", {"scene_index": scene_index, "name": name}
         )
         return f"Renamed scene {scene_index} to '{name}'"
@@ -4588,7 +4571,7 @@ def set_time_signature(ctx: Context, numerator: int = 4, denominator: int = 4) -
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_time_signature", {"numerator": numerator, "denominator": denominator}
         )
         return f"Set time signature to {numerator}/{denominator}"
@@ -4607,7 +4590,7 @@ def set_metronome(ctx: Context, enabled: bool = True) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_metronome", {"enabled": enabled})
+        ableton.send_command("set_metronome", {"enabled": enabled})
         return f"Metronome {'enabled' if enabled else 'disabled'}"
     except Exception as e:
         logger.error(f"Error setting metronome: {str(e)}")
@@ -4627,7 +4610,7 @@ def set_track_monitoring_state(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_track_monitoring_state",
             {"track_index": track_index, "monitoring_state": monitoring_state},
         )
@@ -4661,7 +4644,7 @@ def add_automation_point(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "add_automation_point",
             {
                 "track_index": track_index,
@@ -4697,7 +4680,7 @@ def clear_automation(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "clear_automation",
             {
                 "track_index": track_index,
@@ -4723,7 +4706,7 @@ def set_track_pan(ctx: Context, track_index: int, pan: float = 0.0) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_track_pan", {"track_index": track_index, "pan": pan}
         )
         direction = "left" if pan < 0 else ("right" if pan > 0 else "centered")
@@ -4747,7 +4730,7 @@ def set_send_amount(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_send_amount",
             {
                 "track_index": track_index,
@@ -4766,7 +4749,7 @@ def undo(ctx: Context) -> str:
     """Undo the last action."""
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("undo")
+        ableton.send_command("undo")
         return "Undo performed"
     except Exception as e:
         logger.error(f"Error performing undo: {str(e)}")
@@ -4778,7 +4761,7 @@ def redo(ctx: Context) -> str:
     """Redo the last undone action."""
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("redo")
+        ableton.send_command("redo")
         return "Redo performed"
     except Exception as e:
         logger.error(f"Error performing redo: {str(e)}")
@@ -5009,7 +4992,7 @@ def create_locator(ctx: Context, bar: int, name: str = "") -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("create_locator", {"bar": bar, "name": name})
+        ableton.send_command("create_locator", {"bar": bar, "name": name})
         return f"Created locator at bar {bar}" + (f" named '{name}'" if name else "")
     except Exception as e:
         logger.error(f"Error creating locator: {str(e)}")
@@ -5026,7 +5009,7 @@ def delete_locator(ctx: Context, locator_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "delete_locator", {"locator_index": locator_index}
         )
         return f"Deleted locator {locator_index}"
@@ -5045,7 +5028,7 @@ def jump_to_locator(ctx: Context, locator_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "jump_to_locator", {"locator_index": locator_index}
         )
         return f"Jumped to locator {locator_index}"
@@ -5113,7 +5096,7 @@ async def _handle_udp_set_parameters_bulk(self, command):
     UDP handler for set_parameters_bulk.
 
     Glorified loop over updates, calling _set_device_parameter for each.
-    "
+    """
     params = command.get("params", {})
     try:
         track_index = int(params.get("track_index", -1))
@@ -5142,54 +5125,6 @@ async def _handle_udp_set_parameters_bulk(self, command):
 
     except (ValueError, KeyError) as err:
         logger.error(f"UDP set_parameters_bulk validation failed: {str(err)}")
-
-
-    """
-    """
-    params = command.get("params", {})
-    try:
-        track_index = int(params.get("track_index", -1))
-        device_index = int(params.get("device_index", -1))
-        updates = params.get("updates", [])
-        
-        # Validate updates as list
-        if not isinstance(updates, list):
-            logger.warning("UDP set_parameters_bulk: updates not a list")
-            return
-        
-        # Process each update in the bulk
-        for update in updates:
-            try:
-                parameter_index = int(update.get("parameter_index", -1))
-                value = float(update.get("value", 0.0))
-                
-                if not 0.0 <= value <= 1.0:
-                    value = max(0.0, min(1.0, value))
-                
-                # Safe UDP invocation (no response required)
-                await self._set_device_parameter(track_index, device_index, parameter_index, value)
-                
-            except (ValueError, KeyError) as update_err:
-                logger.error(f"UDP set_parameters_bulk update failed: {str(update_err)}")
-    
-    except (ValueError, KeyError) as err:
-        logger.error(f"UDP set_parameters_bulk validation failed: {str(err)}")
-
-    Parameters:
-    - start_bar: Loop start bar
-    - end_bar: Loop end bar
-    - enabled: True to enable loop, False to disable
-    """
-    try:
-        ableton = get_ableton_connection()
-        result = ableton.send_command(
-            "set_loop", {"start_bar": start_bar, "end_bar": end_bar, "enabled": enabled}
-        )
-        state = "enabled" if enabled else "disabled"
-        return f"Loop {state} from bar {start_bar} to {end_bar}"
-    except Exception as e:
-        logger.error(f"Error setting loop: {str(e)}")
-        return f"Error setting loop: {str(e)}"
 
 
 @mcp.tool()
@@ -5258,7 +5193,7 @@ def set_clip_follow_action(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_clip_follow_action",
             {
                 "track_index": track_index,
@@ -5306,7 +5241,7 @@ def set_master_volume(ctx: Context, volume: float = 0.75) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("set_master_volume", {"volume": volume})
+        ableton.send_command("set_master_volume", {"volume": volume})
         return f"Set master volume to {volume}"
     except Exception as e:
         logger.error(f"Error setting master volume: {str(e)}")
@@ -5399,7 +5334,7 @@ def set_note_velocity(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_note_velocity",
             {
                 "track_index": track_index,
@@ -5433,7 +5368,7 @@ def set_note_duration(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_note_duration",
             {
                 "track_index": track_index,
@@ -5467,7 +5402,7 @@ def set_note_pitch(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_note_pitch",
             {
                 "track_index": track_index,
@@ -5519,7 +5454,7 @@ def mix_clip(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "mix_clip",
             {
                 "track_index": track_index,
@@ -5547,7 +5482,7 @@ def stretch_clip(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "stretch_clip",
             {
                 "track_index": track_index,
@@ -5572,7 +5507,7 @@ def crop_clip(ctx: Context, track_index: int, clip_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "crop_clip", {"track_index": track_index, "clip_index": clip_index}
         )
         return f"Cropped clip at track {track_index}, slot {clip_index}"
@@ -5600,7 +5535,7 @@ def duplicate_clip_to(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "duplicate_clip_to",
             {
                 "track_index": track_index,
@@ -5625,7 +5560,7 @@ def group_tracks(ctx: Context, track_indices: List[int]) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("group_tracks", {"track_indices": track_indices})
+        ableton.send_command("group_tracks", {"track_indices": track_indices})
         return f"Grouped {len(track_indices)} tracks"
     except Exception as e:
         logger.error(f"Error grouping tracks: {str(e)}")
@@ -5642,7 +5577,7 @@ def ungroup_tracks(ctx: Context, track_index: int) -> str:
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command("ungroup_tracks", {"track_index": track_index})
+        ableton.send_command("ungroup_tracks", {"track_index": track_index})
         return f"Ungrouped track {track_index}"
     except Exception as e:
         logger.error(f"Error ungrouping tracks: {str(e)}")
@@ -5663,7 +5598,7 @@ def set_clip_warp_mode(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "set_clip_warp_mode",
             {
                 "track_index": track_index,
@@ -5716,7 +5651,7 @@ def add_warp_marker(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "add_warp_marker",
             {
                 "track_index": track_index,
@@ -5744,7 +5679,7 @@ def delete_warp_marker(
     """
     try:
         ableton = get_ableton_connection()
-        result = ableton.send_command(
+        ableton.send_command(
             "delete_warp_marker",
             {
                 "track_index": track_index,
@@ -5754,7 +5689,7 @@ def delete_warp_marker(
         )
         return f"Deleted warp marker {marker_index}"
     except Exception as e:
-        self.log_message("Error deleting warp marker: " + str(e))
+        logger.error("Error deleting warp marker: %s", str(e))
         return f"Error deleting warp marker: {str(e)}"
 
 

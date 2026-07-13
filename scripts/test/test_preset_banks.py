@@ -5,8 +5,6 @@ Tests save_preset_bank, load_preset_bank, and list_preset_banks MCP tools.
 
 import json
 import os
-import tempfile
-import pytest
 from datetime import datetime
 
 
@@ -27,7 +25,7 @@ def test_list_preset_banks_empty():
     result = json.loads(result_json)
 
     # Verify success
-    assert result["success"] == True
+    assert result["success"]
     assert "banks" in result
     assert isinstance(result["banks"], list)
 
@@ -54,7 +52,7 @@ def test_save_preset_bank_single_device():
     result = json.loads(result_json)
 
     # Verify success
-    assert result["success"] == True
+    assert result["success"]
     assert "message" in result
 
     # Clean up
@@ -78,14 +76,14 @@ def test_save_preset_bank_multiple_devices():
         ctx, track_index=0, device_index=0, bank_name=bank_name
     )
     result1 = json.loads(result_json1)
-    assert result1["success"] == True
+    assert result1["success"]
 
     # Save second device to same bank
     result_json2 = save_preset_bank(
         ctx, track_index=1, device_index=0, bank_name=bank_name
     )
     result2 = json.loads(result_json2)
-    assert result2["success"] == True
+    assert result2["success"]
 
     # Verify bank file exists
     preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
@@ -119,7 +117,7 @@ def test_save_preset_bank_json_structure():
         ctx, track_index=0, device_index=0, bank_name=bank_name
     )
     result = json.loads(result_json)
-    assert result["success"] == True
+    assert result["success"]
 
     # Load and verify JSON structure
     preset_bank_dir = os.path.expanduser("~/.ableton_mcp/preset_banks/")
@@ -199,7 +197,7 @@ def test_load_preset_bank_single_preset():
         result = json.loads(result_json)
 
         # Verify success
-        assert result["success"] == True
+        assert result["success"]
         assert "loaded_presets_count" in result
         assert result["loaded_presets_count"] >= 0
     finally:
@@ -253,7 +251,7 @@ def test_load_preset_bank_entire_bank():
         result = json.loads(result_json)
 
         # Verify success
-        assert result["success"] == True
+        assert result["success"]
         assert "loaded_presets_count" in result
         assert result["loaded_presets_count"] >= 0
         assert "errors" in result
@@ -304,7 +302,7 @@ def test_load_preset_bank_missing_device_fallback():
         result = json.loads(result_json)
 
         # Should succeed with parameter fallback
-        assert result["success"] == True
+        assert result["success"]
     finally:
         # Clean up
         if os.path.exists(bank_path):
@@ -324,7 +322,7 @@ def test_load_preset_bank_nonexistent():
     result_json = load_preset_bank(ctx, bank_name=bank_name)
     result = json.loads(result_json)
 
-    assert result["success"] == False
+    assert not result["success"]
     assert "error" in result
 
 
@@ -348,7 +346,7 @@ def test_load_preset_bank_invalid_json():
         result_json = load_preset_bank(ctx, bank_name=bank_name)
         result = json.loads(result_json)
 
-        assert result["success"] == False
+        assert not result["success"]
         assert "error" in result
     finally:
         # Clean up

@@ -15,12 +15,12 @@ Architecture:
 from dataclasses import dataclass, field
 from enum import Enum
 import time
-from typing import Callable, Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union
 import logging
 import yaml
 from pathlib import Path
 
-from .polling import ParameterSnapshot, ParameterConfig
+from .polling import ParameterSnapshot
 
 logger = logging.getLogger(__name__)
 
@@ -597,6 +597,12 @@ class RuleEngine:
             audio_cond = AudioAnalysisCondition.from_dict(audio_cond_data)
             audio_conditions.append(audio_cond)
 
+        # Parse actions
+        actions = []
+        for action_data in data.get("actions", []):
+            action = Action.from_dict(action_data)
+            actions.append(action)
+
         return Rule(
             id=rule_id,
             name=name,
@@ -744,7 +750,7 @@ class RuleEngine:
         if not self.mcp_client:
             raise RuntimeError("MCP client not configured. Cannot execute actions.")
 
-        action_dict = action.to_dict()
+        action.to_dict()
         action_type = action.type
 
         # Route to appropriate MCP tool

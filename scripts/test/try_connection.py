@@ -2,8 +2,6 @@
 """Aggressive connection attempt with various socket options."""
 
 import socket
-import json
-import time
 
 
 def try_connection():

@@ -1,4 +1,4 @@
-from MCP_Server.music_generation import PMarkov, PatternEvolution, ClipGenerator, GenerationPipeline, Scale, ScaleType
+from MCP_Server.music_generation import PMarkov, ClipGenerator, GenerationPipeline, Scale, ScaleType
 
 print("All imports OK")
 

@@ -17,12 +17,10 @@ import threading
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Callable, Any
 from contextlib import contextmanager
-from collections import defaultdict
 import statistics
 
 from .polling import AudioParameterPoller
 from .rules import RuleEngine
-from .control_loop import AudioAnalysisController
 
 
 @dataclass
@@ -189,7 +187,7 @@ class CPUMonitor:
 
                 # Get memory usage
                 mem_info = process.memory_info()
-                mem_mb = mem_info.rss / (1024 * 1024)
+                mem_info.rss / (1024 * 1024)
 
                 # Store both metrics (store combined metric: cpu + 100 * mem_mb_factor)
                 # This keeps them in same collector for simplicity
@@ -423,7 +421,7 @@ class BenchmarkSuite:
                 time.sleep(sleep_time)
 
         actual_duration = time.perf_counter() - start_time
-        actual_rate = poll_count / actual_duration
+        poll_count / actual_duration
 
         return BenchmarkResult.from_values(
             name=f"Polling Rate (target={target_rate_hz}Hz)",

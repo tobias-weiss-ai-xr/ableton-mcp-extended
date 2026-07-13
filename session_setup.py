@@ -18,9 +18,9 @@ Usage:
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 
-from mcp_client import MCPClientTCP, MCPClientUDP
+from mcp_client import MCPClientTCP
 
 logger = logging.getLogger(__name__)
 

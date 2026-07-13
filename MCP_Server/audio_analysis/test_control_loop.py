@@ -13,10 +13,8 @@ sys.path.insert(0, str(test_dir))
 
 import time
 import pytest
-from unittest.mock import Mock, MagicMock, patch
 
 from MCP_Server.audio_analysis.polling import ParameterConfig, ParameterSnapshot
-from MCP_Server.audio_analysis.rules import RuleEngine
 from MCP_Server.audio_analysis.control_loop import AudioAnalysisController
 
 

@@ -5,8 +5,6 @@ Tests save_session_template MCP tool.
 
 import json
 import os
-import tempfile
-import pytest
 from datetime import datetime
 
 
@@ -25,7 +23,7 @@ def test_save_session_template_basic():
     result = json.loads(result_json)
 
     # Verify success
-    assert result["success"] == True
+    assert result["success"]
     assert os.path.exists(template_path)
 
     # Load and verify JSON structure
@@ -54,7 +52,7 @@ def test_save_session_template_metadata():
 
     result_json = save_session_template(ctx, template_path)
     result = json.loads(result_json)
-    assert result["success"] == True
+    assert result["success"]
 
     with open(template_path) as f:
         template = json.load(f)
@@ -81,7 +79,7 @@ def test_save_session_template_timestamp():
 
     result_json = save_session_template(ctx, template_path)
     result = json.loads(result_json)
-    assert result["success"] == True
+    assert result["success"]
 
     with open(template_path) as f:
         template = json.load(f)
@@ -109,7 +107,7 @@ def test_save_session_template_file_error():
     # Should not crash, should return success=False with error message
     result_json = save_session_template(ctx, template_path)
     result = json.loads(result_json)
-    assert result["success"] == False
+    assert not result["success"]
     assert "error" in result
 
 
@@ -152,7 +150,7 @@ def test_load_session_template_minimal():
         result = json.loads(result_json)
 
         # Verify success
-        assert result["success"] == True
+        assert result["success"]
         assert result["loaded_tracks_count"] == 0
         assert result["loaded_clips_count"] == 0
 
@@ -232,7 +230,7 @@ def test_load_session_template_with_tracks():
         result = json.loads(result_json)
 
         # Verify success
-        assert result["success"] == True
+        assert result["success"]
         assert result["loaded_tracks_count"] >= 0  # May not create tracks in test env
         assert result["loaded_clips_count"] >= 0
         assert result["errors"] == [] or all(
@@ -257,7 +255,7 @@ def test_load_session_template_invalid_file():
     result_json = load_session_template(ctx, template_path, clear_existing=False)
     result = json.loads(result_json)
 
-    assert result["success"] == False
+    assert not result["success"]
     assert "error" in result
 
 
@@ -278,7 +276,7 @@ def test_load_session_template_invalid_json():
         result_json = load_session_template(ctx, template_path, clear_existing=False)
         result = json.loads(result_json)
 
-        assert result["success"] == False
+        assert not result["success"]
         assert "error" in result
     finally:
         # Clean up

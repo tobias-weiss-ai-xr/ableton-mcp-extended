@@ -2178,7 +2178,7 @@ class AbletonMCP(ControlSurface):
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")
-            track = self._song.tracks[track_index]
+            self._song.tracks[track_index]
             self._song.duplicate_track(track_index)
             new_track_index = len(self._song.tracks) - 1
             result = {"original_index": track_index, "new_index": new_track_index}
@@ -3761,7 +3761,6 @@ class AbletonMCP(ControlSurface):
             clip_slot = track.clip_slots[clip_index]
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
-            clip = clip_slot.clip
 
             result = {"warp_markers": []}
             return result
@@ -3780,7 +3779,6 @@ class AbletonMCP(ControlSurface):
             clip_slot = track.clip_slots[clip_index]
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
-            clip = clip_slot.clip
             result = {"added": True, "position": position}
             return result
         except Exception as e:
@@ -3798,7 +3796,6 @@ class AbletonMCP(ControlSurface):
             clip_slot = track.clip_slots[clip_index]
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
-            clip = clip_slot.clip
             result = {"deleted": True, "marker_index": marker_index}
             return result
         except Exception as e:
@@ -4696,7 +4693,6 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 return {"error": "Failed to create clip"}
 
-            clip = clip_slot.clip
 
             # Scale intervals
             SCALE_INTERVALS = {
@@ -4732,7 +4728,7 @@ class AbletonMCP(ControlSurface):
                         note_index += 1
 
             # Add notes to clip
-            result = self._add_notes_to_clip(track_index, clip_index, notes)
+            self._add_notes_to_clip(track_index, clip_index, notes)
 
             return {
                 "message": f"Created {scale} scale reference clip (root={root}, octaves={octaves}) with {len(notes)} notes",
@@ -4844,7 +4840,6 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 return {"error": "Failed to create clip"}
 
-            clip = clip_slot.clip
             all_notes = []
 
             for chord_idx, roman in enumerate(progression):

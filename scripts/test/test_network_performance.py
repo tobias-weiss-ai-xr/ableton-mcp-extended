@@ -20,7 +20,7 @@ import sys
 import os
 import random
 import threading
-from typing import List, Dict, Any
+from typing import List
 
 # Add MCP_Server to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "MCP_Server"))
@@ -82,7 +82,7 @@ class MockRemoteScriptUDPServerWithLoss:
 
             except socket.timeout:
                 continue
-            except Exception as e:
+            except Exception:
                 if self.running:
                     pass  # Silent error handling for performance tests
 
@@ -339,7 +339,7 @@ class TestPacketLossTolerance:
 
         # Check received commands - we expect ~95% delivery (100 commands, 5% loss)
         received_count = mock_server.command_count
-        expected_received = int(test_count * (1.0 - TestPacketLossTolerance.loss_rate))
+        int(test_count * (1.0 - TestPacketLossTolerance.loss_rate))
         loss_tolerance = (
             0.1  # Allow actual loss to be within ±10% of simulated loss rate
         )
@@ -455,7 +455,7 @@ class TestConcurrentTraffic:
 
         # Verify UDP not affected by TCP failures
         if udp_received >= udp_expected * 0.95:  # Allow 5% loss
-            print(f"[PASS] UDP traffic unaffected by TCP failures")
+            print("[PASS] UDP traffic unaffected by TCP failures")
         else:
             print(
                 f"[WARN] UDP traffic may be affected: {udp_received} vs {udp_expected} expected"
@@ -525,12 +525,12 @@ class TestBaselineComparison:
         tcp_per_ms = tcp_time_ms / TestBaselineComparison.test_count
         speedup = tcp_time_ms / udp_time_ms if udp_time_ms > 0 else 0
 
-        print(f"\n[RESULT] UDP Performance:")
+        print("\n[RESULT] UDP Performance:")
         print(f"  Total time: {udp_time_ms:.2f}ms")
         print(f"  Per command: {udp_per_ms:.3f}ms")
         print(f"  Throughput: {1000 / udp_per_ms:.1f} Hz")
 
-        print(f"\n[RESULT] TCP Performance:")
+        print("\n[RESULT] TCP Performance:")
         print(f"  Total time: {tcp_time_ms:.2f}ms")
         print(f"  Per command: {tcp_per_ms:.3f}ms")
         print(f"  Throughput: {1000 / tcp_per_ms:.1f} Hz")
@@ -538,7 +538,7 @@ class TestBaselineComparison:
             f"  Successful commands: {tcp_success}/{TestBaselineComparison.test_count}"
         )
 
-        print(f"\n[RESULT] Performance Comparison:")
+        print("\n[RESULT] Performance Comparison:")
         print(f"  Speedup factor: {speedup:.1f}x")
         print(
             f"  UDP vs TCP: {((tcp_time_ms - udp_time_ms) / tcp_time_ms * 100):.1f}% faster"

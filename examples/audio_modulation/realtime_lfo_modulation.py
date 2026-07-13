@@ -69,10 +69,10 @@ def main():
 
     mod_id = lfo_result["modulator_id"]
     print(f"✅ LFO created (ID: {mod_id})")
-    print(f"📊 Settings:")
+    print("📊 Settings:")
     print(f"   • Rate: {SWEEP_RATE} cycles/beat")
-    print(f"   • Depth: 75%")
-    print(f"   • Waveform: Sine")
+    print("   • Depth: 75%")
+    print("   • Waveform: Sine")
     print("\n🔊 The filter cutoff should now be modulating rhythmically!")
     print("LFO → Filter Cutoff (hear the wobble)")
 

@@ -16,7 +16,7 @@ import time
 import socket
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 # Configure connection.log (separate from main watchdog log)

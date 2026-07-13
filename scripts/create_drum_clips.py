@@ -32,7 +32,7 @@ def main():
         ("dub_techno", "Maximum syncopation - full energy"),
     ]
 
-    client = MCPClientTCP()
+    MCPClientTCP()
 
     for clip_idx, (pattern_name, description) in enumerate(clip_configs):
         print(f"  Clip {clip_idx}: {pattern_name} - {description}")
@@ -47,7 +47,7 @@ def main():
             )
 
             if result and result.get("success"):
-                print(f"    ✓ Created")
+                print("    ✓ Created")
             else:
                 print(f"    ✗ Failed: {result.get('error', 'unknown')}")
         except Exception as e:

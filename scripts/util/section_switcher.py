@@ -1,6 +1,5 @@
 import socket
 import json
-import time
 
 s = socket.socket()
 s.connect(("localhost", 9877))
@@ -138,7 +137,7 @@ while True:
 
         print("=" * 70)
         print(f"Section '{section['name']}' is now playing!")
-        print(f"Listen for about 8-16 bars (32-64 seconds)")
+        print("Listen for about 8-16 bars (32-64 seconds)")
         print("Then switch to another section or press 'q' to quit")
 
     else:

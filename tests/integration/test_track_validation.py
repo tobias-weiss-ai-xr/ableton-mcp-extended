@@ -268,7 +268,7 @@ class TestTrackTypeValidation:
         if midi_info.get("status") == "success":
             track_data = midi_info.get("result", {})
             # MIDI tracks should have has_midi_input or track_type indicator
-            assert track_data.get("has_midi_input", True) == True, (
+            assert track_data.get("has_midi_input", True), (
                 f"MIDI track should report has_midi_input=True: {midi_info}"
             )
 
@@ -277,7 +277,7 @@ class TestTrackTypeValidation:
         if audio_info.get("status") == "success":
             track_data = audio_info.get("result", {})
             # Audio tracks should not have has_midi_input
-            assert track_data.get("has_midi_input", False) == False, (
+            assert not track_data.get("has_midi_input", False), (
                 f"Audio track should report has_midi_input=False: {audio_info}"
             )
 

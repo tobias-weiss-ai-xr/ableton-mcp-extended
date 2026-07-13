@@ -8,8 +8,6 @@ import sys
 sys.path.insert(0, '.')
 
 from mcp_client import MCPClientTCP
-from clip_patterns import create_bass_notes
-from clip_patterns import create_drum_pattern
 
 def main():
     """
@@ -21,7 +19,6 @@ def main():
 
     track_idx = 1
     # F minor scale notes (F3 to C4)
-    f_minor = [53, 56, 58, 60]  # F, G#, Bb, C
 
     # Pattern variations: (description, chord progression)
     clip_patterns = [

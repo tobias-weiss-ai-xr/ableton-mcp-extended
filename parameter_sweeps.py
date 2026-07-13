@@ -163,7 +163,7 @@ def apply_format_filter(
     automation_points = []
 
     # Peak resonance at mid-point
-    peak_time = duration_beats / 2
+    duration_beats / 2
 
     # Formant form: rise to peak, then fall
     for i in range(33):  # 32 steps

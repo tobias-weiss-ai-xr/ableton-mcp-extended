@@ -10,7 +10,6 @@ This module provides improved effect/instrument loading capabilities with:
 
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-import json
 
 
 @dataclass

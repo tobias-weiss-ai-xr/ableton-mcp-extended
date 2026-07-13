@@ -20,16 +20,14 @@ Features:
 """
 
 import argparse
-import json
 import time
 import sys
-import threading
 import psutil
 import cProfile
 import pstats
 import io
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict
 from datetime import datetime
 
 # Add scripts/analysis directory to path for imports
@@ -301,7 +299,7 @@ rules:
             memory_readings = []
 
             # Monitor system resources
-            process = psutil.Process()
+            psutil.Process()
 
             # Create mock log file to prevent None errors
             import io
@@ -442,7 +440,7 @@ rules:
 
             print(f"  Total polls executed: {poll_count}")
             print(f"  Average poll rate: {poll_count / elapsed:.1f} Hz")
-            print(f"  Profiling completed - see output above")
+            print("  Profiling completed - see output above")
             print()
 
             return result
@@ -469,7 +467,6 @@ rules:
 
         # Analyze polling results
         polling_results = all_results.get("polling_rates", {})
-        best_rate = None
 
         if polling_results:
             for rate, result in polling_results.items():
@@ -486,10 +483,9 @@ rules:
                         f"Consider rate optimization for {rate} (current: {efficiency:.1f}% efficiency)"
                     )
                 else:
-                    best_rate = rate
                     analysis["optimal_config"]["polling_rate"] = rate
         else:
-            best_rate = None
+            pass
 
         # Analyze resource usage
         resource_results = all_results.get("cpu_memory", {})
@@ -611,7 +607,7 @@ including polling rates, control loop latency, CPU/memory usage, and optimizatio
 
         # Add bottleneck analysis
         bottleneck_analysis = self.identify_bottlenecks(all_results)
-        content += f"""
+        content += """
 ### Performance Bottlenecks
 
 """
@@ -769,7 +765,7 @@ def main():
 
         # Generate bottleneck analysis
         if all_results:
-            bottleneck_analysis = benchmarker.identify_bottlenecks(all_results)
+            benchmarker.identify_bottlenecks(all_results)
 
             # Generate comprehensive report
             benchmarker.generate_report(all_results, args.output)

@@ -7,7 +7,7 @@ Date: 2025-02-10
 
 import time
 import gc
-from typing import List, Dict
+from typing import Dict
 
 from .benchmarks import BenchmarkSuite, DataCollector, CPUMonitor, LatencyTimer
 from .benchmark_report import generate_report
@@ -69,7 +69,7 @@ def example_2_cpu_monitoring():
         # Simulate work
         for i in range(10):
             # Do some work
-            x = sum(range(10000))
+            sum(range(10000))
             time.sleep(0.2)
 
     print("CPU monitoring complete.")
@@ -122,7 +122,7 @@ def example_3_latency_timing():
         latencies.append(timer.elapsed())
 
     avg_latency = sum(latencies) / len(latencies)
-    print(f"Measured 100 iterations")
+    print("Measured 100 iterations")
     print(f"Min latency:  {min(latencies) * 1000:.3f} ms")
     print(f"Max latency:  {max(latencies) * 1000:.3f} ms")
     print(f"Mean latency: {avg_latency * 1000:.3f} ms")
@@ -198,7 +198,7 @@ def example_5_polling_rate_benchmark():
     )
 
     print(f"Benchmark: {result.name}")
-    print(f"Target rate: 20 Hz")
+    print("Target rate: 20 Hz")
     print(f"Actual rate: {result.samples / result.duration_seconds:.1f} Hz")
     print(f"Samples: {result.samples}")
     print(f"Mean interval: {result.mean_value * 1000:.2f} ms")
@@ -361,7 +361,7 @@ def example_8_latency_context_manager():
 
         timings.append(timer.elapsed())
 
-    print(f"Measured 10 operations")
+    print("Measured 10 operations")
     print(f"Average latency: {sum(timings) / len(timings) * 1000:.3f} ms")
     print()
 

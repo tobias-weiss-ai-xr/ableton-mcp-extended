@@ -105,7 +105,7 @@ def main():
         status = result.get("status")
         if status == "success":
             res = result.get("result", {})
-            print(f"  [SUCCESS] Loaded!")
+            print("  [SUCCESS] Loaded!")
             print(f"    Item: {res.get('item_name')}")
             print(f"    Track: {res.get('track_name')}")
             loaded.append(inst["name"])

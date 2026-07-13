@@ -66,7 +66,7 @@ def test_browser_cache():
         first_request_time = time.time() - start_time
 
         total_folders = result.get("total_folders", 0)
-        print(f"[PASS] First request completed")
+        print("[PASS] First request completed")
         print(f"  - Total folders: {total_folders}")
         print(f"  - Time taken: {first_request_time:.2f} seconds")
         print()
@@ -87,7 +87,7 @@ def test_browser_cache():
         second_request_time = time.time() - start_time
 
         total_folders = result.get("total_folders", 0)
-        print(f"[PASS] Second request completed")
+        print("[PASS] Second request completed")
         print(f"  - Total folders: {total_folders}")
         print(f"  - Time taken: {second_request_time:.2f} seconds")
 

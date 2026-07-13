@@ -237,7 +237,7 @@ def test_script_execution():
 
         # Load module without executing
         spec = importlib.util.spec_from_file_location("__main__", script_path)
-        module = importlib.util.module_from_spec(spec)
+        importlib.util.module_from_spec(spec)
 
         # Test that module can be loaded
         print("  ✓ Script path valid")

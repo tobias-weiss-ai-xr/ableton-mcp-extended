@@ -133,7 +133,7 @@ class ResponsiveController(PollingRulesEngine):
                 if condition_met:
                     # Record latency before executing action
                     poll_start = loop_start_time
-                    action_start = time.time()
+                    time.time()
 
                     if self.verbose:
                         print(f"[RULE] '{rule.name}' fired - priority {rule.priority}")
@@ -200,7 +200,7 @@ class ResponsiveController(PollingRulesEngine):
         if duration_seconds > 0:
             print(f"[ENGINE] Duration: {duration_seconds} seconds")
         else:
-            print(f"[ENGINE] Duration: infinite (Ctrl+C to stop)")
+            print("[ENGINE] Duration: infinite (Ctrl+C to stop)")
 
         print()
 
@@ -297,7 +297,7 @@ class ResponsiveController(PollingRulesEngine):
         print(f"Target polling rate: {self.polling_rate_hz:.2f} Hz")
 
         # Rules stats
-        print(f"\nRule Statistics:")
+        print("\nRule Statistics:")
         print(f"  Total rules fired: {self.rules_fired_count}")
         print(
             f"  Rules per second: {self.rules_fired_count / elapsed if elapsed > 0 else 0:.2f}"
@@ -309,7 +309,7 @@ class ResponsiveController(PollingRulesEngine):
             avg_latency = sum(self.latencies) / len(self.latencies)
             min_latency = min(self.latencies)
             max_latency = max(self.latencies)
-            print(f"\nLatency Statistics:")
+            print("\nLatency Statistics:")
             print(f"  Average latency: {avg_latency:.2f} ms")
             print(f"  Min latency: {min_latency:.2f} ms")
             print(f"  Max latency: {max_latency:.2f} ms")
@@ -319,11 +319,11 @@ class ResponsiveController(PollingRulesEngine):
             status = "PASS" if target_met else "FAIL"
             print(f"  <100ms target: {status} ({avg_latency:.2f}ms)")
         else:
-            print(f"\nLatency Statistics:")
-            print(f"  No latency data collected")
+            print("\nLatency Statistics:")
+            print("  No latency data collected")
 
         # Dry-run indicator
-        print(f"\nMode:")
+        print("\nMode:")
         print(f"  Dry-run: {self.dry_run}")
 
         print("=" * 70)

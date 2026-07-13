@@ -1,7 +1,6 @@
 """MCP tools for crossfader, metering, send/return mixing."""
 
 from mcp.server.fastmcp import FastMCP, Context
-from typing import List, Dict, Any, Optional
 import json
 import logging
 import time

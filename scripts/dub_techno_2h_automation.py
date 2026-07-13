@@ -7,14 +7,11 @@ Pattern sequencing, automation, clip triggering, and session management.
 
 import sys
 import time
-import json
-from pathlib import Path
 
 from mcp_client import MCPClientTCP
 from session_setup import setup_dub_techno_session
 from automation_patterns import AutomationSequencer
 from follow_actions import configure_energy_follow_actions
-import parameter_sweeps
 
 
 class TwoHourDubTechnoSession:
@@ -110,7 +107,7 @@ class TwoHourDubTechnoSession:
 
             # Every 3rd block: breakdown
             if block_num % 3 == 0:
-                print(f"[BLOCK] Breakdown - bass solo")
+                print("[BLOCK] Breakdown - bass solo")
                 self.sequencer.pattern_breakdown_solo('bass', beats_per_block // 2)
 
             # Progression: trigger scenes 1-7

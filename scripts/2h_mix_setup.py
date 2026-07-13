@@ -11,7 +11,6 @@ Requires: Ableton Live with MCP Remote Script running on port 9877
 import socket
 import json
 import time
-import sys
 
 HOST = "127.0.0.1"
 TCP_PORT = 9877
@@ -380,7 +379,8 @@ def _fx_empty(clip_beats=CLIP_LEN):
 
 
 import random
-random_chance = lambda p: random.random() < p
+def random_chance(p):
+    return random.random() < p
 
 # ── Instrument loading ───────────────────────────────────────────────
 

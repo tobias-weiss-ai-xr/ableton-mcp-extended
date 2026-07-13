@@ -15,7 +15,7 @@ Usage:
 import gzip
 import json
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Constants

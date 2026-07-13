@@ -1,6 +1,6 @@
 """Debug script for integration test"""
 from contextlib import ExitStack
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import time
 
 from agentic_mix.state import (

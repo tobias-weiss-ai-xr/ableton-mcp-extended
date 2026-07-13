@@ -30,7 +30,7 @@ def send_tcp(cmd_type, params):
     s.close()
     try:
         return json.loads(response)
-    except:
+    except Exception:
         return {"status": "error", "error": "Response issue"}
 
 

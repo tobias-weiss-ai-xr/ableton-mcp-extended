@@ -215,7 +215,7 @@ def create_mock_controller():
         Mock controller with realistic behavior
     """
     import time
-    from unittest.mock import Mock, MagicMock
+    from unittest.mock import Mock
 
     controller = Mock(spec=AudioAnalysisController)
 

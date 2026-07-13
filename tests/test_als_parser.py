@@ -162,7 +162,7 @@ def test_clip_with_no_notes_detected(three_tracks_als_path):
 def test_no_tracks_in_file(tmp_path):
     path = tmp_path / "no_tracks.als"
     root = ET.Element('Ableton', MajorVersion='5', MinorVersion='0')
-    live_set = ET.SubElement(root, 'LiveSet')
+    ET.SubElement(root, 'LiveSet')
     # No <Tracks> element
     data = ET.tostring(root, encoding='unicode')
     with gzip.open(path, 'wt', encoding='utf-8') as f:

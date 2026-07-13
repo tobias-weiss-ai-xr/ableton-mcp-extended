@@ -166,7 +166,7 @@ for melody in melody_results:
     print(f"  Scene {scene} ({scene_name:15s}) {status:10s} Actual: {actual_str:8s} Notes: {note_count}")
 
 print("\n" + "-" * 80)
-print(f"Melody clips summary:")
+print("Melody clips summary:")
 print(f"  Long enough (>=4 bars): {melody_long_count}/8")
 print(f"  Too short (<4 bars):   {melody_short_count}/8")
 print(f"  Missing clips:         {melody_missing_count}/8")

@@ -68,7 +68,7 @@ def main():
         (4, "random"),  # Dub FX - stabs
     ]
 
-    client = MCPClientTCP()
+    MCPClientTCP()
 
     for track_idx, pattern_type in track_configs:
         if not configure_track_follow_actions(track_idx, pattern_type):

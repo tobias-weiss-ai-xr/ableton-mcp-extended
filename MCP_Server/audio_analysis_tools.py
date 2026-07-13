@@ -2,7 +2,7 @@
 # Exposes existing AudioAnalyzer as callable MCP tools
 
 from mcp.server.fastmcp import FastMCP, Context
-from typing import Optional, Dict, Any
+from typing import Optional
 import json
 import logging
 import time

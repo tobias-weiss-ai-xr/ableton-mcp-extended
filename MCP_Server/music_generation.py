@@ -4,7 +4,7 @@
 
 import random
 import math
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
@@ -734,7 +734,7 @@ class RhythmMarkov:
         """
         result = []
         pos = 0.0
-        duration_names = list(self.DURATIONS.keys())
+        list(self.DURATIONS.keys())
         
         for _ in range(num_events * 2):  # Safety limit
             if pos >= length_beats or len(result) >= num_events:

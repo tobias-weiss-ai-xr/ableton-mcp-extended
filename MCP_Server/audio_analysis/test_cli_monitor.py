@@ -7,8 +7,7 @@ Tests MonitorDisplay, MonitorConfig, and AudioAnalysisMonitor classes.
 import unittest
 import time
 import threading
-from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime
+from unittest.mock import Mock, patch
 
 from MCP_Server.audio_analysis.cli_monitor import (
     MonitorColors,

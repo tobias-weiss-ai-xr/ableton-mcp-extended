@@ -8,7 +8,6 @@ This is a zero-tool-body-change approach: the wrapper is applied once
 in get_ableton_connection() and all 211 tools benefit automatically.
 """
 
-import json
 import logging
 from typing import Dict, Any, Optional, Callable
 

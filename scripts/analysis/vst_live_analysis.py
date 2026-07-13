@@ -87,7 +87,6 @@ class VSTLiveAnalysis:
         print(f"Output: UDP {OUTPUT_UDP_PORT}")
         print("Press Ctrl+C to stop\n")
 
-        last_playhead = (0, 0)
 
         while self.running:
             try:
@@ -110,7 +109,6 @@ class VSTLiveAnalysis:
                     self.get_send_levels()
 
                     # Check if playing
-                    is_playing = self.analysis_data.is_playing  # Track this
 
                 # Send UDP output
                 self.send_analysis_data()

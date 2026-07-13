@@ -91,7 +91,7 @@ class ParameterPoller:
         if self.sock:
             try:
                 self.sock.close()
-                print(f"[OK] Disconnected from Ableton")
+                print("[OK] Disconnected from Ableton")
             except Exception as e:
                 print(f"[WARN] Warning during disconnect: {str(e)}")
             finally:
@@ -201,7 +201,7 @@ class ParameterPoller:
             return
 
         parameters = params_data.get("parameters", [])
-        device_name = params_data.get("device_name", "Unknown")
+        params_data.get("device_name", "Unknown")
 
         timestamp = self.format_timestamp()
 

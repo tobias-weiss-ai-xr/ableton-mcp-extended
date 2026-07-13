@@ -4,8 +4,7 @@ Audio analysis integration for RMS-based reactive automation.
 Wrapper around MCP_Server.audio_analysis.AudioAnalyzer for dub techno automation.
 """
 
-import time
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 
 # Import from MCP Server's audio analysis module
 try:
@@ -78,7 +77,7 @@ class AudioAnalysisWrapper:
             self._error_count = 0  # Reset on success
             return rms
 
-        except Exception as e:
+        except Exception:
             self._error_count += 1
             if self._error_count >= self._max_errors:
                 # Too many errors - disable analyzer

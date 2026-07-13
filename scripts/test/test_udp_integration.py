@@ -88,7 +88,7 @@ class MockRemoteScriptUDPServer:
         self.running = False
         if self.server_socket:
             self.server_socket.close()
-        print(f"[MOCK] Stopped mock UDP server")
+        print("[MOCK] Stopped mock UDP server")
 
     def get_last_command(self):
         """Get last received command"""

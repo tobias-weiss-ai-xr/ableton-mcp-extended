@@ -18,7 +18,7 @@ def main():
     """
     print("Creating 8 dub FX clips for Track 4 (Dub FX)...")
 
-    client = MCPClientTCP()
+    MCPClientTCP()
     track_idx = 4
 
     fx_descriptions = [

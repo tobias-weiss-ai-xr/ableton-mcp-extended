@@ -1,6 +1,6 @@
 """Arpeggiator for chords (strum patterns, swing, direction)."""
 
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Union
 
 
 def arpeggiate_chord(
@@ -44,7 +44,7 @@ def arpeggiate_chord(
     except KeyError:
         raise ValueError(f"Unsupported rate: {rate}")
 
-    total_duration = interval * len(midi_notes) * repeats
+    interval * len(midi_notes) * repeats
     arpeggiated_notes = []
 
     for repeat in range(repeats):

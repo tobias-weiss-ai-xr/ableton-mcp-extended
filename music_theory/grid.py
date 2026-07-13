@@ -1,6 +1,6 @@
 """Grid layouts for MIDI controllers (Push, Launchpad, APC)."""
 
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 # Camelot Wheel: major/minor key mapping
 _CAMELOT_WHEEL = {
@@ -148,7 +148,6 @@ def generate_drum_grid(device: str, kit: str = "techno") -> List[List[Dict]]:
         row = []
         for j in range(cols):
             # Default to kick/snare/hat/percussion based on position
-            sound_keys = ["kick", "snare", "hat", "perc"]
             cell_sound = "perc"  # fallback
 
             if i == 0 and j == 0:

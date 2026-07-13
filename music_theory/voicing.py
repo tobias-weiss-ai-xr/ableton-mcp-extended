@@ -1,6 +1,5 @@
 """Voicing engine for chords (inversions, spreads, 7-3-5, etc)."""
 
-from music_theory.chord import generate_chord_name
 
 # Voicing templates: pattern of interval shifts relative to root.
 # Format: {voicing_name: [interval_shifts]}

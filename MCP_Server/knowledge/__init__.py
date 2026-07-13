@@ -1,6 +1,5 @@
 """Device knowledge base — parameter schemas for Live 12 native devices."""
 import json
-import os
 from pathlib import Path
 
 _device_cache = None

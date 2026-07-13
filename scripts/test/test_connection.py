@@ -31,7 +31,7 @@ try:
     print("=" * 80)
 
 except Exception as e:
-    print(f"\n[ERROR] Could not connect to Ableton MCP server")
+    print("\n[ERROR] Could not connect to Ableton MCP server")
     print(f"Details: {str(e)}")
     print("\nTROUBLESHOOTING:")
     print("1. Ensure Ableton Live is running")

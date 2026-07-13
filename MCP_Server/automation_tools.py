@@ -6,7 +6,6 @@ Provides tools for reading and writing clip automation envelopes
 
 import json
 import logging
-from typing import Optional
 
 from mcp.server.fastmcp import FastMCP, Context
 
@@ -75,7 +74,7 @@ def register_automation_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command("set_clip_envelope_point", {
+            ableton.send_command("set_clip_envelope_point", {
                 "track_index": track_index,
                 "clip_index": clip_index,
                 "device_index": device_index,
@@ -107,7 +106,7 @@ def register_automation_tools(mcp: FastMCP, get_ableton_connection):
         """
         try:
             ableton = get_ableton_connection()
-            result = ableton.send_command("clear_automation", {
+            ableton.send_command("clear_automation", {
                 "track_index": track_index,
                 "clip_index": clip_index,
                 "device_index": device_index,

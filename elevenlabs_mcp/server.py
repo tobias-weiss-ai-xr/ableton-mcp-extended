@@ -17,7 +17,7 @@ import base64
 from datetime import datetime
 from io import BytesIO
 import pathlib
-from typing import Literal, List
+from typing import Literal
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent

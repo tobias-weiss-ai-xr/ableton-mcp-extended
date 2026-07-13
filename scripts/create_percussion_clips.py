@@ -18,7 +18,7 @@ def main():
     """
     print("Creating 8 percussion clips for Track 3 (Percussion)...")
 
-    client = MCPClientTCP()
+    MCPClientTCP()
     track_idx = 3
 
     # Note: Create_drum_pattern uses default kick=36, snare=40, hat=42
@@ -44,8 +44,8 @@ def main():
                 length=16.0
             )
             print(f"    {'✓' if result else '✗'} Created")
-        except Exception as e:
-            print(f"    ✗ Error: e")
+        except Exception:
+            print("    ✗ Error: e")
 
     print("\nPercussion clips creation complete!")
 

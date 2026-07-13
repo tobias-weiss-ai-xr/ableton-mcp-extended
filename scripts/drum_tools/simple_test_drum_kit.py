@@ -88,7 +88,7 @@ def main():
 
         # Get Drum Rack details
         if devices and devices[0].get("name") == "Drum Rack":
-            print(f"\nDrum Rack parameters:")
+            print("\nDrum Rack parameters:")
             result2 = send_command(
                 "get_device_parameters",
                 {"track_index": 2, "device_index": 0},
@@ -122,6 +122,5 @@ def main():
 
 
 if __name__ == "__main__":
-    import time
 
     main()
