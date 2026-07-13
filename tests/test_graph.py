@@ -55,8 +55,8 @@ class TestMoreSections:
         })
         assert result == "execute_section"
 
-    def test_returns_end_on_last_section(self):
-        """Should return END when on last section"""
+    def test_returns_execute_section_on_last_index(self):
+        """Should return execute_section when on last index (index not yet past array)"""
         result = more_sections({
             "current_section_index": 2,
             "arrangement": [
@@ -71,12 +71,42 @@ class TestMoreSections:
                  "scene_index": 2},
             ],
         })
+        assert result == "execute_section"
+
+    def test_returns_end_when_index_past_end(self):
+        """Should return END when current_section_index == len(arrangement)"""
+        result = more_sections({
+            "current_section_index": 3,
+            "arrangement": [
+                {"index": 0, "name": "a", "start_beat": 0.0, "end_beat": 16.0,
+                 "energy_level": 5.0, "tracks_active": [], "mixing_technique": "none",
+                 "scene_index": 0},
+                {"index": 1, "name": "b", "start_beat": 16.0, "end_beat": 32.0,
+                 "energy_level": 6.0, "tracks_active": [], "mixing_technique": "none",
+                 "scene_index": 1},
+                {"index": 2, "name": "c", "start_beat": 32.0, "end_beat": 48.0,
+                 "energy_level": 4.0, "tracks_active": [], "mixing_technique": "none",
+                 "scene_index": 2},
+            ],
+        })
         assert result == END
 
-    def test_returns_end_for_single_section(self):
-        """Should return END for a single-section arrangement"""
+    def test_returns_execute_section_for_single_section(self):
+        """Should return execute_section for a single-section arrangement at index 0"""
         result = more_sections({
             "current_section_index": 0,
+            "arrangement": [
+                {"index": 0, "name": "only", "start_beat": 0.0, "end_beat": 16.0,
+                 "energy_level": 5.0, "tracks_active": [], "mixing_technique": "none",
+                 "scene_index": 0},
+            ],
+        })
+        assert result == "execute_section"
+
+    def test_returns_end_for_single_section_past_index(self):
+        """Should return END for single-section when index = 1 (past end)"""
+        result = more_sections({
+            "current_section_index": 1,
             "arrangement": [
                 {"index": 0, "name": "only", "start_beat": 0.0, "end_beat": 16.0,
                  "energy_level": 5.0, "tracks_active": [], "mixing_technique": "none",

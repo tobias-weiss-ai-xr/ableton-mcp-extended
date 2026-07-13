@@ -205,3 +205,4 @@ class GraphState(TypedDict):
     complete: bool
     current_section_index: int  # which section we're executing (0-based)
     audio_snapshot: Optional[AudioAnalysisData]  # latest analysis from current section
+    client: Any  # Ableton MCP client, injected at runtime

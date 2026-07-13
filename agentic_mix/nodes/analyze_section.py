@@ -112,4 +112,7 @@ def analyze_section_node(state: Dict[str, Any]) -> Dict[str, Any]:
         state["errors"].append(f"analyze_section_node: {e}")
         state["audio_snapshot"] = None
 
+    # Advance to the next section for the conditional edge
+    state["current_section_index"] = section_idx + 1
+
     return state

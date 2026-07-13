@@ -22,12 +22,16 @@ from .nodes.analyze_section import analyze_section_node
 def more_sections(state: GraphState) -> str:
     """Conditional edge: loop back to execute_section if more sections remain.
 
+    current_section_index is incremented by analyze_section_node after
+    each section, so this checks if we still have sections to process:
+    index < len(arrangement) means sections remain.
+
     Returns:
         "execute_section" if there are more sections to process,
         END otherwise.
     """
     current_idx = state["current_section_index"]
-    if current_idx < len(state["arrangement"]) - 1:
+    if current_idx < len(state["arrangement"]):
         return "execute_section"
     return END
 
@@ -93,6 +97,7 @@ def run_pipeline(config: Config) -> Dict[str, Any]:
         Dictionary with pipeline state and feedback
     """
     # Initialize state with all required GraphState fields
+    # NOTE: client must be injected before invoke() when using graph directly
     initial_state: GraphState = {
         "config": config,
         "session_info": create_session_info(),
@@ -104,6 +109,7 @@ def run_pipeline(config: Config) -> Dict[str, Any]:
         "complete": False,
         "current_section_index": 0,
         "audio_snapshot": None,
+        "client": None,
     }
 
     # Create and run the pipeline
