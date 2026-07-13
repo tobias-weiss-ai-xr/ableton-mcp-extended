@@ -5,11 +5,8 @@ Tests the parsing logic (tracks, devices, clips, tempo, time signature, etc.),
 issue detection, and suggestion generation.
 """
 
-import json
-import os
 import gzip
 import xml.etree.ElementTree as ET
-from unittest.mock import patch
 
 import pytest
 

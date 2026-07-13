@@ -13,9 +13,7 @@ Tests all new generative music features:
 """
 
 import sys
-import json
 import pytest
-from typing import Dict, Any
 
 # Add project root to path
 sys.path.insert(0, ".")
@@ -59,7 +57,7 @@ class GenerativeToolsTester:
         try:
             print(f"\n[TEST] {name}")
             test_func()
-            print(f"  ✓ PASSED")
+            print("  ✓ PASSED")
             self.passed += 1
             self.results.append({"name": name, "status": "PASS"})
         except Exception as e:

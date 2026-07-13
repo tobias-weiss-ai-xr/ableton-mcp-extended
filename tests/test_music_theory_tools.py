@@ -1,6 +1,5 @@
 """Tests for music theory and live performance MCP tools."""
 
-import pytest
 import sys
 import os
 

@@ -82,7 +82,7 @@ def test_execute_section_node_no_technique(mock_client):
     }
 
     with patch("agentic_mix.tools.apply_dub_drop") as mock_dub_drop:
-        result = execute_section_node(state)
+        execute_section_node(state)
 
         mock_client.trigger_scene.assert_called_once_with(0)
         mock_dub_drop.assert_not_called()

@@ -1,6 +1,5 @@
 """Tests for arpeggiator utility."""
 
-import pytest
 import sys
 import os
 

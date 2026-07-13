@@ -5,10 +5,9 @@ Verifies tool registration, groove listing, applying/removing grooves,
 and setting global groove amount, with mocked Ableton connection.
 """
 
-import json
 import sys
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

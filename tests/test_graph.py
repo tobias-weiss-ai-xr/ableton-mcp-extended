@@ -1,6 +1,5 @@
 """Tests for graph.py - audio feedback loop graph topology"""
 
-import pytest
 from langgraph.graph import END
 from langgraph.graph.state import CompiledStateGraph
 

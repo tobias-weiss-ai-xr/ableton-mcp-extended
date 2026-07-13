@@ -5,7 +5,6 @@ Verifies device loading, parameter lookups, and error handling for both
 native Ableton devices and (future) third-party plugins.
 """
 
-import json
 import os
 import sys
 import pytest

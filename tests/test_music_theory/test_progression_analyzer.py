@@ -1,6 +1,5 @@
 """Tests for progression analyzer utility."""
 
-import pytest
 import sys
 import os
 

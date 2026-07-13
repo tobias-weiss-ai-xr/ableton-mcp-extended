@@ -1,7 +1,7 @@
 """Tests for audio capture wrapper"""
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 
 @patch('agentic_mix.audio_capture.audio_analysis_start')
@@ -11,7 +11,6 @@ def test_capture_audio_snapshot_success(mock_stop, mock_get, mock_start):
     """Capture successful audio snapshot via MCP"""
 
     from agentic_mix.audio_capture import capture_audio_snapshot
-    from agentic_mix.state import AudioAnalysisData
 
     mock_start.return_value = {"running": True}
     mock_get.return_value = {

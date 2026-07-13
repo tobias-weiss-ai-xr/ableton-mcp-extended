@@ -1,6 +1,5 @@
 """Tests for chord namer utility."""
 
-import pytest
 import sys
 import os
 

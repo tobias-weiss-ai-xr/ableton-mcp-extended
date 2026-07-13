@@ -5,18 +5,13 @@ Tests the verify wrapper logic (MODIFYING_COMMANDS, snapshot capture, diff compu
 error handling, thread safety) without requiring an active Ableton Live connection.
 """
 
-import json
 import time
 import threading
-import os
-import sys
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from MCP_Server.verify import (
     MODIFYING_COMMANDS,
-    VERIFY_STRATEGY,
     capture_snapshot,
     compute_diff,
     wrap_ableton_connection,

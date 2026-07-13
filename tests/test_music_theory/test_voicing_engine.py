@@ -1,6 +1,5 @@
 """Tests for voicing engine utility."""
 
-import pytest
 import sys
 import os
 

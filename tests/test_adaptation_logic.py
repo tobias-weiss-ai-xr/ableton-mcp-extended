@@ -1,6 +1,5 @@
 """Tests for adaptation logic"""
 
-import pytest
 from agentic_mix.state import AudioAnalysisData
 
 

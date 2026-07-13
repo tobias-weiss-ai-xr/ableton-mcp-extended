@@ -8,15 +8,13 @@ address allowlisting, port validation, and tool registration.
 import os
 import sys
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Ensure MCP_Server is in path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "MCP_Server")))
 
 from MCP_Server.max_bridge import (
     MaxBridgeClient,
-    ALLOWED_OSC_ADDRESSES,
-    DEFAULT_OSC_PORT,
     register_max_bridge_tools,
 )
 

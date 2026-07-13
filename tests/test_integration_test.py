@@ -246,7 +246,7 @@ class IntegrationTest:
             }
 
             self.test_results.append(result)
-            print(f"  ✓ PASS - Error handling system functional")
+            print("  ✓ PASS - Error handling system functional")
 
         except Exception as e:
             print(f"  ✗ FAIL - {e}")
@@ -351,7 +351,7 @@ class IntegrationTest:
             json.dump(report, f, indent=2)
 
         print(f"\n{'=' * 60}")
-        print(f"INTEGRATION TEST COMPLETE")
+        print("INTEGRATION TEST COMPLETE")
         print(f"{'=' * 60}")
         print(f"Total Tests: {passed + failed}")
         print(f"Passed: {passed}")

@@ -104,7 +104,7 @@ def test_session_setup():
         print(f"  ✓ Session tempo: {overview['tempo']} BPM")
         print(f"  ✓ Track count: {len(overview['tracks'])}")
 
-        print(f"\n  ✓ PASS - Session query successful")
+        print("\n  ✓ PASS - Session query successful")
         return True
 
     except Exception as e:
@@ -139,7 +139,7 @@ def test_wave_structure():
         print(f"  ✓ Wave types: {[t.value for t in actual_types]}")
         print(f"  ✓ Total beats: {total_beats}")
 
-        print(f"\n  ✓ PASS - Wave structure valid")
+        print("\n  ✓ PASS - Wave structure valid")
         return True
 
     except Exception as e:
@@ -174,10 +174,10 @@ def test_error_handling():
         assert hasattr(handler, 'handle_error')
         assert hasattr(handler, 'get_error_summary')
 
-        print(f"  ✓ Error handler initialized")
-        print(f"  ✓ Error context creation working")
+        print("  ✓ Error handler initialized")
+        print("  ✓ Error context creation working")
 
-        print(f"\n  ✓ PASS - Error handling system functional")
+        print("\n  ✓ PASS - Error handling system functional")
         return True
 
     except Exception as e:
@@ -210,7 +210,7 @@ def test_auto_save():
         save_path = Path(save_metadata['save_file'])
         assert save_path.exists(), "Save file not created"
 
-        print(f"  ✓ Save directory created")
+        print("  ✓ Save directory created")
         print(f"  ✓ Save file created: {save_path.name}")
 
         # Cleanup test saves
@@ -218,7 +218,7 @@ def test_auto_save():
         if Path("test_saves").exists():
             shutil.rmtree("test_saves")
 
-        print(f"\n  ✓ PASS - Auto-save system functional")
+        print("\n  ✓ PASS - Auto-save system functional")
         return True
 
     except Exception as e:
@@ -232,7 +232,6 @@ def test_script_execution():
 
     try:
         import importlib.util
-        import sys
 
         script_path = Path("scripts/dub_techno_2h_automation.py")
 
@@ -241,10 +240,10 @@ def test_script_execution():
         module = importlib.util.module_from_spec(spec)
 
         # Test that module can be loaded
-        print(f"  ✓ Script path valid")
-        print(f"  ✓ Module can be imported")
+        print("  ✓ Script path valid")
+        print("  ✓ Module can be imported")
 
-        print(f"\n  ✓ PASS - Main script valid")
+        print("\n  ✓ PASS - Main script valid")
         return True
 
     except Exception as e:
@@ -298,7 +297,7 @@ def run_all_smoke_tests() -> dict:
     print(f"Duration: {elapsed:.2f}s")
 
     if failed == 0:
-        print(f"\n✓ ALL SMOKE TESTS PASSED - System ready for production")
+        print("\n✓ ALL SMOKE TESTS PASSED - System ready for production")
         return {
             'success': True,
             'passed': passed,
