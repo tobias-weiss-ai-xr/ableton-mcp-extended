@@ -971,6 +971,7 @@ from MCP_Server.mixer_tools import register_mixer_tools
 from MCP_Server.automation_tools import register_automation_tools
 from MCP_Server.groove_tools import register_groove_tools
 from MCP_Server.max_bridge import register_max_bridge_tools
+from MCP_Server.recipe_library import register_recipe_tools
 
 register_midi_effect_tools(mcp, get_ableton_connection)
 register_advanced_tools(mcp, get_ableton_connection)
@@ -980,6 +981,7 @@ register_mixer_tools(mcp, get_ableton_connection)
 register_automation_tools(mcp, get_ableton_connection)
 register_groove_tools(mcp, get_ableton_connection)
 register_max_bridge_tools(mcp, get_ableton_connection)
+register_recipe_tools(mcp, get_ableton_connection)
 
 # Global connection reference is defined at module level (line 145)
 # get_ableton_connection() is defined at line 148
