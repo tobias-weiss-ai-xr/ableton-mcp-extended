@@ -1,5 +1,5 @@
 """TypedDicts and validation for recipe library categories."""
-from typing import TypedDict, Optional, List
+from typing import TypedDict, List
 import json
 
 

@@ -2,7 +2,6 @@
 import json
 import logging
 from typing import Optional
-from .database import RecipeDB
 
 logger = logging.getLogger("AbletonMCPServer")
 

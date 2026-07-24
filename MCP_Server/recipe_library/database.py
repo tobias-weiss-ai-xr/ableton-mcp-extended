@@ -1,6 +1,5 @@
 """RecipeDB — SQLite CRUD and search for the recipe library."""
 import sqlite3
-import json
 import logging
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone

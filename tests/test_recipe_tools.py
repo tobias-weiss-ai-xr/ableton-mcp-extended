@@ -1,7 +1,6 @@
 """Tests for recipe library MCP tools and resources."""
 import pytest
 import json
-from unittest.mock import Mock, patch
 from MCP_Server.recipe_library.database import RecipeDB
 
 

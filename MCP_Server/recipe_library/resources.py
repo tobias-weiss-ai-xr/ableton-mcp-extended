@@ -1,6 +1,5 @@
 """MCP resource handlers for the recipe library."""
 import json
-from .database import RecipeDB
 
 
 def register(mcp, get_recipe_db):

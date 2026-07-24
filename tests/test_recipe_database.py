@@ -1,7 +1,6 @@
 """Tests for RecipeDB — SQLite CRUD and search."""
 import pytest
 import json
-import os
 from MCP_Server.recipe_library.database import RecipeDB
 
 
