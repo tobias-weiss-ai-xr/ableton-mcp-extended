@@ -2,8 +2,15 @@
 Construct arrangement node - Build the section structure for the mix.
 """
 from typing import List
+import json
 import random
 from agentic_mix.state import GraphState, Section
+
+try:
+    from MCP_Server.recipe_library import get_recipe_db
+    HAS_RECIPE_LIBRARY = True
+except ImportError:
+    HAS_RECIPE_LIBRARY = False
 
 
 def construct_arrangement_node(state: GraphState) -> GraphState:
@@ -22,6 +29,18 @@ def construct_arrangement_node(state: GraphState) -> GraphState:
     feedback = state["feedback"]
 
     feedback.append("Building arrangement structure...")
+
+    # Optional mix template override from recipe library
+    mix_template_id = config.get("mix_template_id")
+    if mix_template_id and HAS_RECIPE_LIBRARY:
+        try:
+            recipe_db = get_recipe_db()
+            recipe = recipe_db.get(mix_template_id)
+            if recipe and recipe["category"] == "mix_template":
+                template = json.loads(recipe["data"])
+                feedback.append(f"Using mix template: {recipe['name']}")
+        except Exception:
+            pass
 
     try:
         # Calculate number of sections
