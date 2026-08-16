@@ -24,9 +24,16 @@ from MCP_Server.max_bridge import (
 
 @pytest.fixture
 def mock_simple_udp_client():
-    """Mocks the pythonosc.udp_client.SimpleUDPClient class."""
+    """Mocks the pythonosc.udp_client.SimpleUDPClient class.
+
+    Uses ``create=True`` instead of ``autospec=True`` because
+    ``SimpleUDPClient`` may be ``None`` at import time when python-osc
+    is not installed; autospec on ``None`` produces a
+    ``NonCallableMagicMock`` which breaks the constructor call in
+    ``MaxBridgeClient.__init__``.
+    """
     with patch(
-        "MCP_Server.max_bridge.SimpleUDPClient", autospec=True
+        "MCP_Server.max_bridge.SimpleUDPClient", create=True
     ) as mock_client:
         yield mock_client
 

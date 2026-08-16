@@ -100,7 +100,7 @@ class MaxBridgeClient:
         self._validate_port(self.port)
 
         self._client: SimpleUDPClient | None = None  # type: ignore[type-arg]
-        if _HAS_OSC and SimpleUDPClient is not None:
+        if SimpleUDPClient is not None:
             try:
                 self._client = SimpleUDPClient(self.host, self.port)
             except Exception as exc:
@@ -213,6 +213,45 @@ class MaxBridgeClient:
             raise ValueError(
                 f"Max bridge port must be in range 1024-65535, got {port}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Module-level self-test (callable without MCP server)
+# ---------------------------------------------------------------------------
+
+
+def test_max_bridge(port: int | None = None) -> dict[str, Any]:
+    """Run a self-test of the Max Bridge client.
+
+    Creates a ``MaxBridgeClient`` and reports availability, configuration,
+    and (optionally) reachability.  This function is importable at the
+    module level so that tests and external scripts can verify the bridge
+    without spinning up an MCP server.
+
+    Parameters
+    ----------
+    port:
+        Optional OSC port override.  Defaults to ``DEFAULT_OSC_PORT``
+        (9000) or the ``MAX_BRIDGE_PORT`` environment variable.
+
+    Returns
+    -------
+    A dictionary with keys ``python_osc_available``, ``client_available``,
+    ``host``, ``port``, and (when the client is available) ``ping``.
+    """
+    client = MaxBridgeClient(port=port or DEFAULT_OSC_PORT)
+
+    result: dict[str, Any] = {
+        "python_osc_available": _HAS_OSC,
+        "client_available": client.available,
+        "host": client.host,
+        "port": client.port,
+    }
+
+    if client.available:
+        result["ping"] = client.ping()
+
+    return result
 
 
 # ---------------------------------------------------------------------------
