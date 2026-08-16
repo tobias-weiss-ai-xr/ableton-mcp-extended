@@ -1,22 +1,19 @@
 """Device knowledge base — parameter schemas for Live 12 native devices."""
+import functools
 import json
 from pathlib import Path
 
-_device_cache = None
 
+@functools.lru_cache(maxsize=None)
 def _load_all_devices():
-    global _device_cache
-    if _device_cache is not None:
-        return _device_cache
-    
     devices_dir = Path(__file__).parent / "devices"
-    _device_cache = []
+    result = []
     
     for f in sorted(devices_dir.glob("*.json")):
         with open(f) as fh:
-            _device_cache.extend(json.load(fh))
+            result.extend(json.load(fh))
     
-    return _device_cache
+    return result
 
 
 def get_device_knowledge(device_name: str, parameter_name: str = ""):
