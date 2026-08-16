@@ -341,3 +341,55 @@ def test_pattern_has_notes_table(pattern_name):
     grid = drum_pattern(pattern_name)
     assert grid is not None, f"pattern {pattern_name} returned None"
     assert len(grid) > 0, f"pattern {pattern_name} is empty"
+
+
+# ── Value-asserting tests to kill mutations ────────────────────────────────
+
+class TestMutationKillingValueAssertions:
+    """Tests that exercise specific values to kill injected mutations."""
+
+    def test_tcp_port_is_9877(self):
+        """Mutation: 'name == \"tcp\"' → != would return wrong default."""
+        assert get_port("tcp") == 9877
+
+    def test_udp_port_is_9878(self):
+        """Mutation: 'name == \"tcp\"' → != would affect UDP too."""
+        assert get_port("udp") == 9878
+
+    def test_tcp_accessor_matches_get_port(self):
+        """Mutation: any accessor deviation would break equality."""
+        assert tcp_port() == get_port("tcp")
+
+    def test_udp_accessor_matches_get_port(self):
+        assert udp_port() == get_port("udp")
+
+    def test_udp_whitelist_is_frozen(self):
+        """Mutation: frozenset behavior check."""
+        wl = udp_whitelist()
+        assert isinstance(wl, frozenset), f"Expected frozenset, got {type(wl)}"
+        with pytest.raises(AttributeError):
+            wl.add("should_not_work")
+
+    def test_deep_merge_override_wins(self):
+        """Mutation: 'and' in isinstance checks — must correctly merge nested dicts."""
+        base = {"a": {"b": 1, "c": 2}}
+        override = {"a": {"c": 99, "d": 3}}
+        result = _deep_merge(base, override)
+        assert result["a"]["b"] == 1, "Base value should survive"
+        assert result["a"]["c"] == 99, "Override should win for key 'c'"
+        assert result["a"]["d"] == 3, "Override should add new key 'd'"
+
+    def test_deep_merge_flat_values(self):
+        """Mutation: '+' vs '-' in string concat logic."""
+        base = {"x": 10, "y": 20}
+        override = {"y": 30, "z": 40}
+        result = _deep_merge(base, override)
+        assert result == {"x": 10, "y": 30, "z": 40}
+
+    def test_reconnect_defaults(self):
+        """Mutation: default value checks."""
+        delays = reconnect_delays()
+        assert isinstance(delays, list)
+        assert len(delays) > 0
+        assert all(isinstance(d, (int, float)) for d in delays)
+        assert reconnect_max_attempts() > 0

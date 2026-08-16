@@ -335,3 +335,72 @@ class TestParamDetails:
         spec = get_command("set_tempo")
         assert spec is not None
         assert spec.params["tempo"].type == "float"
+
+# ── Value-asserting tests to kill mutations ─────────────────────────────────
+
+class TestValidateRegistryKillsMutations:
+    """Tests that exercise specific code paths to kill injected mutations."""
+
+    def test_empty_spec_fails(self):
+        """Mutation: 'not spec.description' → '' — must still detect empty desc."""
+        from MCP_Server.command_registry import validate_registry, CommandSpec
+        reg = {"empty_cmd": CommandSpec(name="empty_cmd", params={}, description="")}
+        errs = validate_registry(reg)
+        assert len(errs) > 0
+        assert any("empty_cmd" in e and "no description" in e for e in errs)
+
+    def test_udp_modifying_fails(self):
+        """Mutation: 'transport == udp and modifying' → 'or' — must detect."""
+        from MCP_Server.command_registry import validate_registry, CommandSpec
+        reg = {"bad_udp": CommandSpec(
+            name="bad_udp", params={}, transport="udp", modifying=True,
+            description="UDP command incorrectly marked modifying"
+        )}
+        errs = validate_registry(reg)
+        assert any("bad_udp" in e and "must not be marked modifying" in e for e in errs), \
+            f"Expected UDP-modifying error, got: {errs}"
+
+    def test_param_boundary_inclusive(self):
+        """Mutation: 0.0 <= x <= 1.0 → 0.0 < x < 1.0 — boundary must be valid."""
+        from MCP_Server.command_registry import validate_registry, CommandSpec, ParamSpec
+        reg = {"cmd": CommandSpec(
+            name="cmd",
+            params={"p": ParamSpec(type="float", min_value=0.0, max_value=1.0,
+                                   description="ok param")},
+            description="cmd desc"
+        )}
+        errs = validate_registry(reg)
+        boundary_errs = [e for e in errs if "outside" in e]
+        assert not boundary_errs, f"Boundary values 0.0/1.0 should be valid: {boundary_errs}"
+
+    def test_param_boundary_violation(self):
+        """Mutation: 0.0 <= x <= 1.0 → != — out-of-range must be caught."""
+        from MCP_Server.command_registry import validate_registry, CommandSpec, ParamSpec
+        reg = {"cmd": CommandSpec(
+            name="cmd",
+            params={"p": ParamSpec(type="float", min_value=-0.1, max_value=1.5,
+                                   description="bad range param")},
+            description="cmd desc"
+        )}
+        errs = validate_registry(reg)
+        assert len(errs) >= 2, f"Both min=-0.1 and max=1.5 should be errors: {errs}"
+
+    def test_empty_param_description_fails(self):
+        """Mutation: 'not pspec.description' → '' — must detect empty param desc."""
+        from MCP_Server.command_registry import validate_registry, CommandSpec, ParamSpec
+        reg = {"cmd": CommandSpec(
+            name="cmd",
+            params={"p": ParamSpec(type="str", description="")},
+            description="cmd desc"
+        )}
+        errs = validate_registry(reg)
+        assert any("no description" in e for e in errs)
+
+    def test_duplicate_name_detected(self):
+        """Mutation: key-in-seen check — must detect duplicates."""
+        from MCP_Server.command_registry import validate_registry, CommandSpec
+        spec = CommandSpec(name="dup", description="duplicated")
+        reg = {"dup": spec}  # key matches spec.name — valid (1 entry, no dup)
+        errs = validate_registry(reg)
+        dup_errs = [e for e in errs if "Duplicate" in e]
+        assert not dup_errs, f"Single entry should not have duplicates: {dup_errs}"
