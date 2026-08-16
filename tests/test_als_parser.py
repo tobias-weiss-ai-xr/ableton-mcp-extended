@@ -33,7 +33,26 @@ def three_tracks_als_path():
 def empty_als_path(tmp_path):
     path = tmp_path / "empty.als"
     root = ET.Element('Ableton', MajorVersion='5', MinorVersion='0')
-    ET.SubElement(root, 'LiveSet') # Need at least LiveSet
+    liveset = ET.SubElement(root, 'LiveSet')
+    tracks = ET.SubElement(liveset, 'Tracks')
+
+    # Track 1: completely empty (no name, no devices, no clips)
+    # → triggers "empty_track" issue and "Delete empty track" suggestion
+    ET.SubElement(tracks, 'MidiTrack')
+
+    # Track 2: has clips but no name and no devices
+    # → triggers "naming" + "no_devices" issues (not "empty" because it has clips)
+    track2 = ET.SubElement(tracks, 'MidiTrack')
+    chain2 = ET.SubElement(track2, 'DeviceChain')
+    ET.SubElement(chain2, 'Devices')
+    slot_list = ET.SubElement(chain2, 'ClipSlotList')
+    slot = ET.SubElement(slot_list, 'ClipSlot')
+    inner_slot = ET.SubElement(slot, 'ClipSlot')
+    clip = ET.SubElement(inner_slot, 'Clip')
+    clip.set('Value', '0')
+    dur = ET.SubElement(clip, 'Duration')
+    dur.set('Value', '4.0')
+
     data = ET.tostring(root, encoding='unicode')
     with gzip.open(path, 'wt', encoding='utf-8') as f:
         f.write(data)
@@ -108,7 +127,7 @@ def test_suggest_changes_empty_track(empty_als_path):
 def test_parse_error_on_invalid_file(tmp_path):
     invalid_file = tmp_path / "not_als.txt"
     invalid_file.write_text("plain text content")
-    with pytest.raises(ValueError, match="Cannot read"):  # It tries gzip and plain text
+    with pytest.raises(ValueError, match="XML parse error"):  # gzip fails → plain text succeeds → XML invalid
         parse_als_file(str(invalid_file))
 
 
@@ -116,7 +135,7 @@ def test_parse_error_on_invalid_file(tmp_path):
 
 
 def test_parse_error_on_corrupted_gzip(corrupted_als_path):
-    with pytest.raises(ValueError, match="Cannot read"):  # It tries gzip first
+    with pytest.raises(ValueError, match="XML parse error"):  # gzip fails → plain text succeeds → XML invalid
         parse_als_file(corrupted_als_path)
 
 
