@@ -116,10 +116,6 @@ VERIFY_STRATEGY: Dict[str, SnapshotStrategy] = {
     "delete_locator":      [("get_session_info", None)],
     "jump_to_locator":     [("get_session_info", None)],
     "set_loop":            [("get_session_info", None)],
-
-    # getters in the modifying list — no verify needed
-    "get_device_parameters": [],
-    "get_playhead_position": [],
 }
 
 # Derive the modifying-commands set from strategy keys
@@ -226,8 +222,10 @@ def wrap_ableton_connection(connection):
     The wrapper intercepts send_command for modifying commands, captures
     pre/post snapshots, computes diffs, and attaches ``_verify`` to the result.
     """
-    if not getattr(connection, "_verify_wrapped", False):
-        connection.send_command = _make_verify_wrapper(connection)
-        connection._verify_wrapped = True
-        logger.info("Verify loop installed on AbletonConnection")
+    if getattr(connection, "_verify_wrapped", None) is True:
+        return connection
+
+    connection.send_command = _make_verify_wrapper(connection)
+    connection._verify_wrapped = True
+    logger.info("Verify loop installed on AbletonConnection")
     return connection
