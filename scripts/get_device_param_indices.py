@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-<arg_value>Helper script: query device parameters for all instruments.
+"""Helper script: query device parameters for all instruments.
 Returns device indices and parameter indices for filter, reverb, delay automation.
 """
 

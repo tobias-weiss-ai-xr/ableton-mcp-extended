@@ -94,7 +94,7 @@ class AbletonInventory:
                 count = len(self.inventory['user_presets'][category])
                 if count > 0:
                     print(f"\n🎛️ {category}: {count} presets")
-                    for preset in self.inventory['user_presets'][category]][:3]:
+                    for preset in self.inventory['user_presets'][category][:3]: 
                         print(f"   - {preset['name']}")
     
     def inventory_samples(self):
@@ -170,7 +170,7 @@ class AbletonInventory:
         
         # Organ for reggae  
         if 'Electric Keyboards' in self.inventory['factory_packs']:
-            presets = [p['name'] for p in self.inventory['factory_packs']['Electric Keyboards']['presets'])
+            presets = [p['name'] for p in self.inventory['factory_packs']['Electric Keyboards']['presets']]
             organ_presets = [p for p in presets if 'Organ' in p or 'Tonewheel' in p]
             reggae_ready['organ'] = organ_presets
         
@@ -197,4 +197,4 @@ class AbletonInventory:
         
         print(f"\n🎸 GUITAR: {len(reggae_ready['guitar'])} presets")
         if reggae_ready['guitar']:
-            print("   Highlights:", ', '.join(reggae
+            print("   Highlights:", ', '.join(reggae_ready['guitar'][:5]))

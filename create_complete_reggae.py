@@ -23,7 +23,7 @@ class AutomationPoint:
     time: float
     value: float
 
-class MIDI Patterns:
+class MIDIPatterns:
     """Reggae MIDI pattern generators."""
     
     @staticmethod
@@ -614,7 +614,7 @@ def build_ableton_liveproject(arrangement: Arrangement) -> str:
     print('[XML STRUCTURE BUILT]')
     print(f'Total sections: {len(arrangement.sections)}')
     print(f'Total bars: {arrangement.total_bars}')
-    print(f'Total duration: {arrangement.duration_seconds:.1f} seconds (arrangement.duration_seconds / 60:.1f} minutes)')
+    print(f'Total duration: {arrangement.duration_seconds:.1f} seconds ({arrangement.duration_seconds / 60:.1f} minutes)')
     print()
     
     return xml
@@ -679,7 +679,7 @@ def main():
     print(f'BPM: {arrangement.bpm}')
     print(f'Key: {arrangement.key}')
     print(f'Tracks: 8 MIDI tracks + 2 Return tracks')
-    print(f'Duration: {arrangement.total_bars} bars (arrangement.duration_seconds:.1f} seconds)')
+    print(f'Duration: {arrangement.total_bars} bars ({arrangement.duration_seconds:.1f} seconds)')
     print(f'Sections: {len(arrangement.sections)} arrangement sections')
     print()
     print('[TRACKS WITH MIDI PATTERNS]')

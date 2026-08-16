@@ -210,4 +210,14 @@ xml += f'''                </NoteList>
           <ClipSlot Id="0">
             <ClipSlot>
               <Clip Id="6_clip_0" Time="0">
-                <Name><Effec
+                <Name><EffectiveName Value="Electric Piano"/></Name>
+                </Clip>
+            </ClipSlot>
+          </ClipSlot>
+        </ClipSlotList>
+      </MidiTrack>
+    </Tracks>
+  </LiveSet>
+</Ableton>'''
+
+print("Fine Dub project XML generated successfully!")

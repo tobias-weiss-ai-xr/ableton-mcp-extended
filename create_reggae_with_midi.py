@@ -11,7 +11,7 @@ def create_note_xml(time, pitch, velocity, duration):
     """Create XML for a MIDI note."""
     return f'          <Note Time=\"{time}\" Pitch=\"{pitch}\" Velocity=\"{velocity}\" Duration=\"{duration}\"/>\\n'
 
-def generate_beamed问候歌曲():
+def generate_beamed_reggae_song():
     """Generate complete Fine Dub Reggae project with all MIDI data."""
     
     print('[GENERATING COMPLETE REAGAE PROJECT WITH MIDI]')
@@ -322,7 +322,9 @@ def build_full_xml():
 '''
     
     for i, section in enumerate(sections):
-        xml += f'      <Scene Id=\"{i}\"><Name><EffectiveName Value=\"{section["name\"]}\"/></Name><Time Value=\"{section["bars"][0] * 4}\"/></Scene>\n'
+        name_val = section['name']
+        bars_val = section['bars'][0] * 4
+        xml += f'      <Scene Id="{i}"><Name><EffectiveName Value="{name_val}"/></Name><Time Value="{bars_val}"/></Scene>\n'
     
     xml += '''    </Scenes>
   </LiveSet>

@@ -1,29 +1,3 @@
-# DOCUMENT: Always load drum kit manually before reworking clips
-# OR use load_browser_item directly
- if drum_kit_uri:
-        params = {
-            "track_index": 2,
-            "uri": kit_uri,
-        })
-    else:
-        # Fallback: load Drum Rack first, then load kit into the kit
-        raise Exception(f"No URI provided and effect_type '{effect_type}' not mapped")
-
-    # Add drum notes directly
-    try:
-        drum_notes = generate_drum_pattern(scene_index)
-        if not drum_notes:
-            continue
-        
-        notes_data = [{"pitch": n[0], "start_time": n[1], "duration": n[2], "velocity": n[3], "mute": False} for n in drum_notes]
-        add_notes_to_clip(sock, track_index, clip_index, drum_notes)
-
-    except Exception as e:
-        print(f"  Error: {e}
-        return None
-    
-    time.sleep(0.03)
-}
 #!/usr/bin/env python
 """
 Direct clip reworking script - bypasses MCP server connection issues.

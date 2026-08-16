@@ -409,7 +409,7 @@ class EnhancedAbletonProject:
         ]
         
         for i, track_info in enumerate(enhanced_tracks):
-            print(f'[TRACK {i}] {track_info[\"name\"]}')
+            print(f'[TRACK {i}] {track_info["name"]}')
             
             track = ET.SubElement(tracks, 'MidiTrack')
             

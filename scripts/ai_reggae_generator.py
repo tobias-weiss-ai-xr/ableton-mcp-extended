@@ -337,7 +337,7 @@ class InformedReggaeGenerator:
         # Generate one-drop kick pattern
         pattern = self.reggae_patterns['one_drop']
         print(f'  [KICK patterN] One Drop')
-        print(f'    Description: {pattern[\"description\"]}')
+        print(f'    Description: {pattern["description"]}')
         print(f'    Pattern: [REST] [KICK] [REST] [KICK] (no kick on beat 1)')
         
         # Generate reggae hi-hats
@@ -357,10 +357,10 @@ class InformedReggaeGenerator:
         print()
         
         progression = self.reggae_progressions['roots']
-        print(f'  [PROGRESSION] {progression[\"name\"]}')
-        print(f'    Description: {progression[\"description\"]}')
-        print(f'    Pattern: C({progression[\"pattern\"][0]}) - F({progression[\"pattern\"][1]}) - Eb({progression[\"pattern\"][2]}) - F({progression[\"pattern\"][3]})')
-        print(f'    MIDI notes: {progression[\"pattern\"]}')
+        print(f'  [PROGRESSION] {progression["name"]}')
+        print(f'    Description: {progression["description"]}')
+        print(f'    Pattern: C({progression["pattern"][0]}) - F({progression["pattern"][1]}) - Eb({progression["pattern"][2]}) - F({progression["pattern"][3]})')
+        print(f'    MIDI notes: {progression["pattern"]}')
         print(f'  [APPLIED] Root progression used for bass and organ')
         print()
         
@@ -377,16 +377,16 @@ class InformedReggaeGenerator:
         
         for effect_name, effect_settings in effects:
             print(f'  [EFFECT] {effect_name}')
-            print(f'    Type: {effect_settings[\"type\"]}')
+            print(f'    Type: {effect_settings["type"]}')
             if effect_name == 'Dub Echo':
-                print(f'    Time: {effect_settings[\"time\"]}')
-                print(f'    Feedback: {effect_settings[\"feedback\"]}')
-                print(f'    Mix: {effect_settings[\"mix\"]}')
+                print(f'    Time: {effect_settings["time"]}')
+                print(f'    Feedback: {effect_settings["feedback"]}')
+                print(f'    Mix: {effect_settings["mix"]}')
                 print(f'    [APPLIED] Authentic dub echo (1/4 note, 60-80% feedback)')
             elif effect_name == 'Spring Reverb':
-                print(f'    Time: {effect_settings[\"time\"]}')
-                print(f'    Decay: {effect_settings[\"decay\"]}')
-                print(f'    Mix: {effect_settings[\"mix\"]}')
+                print(f'    Time: {effect_settings["time"]}')
+                print(f'    Decay: {effect_settings["decay"]}')
+                print(f'    Mix: {effect_settings["mix"]}')
                 print(f'    [APPLIED] spring reverb for reggae atmosphere')
             print()
         
@@ -420,10 +420,10 @@ class InformedReggaeGenerator:
             bars = end_bar - start_bar + 1
             minutes = bars * 4 / self.bpm
             
-            print(f'  [SECTION] {section[\"name\"]} (bars {start_bar}-{end_bar})')
+            print(f'  [SECTION] {section["name"]} (bars {start_bar}-{end_bar})')
             print(f'    Duration: {bars} bars ({minutes:.1f} minutes)')
-            print(f'    Pattern: {section[\"pattern\"]}')
-            print(f'    Description: {section[\"description\"]}')
+            print(f'    Pattern: {section["pattern"]}')
+            print(f'    Description: {section["description"]}')
             print(f'    [ARRANGED] Section configured')
             print()
         
@@ -443,64 +443,64 @@ class InformedReggaeGenerator:
         """Apply one-drop kick settings."""
         settings = self.instrument_settings['kick_one_drop']
         print(f'    [INSTRUMENT SETTINGS] One-drop kick')
-        print(f'      Frequency: {settings[\"frequency\"]}')
-        print(f'      Decay: {settings[\"decay\"]}')
-        print(f'      Tuning: {settings[\"tuning\"]}')
+        print(f'      Frequency: {settings["frequency"]}')
+        print(f'      Decay: {settings["decay"]}')
+        print(f'      Tuning: {settings["tuning"]}')
         
     def _apply_bass_settings(self, track_index):
         """Apply sub-bass dub settings."""
         settings = self.instrument_settings['sub_bass_dub']
         print(f'    [INSTRUMENT SETTINGS] Dub sub-bass')
-        print(f'      Oscillator: {settings[\"oscillator\"]}')
-        print(f'      Frequency: {settings[\"frequency\"]}')
-        print(f'      Cutoff: {settings[\"cutoff\"]}')
+        print(f'      Oscillator: {settings["oscillator"]}')
+        print(f'      Frequency: {settings["frequency"]}')
+        print(f'      Cutoff: {settings["cutoff"]}')
         
     def _apply_snare_settings(self, track_index):
         """Apply backbeat snare settings."""
         settings = self.instrument_settings['snare_backbeat']
         print(f'    [INSTRUMENT SETTINGS] Backbeat snare')
-        print(f'      Decay: {settings[\"decay\"]}')
-        print(f'      Tuning: {settings[\"tuning\"]}')
+        print(f'      Decay: {settings["decay"]}')
+        print(f'      Tuning: {settings["tuning"]}')
         
     def _apply_hihat_settings(self, track_index):
         """Apply skank hi-hat settings."""
         settings = self.instrument_settings['hihats_skank']
         print(f'    [INSTRUMENT SETTINGS] Skank hi-hats')
-        print(f'      Pattern: {settings[\"pattern\"]}')
-        print(f'      Tone: {settings[\"tone\"]}')
-        print(f'      Velocity: {settings[\"velocity\"]}')
+        print(f'      Pattern: {settings["pattern"]}')
+        print(f'      Tone: {settings["tone"]}')
+        print(f'      Velocity: {settings["velocity"]}')
         
     def _apply_guitar_settings(self, track_index):
         """Apply guitar skank settings."""
         settings = self.instrument_settings['guitar_skank']
         print(f'    [INSTRUMENT SETTINGS] Guitar skank')
-        print(f'      Technique: {settings[\"technique\"]}')
-        print(f'      Voicing: {settings[\"voicing\"]}')
-        print(f'      Attack: {settings[\"attack\"]}')
+        print(f'      Technique: {settings["technique"]}')
+        print(f'      Voicing: {settings["voicing"]}')
+        print(f'      Attack: {settings["attack"]}')
         
     def _apply_organ_settings(self, track_index):
         """Apply Hammond organ settings."""
         settings = self.instrument_settings['hammond_organ']
         print(f'    [INSTRUMENT SETTINGS] Hammond organ')
-        print(f'      Model: {settings[\"model\"]}')
-        print(f'      Leslie: {settings[\"leslie\"]}')
-        print(f'      Drombars: {settings[\"drawbars\"]}')
+        print(f'      Model: {settings["model"]}')
+        print(f'      Leslie: {settings["leslie"]}')
+        print(f'      Drombars: {settings["drawbars"]}')
         
     def _apply_echo_settings(self, track_index):
         """Apply dub echo settings."""
         settings = self.dub_effects['dub_echo']
         print(f'    [EFFECT SETTINGS] Dub echo')
-        print(f'      Time: {settings[\"time\"]}')
-        print(f'      Feedback: {settings[\"feedback\"]}')
-        print(f'      Mix: {settings[\"mix\"]}')
+        print(f'      Time: {settings["time"]}')
+        print(f'      Feedback: {settings["feedback"]}')
+        print(f'      Mix: {settings["mix"]}')
         
     def _apply_reverb_settings(self, track_index):
         """Apply spring reverb settings."""
         settings = self.dub_effects['spring_reverb']
         print(f'    [EFFECT SETTINGS] Spring reverb')
-        print(f'      Type: {settings[\"type\"]}')
-        print(f'      Time: {settings[\"time\"]}')
-        print(f'      Decay: {settings[\"decay\"]}')
+        print(f'      Type: {settings["type"]}')
+        print(f'      Time: {settings["time"]}')
+        print(f'      Decay: {settings["decay"]}')
         
     def _print_summary(self):
         """Print generation summary."""

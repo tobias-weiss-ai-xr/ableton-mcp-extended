@@ -11,7 +11,8 @@ Usage:
 """
 
 import sys
-sys.path.insert(0, str(__file__).parent.parent))
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from production_pipeline import main as _main
 

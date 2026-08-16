@@ -289,10 +289,10 @@ def print_ableton_instrument_setup_steps():
     ]
     
     for i, step in enumerate(steps, 1):
-        print(f'STEP {i}: {step[\"track\"]}')
+        print(f'STEP {i}: {step["track"]}')
         print('-' * 80)
-        print(f'[LOAD] {step[\"instrument\"]}')
-        print(f'[SETTINGS] {step[\"settings\"]}')
+        print(f'[LOAD] {step["instrument"]}')
+        print(f'[SETTINGS] {step["settings"]}')
         print()
 
 
@@ -375,14 +375,14 @@ def print_alternative_solutions():
     ]
     
     for i, solution in enumerate(solutions, 1):
-        print(f'{solution[\"solution\"]}')
+        print(f'{solution["solution"]}')
         print('-' * 80)
-        print(f'Description: {solution[\"description\"]}')
+        print(f'Description: {solution["description"]}')
         print(f'Instruments:')
         for j, inst in enumerate(solution['instruments'], 1):
             print(f'  {j}. {inst}')
-        print(f'Pros: {solution[\"pros\"]}')
-        print(f'Cons: {solution[\"cons\"]}')
+        print(f'Pros: {solution["pros"]}')
+        print(f'Cons: {solution["cons"]}')
         print()
 
 
