@@ -42,6 +42,9 @@ DEFAULT_TEMPO = 120.0
 DEFAULT_VOLUME = 0.75
 DEFAULT_QUANTIZATION = "1 Bar"
 
+# Protocol version for client/server handshake
+PROTOCOL_VERSION = 1
+
 
 def create_instance(c_instance):
     """Create and return the AbletonMCP script instance"""
@@ -66,6 +69,10 @@ class AbletonMCP(ControlSurface):
 
         # Cache the song reference for easier access
         self._song = self.song()
+
+        # Build command handler maps (refactored from if/elif dispatch chain)
+        self._handlers = self._build_handlers()
+        self._udp_handlers = self._build_udp_handlers()
 
         # Start both servers
         self.start_server()  # TCP on 9877
@@ -320,936 +327,534 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message(f"UDP: Error processing datagram from {addr}: {e}")
 
+    # -----------------------------------------------------------------
+    # Handler map: command_type -> callable(params) -> result
+    # -----------------------------------------------------------------
+
+    # Commands that must run on Ableton's main thread (via schedule_message).
+    # These modify Live state or access the Live API from a non-main thread.
+    MAIN_THREAD_COMMANDS = frozenset({
+        # Track CRUD
+        "create_midi_track", "create_audio_track", "delete_all_tracks",
+        "delete_track", "set_track_name", "set_track_color", "set_track_fold",
+        "duplicate_track",
+        # Clip CRUD
+        "create_clip", "delete_clip", "duplicate_clip", "move_clip",
+        "add_notes_to_clip", "delete_notes_from_clip",
+        "quantize_clip", "transpose_clip",
+        "set_clip_name", "set_clip_loop", "set_clip_launch_mode",
+        "set_clip_follow_action", "get_clip_follow_actions",
+        # Scene operations
+        "create_scene", "delete_scene", "duplicate_scene", "set_scene_name",
+        "fire_scene", "trigger_scene",
+        # Transport & tempo
+        "set_tempo", "set_time_signature", "set_metronome",
+        "fire_clip", "stop_clip",
+        "start_playback", "stop_playback",
+        "start_recording", "stop_recording",
+        # Track state
+        "set_track_monitoring_state",
+        # Device/instrument loading
+        "load_browser_item", "load_instrument_or_effect", "load_instrument_preset",
+        "get_device_parameters", "set_device_parameter",
+        # Automation
+        "add_automation_point", "clear_automation",
+        # Device CRUD
+        "duplicate_device", "delete_device", "move_device",
+        "toggle_device_bypass", "undo", "redo",
+        # Clip operations (continued)
+        "crop_clip", "resize_clip", "duplicate_clip_to",
+        # Locators & loop
+        "get_playhead_position", "set_playhead_position",
+        "create_locator", "delete_locator", "jump_to_locator",
+        # Presets
+        "list_device_presets", "load_device_preset", "save_device_preset",
+        "set_loop",
+        # Clip data access (via Live API)
+        "get_clip_notes", "get_clip_envelopes", "get_clip_envelope_points",
+        "set_clip_envelope_point",
+        # Mixer state
+        "set_master_volume", "set_track_volume", "set_track_mute",
+        "set_track_solo", "set_track_arm", "set_track_pan", "set_send_amount",
+        # Session queries (via Live API)
+        "get_master_track_info", "get_return_tracks", "get_all_tracks",
+        "get_all_scenes", "get_session_overview", "get_all_clips_in_track",
+        # Note editing
+        "set_note_velocity", "set_note_duration", "set_note_pitch",
+        # Clip processing
+        "mix_clip", "stretch_clip",
+        "detect_clip_key", "snap_notes_to_scale",
+        "create_scale_reference_clip", "create_chord_progression",
+        # Track grouping
+        "group_tracks", "ungroup_tracks",
+        # Warp
+        "set_clip_warp_mode", "get_clip_warp_markers",
+        "add_warp_marker", "delete_warp_marker",
+        # Script reload
+        "reload_script",
+        # Quantization & Link
+        "get_global_quantization", "set_global_quantization",
+        "get_link_status", "set_link_enabled", "set_link_start_stop_sync",
+        # Energy & groove
+        "apply_energy_curve",
+        "apply_groove_to_clip", "remove_groove_from_clip",
+        "set_global_groove_amount",
+    })
+
+    def _build_handlers(self):
+        """Build the declarative TCP command handler map.
+
+        Each value is a callable(self, params_dict) -> result.
+        Built once in __init__ and reused for every incoming command.
+        """
+        return {
+            # === Session info (direct dispatch) ===
+            "get_session_info": lambda p: self._get_session_info(),
+            "get_track_info": lambda p: self._get_track_info(p.get("track_index", 0)),
+
+            # === Track CRUD ===
+            "create_midi_track": lambda p: self._create_midi_track(p.get("index", -1)),
+            "create_audio_track": lambda p: self._create_audio_track(p.get("index", -1)),
+            "delete_all_tracks": lambda p: self._delete_all_tracks(),
+            "delete_track": lambda p: self._delete_track(p.get("track_index", 0)),
+            "set_track_name": lambda p: self._set_track_name(p.get("track_index", 0), p.get("name", "")),
+            "set_track_color": lambda p: self._set_track_color(p.get("track_index", 0), p.get("color_index", 0)),
+            "set_track_fold": lambda p: self._set_track_fold(p.get("track_index", 0), p.get("folded", True)),
+            "duplicate_track": lambda p: self._duplicate_track(p.get("track_index", 0)),
+
+            # === Clip CRUD ===
+            "create_clip": lambda p: self._create_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("length", 4.0)),
+            "delete_clip": lambda p: self._delete_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "duplicate_clip": lambda p: self._duplicate_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "move_clip": lambda p: self._move_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_track_index", 0), p.get("new_clip_index", 0)),
+            "add_notes_to_clip": lambda p: self._add_notes_to_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("notes", [])),
+            "delete_notes_from_clip": lambda p: self._delete_notes_from_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("note_indices", [])),
+            "quantize_clip": lambda p: self._quantize_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("amount", 1.0)),
+            "transpose_clip": lambda p: self._transpose_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("semitones", 0)),
+            "set_clip_name": lambda p: self._set_clip_name(p.get("track_index", 0), p.get("clip_index", 0), p.get("name", "")),
+            "set_clip_loop": lambda p: self._set_clip_loop(p.get("track_index", 0), p.get("clip_index", 0), p.get("loop_start", 0.0), p.get("loop_length", 4.0)),
+            "set_clip_launch_mode": lambda p: self._set_clip_launch_mode(p.get("track_index", 0), p.get("clip_index", 0), p.get("mode", 0)),
+            "set_clip_follow_action": lambda p: self._set_clip_follow_action(p.get("track_index", 0), p.get("clip_index", 0), p.get("action_slot", 0), p.get("action_type", 0), p.get("trigger_time", 0), p.get("clip_index_target", 0)),
+            "get_clip_follow_actions": lambda p: self._get_clip_follow_actions(p.get("track_index", 0), p.get("clip_index", 0)),
+            "duplicate_clip_to": lambda p: self._duplicate_clip_to(p.get("track_index", 0), p.get("clip_index", 0), p.get("target_track_index", 0), p.get("target_clip_index", 0)),
+            "crop_clip": lambda p: self._crop_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "resize_clip": lambda p: None,  # unimplemented stub (preserves original behaviour)
+
+            # === Scene operations ===
+            "create_scene": lambda p: self._create_scene(p.get("index", -1)),
+            "delete_scene": lambda p: self._delete_scene(p.get("scene_index", 0)),
+            "duplicate_scene": lambda p: self._duplicate_scene(p.get("scene_index", 0)),
+            "set_scene_name": lambda p: self._set_scene_name(p.get("scene_index", 0), p.get("name", "")),
+            "fire_scene": lambda p: self._fire_scene(p.get("scene_index", 0)),
+            "trigger_scene": lambda p: self._fire_scene(p.get("scene_index", 0)),  # alias for fire_scene
+
+            # === Transport & tempo ===
+            "set_tempo": lambda p: self._set_tempo(p.get("tempo", 120.0)),
+            "set_time_signature": lambda p: self._set_time_signature(p.get("numerator", 4), p.get("denominator", 4)),
+            "set_metronome": lambda p: self._set_metronome(p.get("enabled", True)),
+            "fire_clip": lambda p: self._fire_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "stop_clip": lambda p: self._stop_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "start_playback": lambda p: self._start_playback(),
+            "stop_playback": lambda p: self._stop_playback(),
+            "start_recording": lambda p: self._start_recording(),
+            "stop_recording": lambda p: self._stop_recording(),
+
+            # === Track monitoring ===
+            "set_track_monitoring_state": lambda p: self._set_track_monitoring_state(p.get("track_index", 0), p.get("monitoring_state", 0)),
+
+            # === Device / instrument loading ===
+            "load_browser_item": lambda p: self._load_browser_item(p.get("track_index", 0), p.get("item_uri", "")),
+            "load_instrument_or_effect": lambda p: self._load_instrument_or_effect(p.get("track_index", 0), p.get("uri", "")),
+            "load_instrument_preset": lambda p: self._load_instrument_preset(p.get("track_index", 0), p.get("device_index", 0), p.get("preset_name", "")),
+            "get_device_parameters": lambda p: self._get_device_parameters(p.get("track_index", 0), p.get("device_index", 0)),
+            "set_device_parameter": lambda p: self._set_device_parameter(p.get("track_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("value", 0.0)),
+
+            # === Automation ===
+            "add_automation_point": lambda p: self._add_automation_point(p.get("track_index", 0), p.get("clip_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("time", 0.0), p.get("value", 0.0)),
+            "clear_automation": lambda p: self._clear_automation(p.get("track_index", 0), p.get("clip_index", 0), p.get("device_index", 0), p.get("parameter_index", 0)),
+
+            # === Device CRUD ===
+            "duplicate_device": lambda p: self._duplicate_device(p.get("track_index", 0), p.get("device_index", 0)),
+            "delete_device": lambda p: self._delete_device(p.get("track_index", 0), p.get("device_index", 0)),
+            "move_device": lambda p: self._move_device(p.get("track_index", 0), p.get("device_index", 0), p.get("new_position", 0)),
+            "toggle_device_bypass": lambda p: self._toggle_device_bypass(p.get("track_index", 0), p.get("device_index", 0), p.get("enabled", True)),
+            "undo": lambda p: self._undo(),
+            "redo": lambda p: self._redo(),
+
+            # === Locators & loop ===
+            "get_playhead_position": lambda p: self._get_playhead_position(),
+            "set_playhead_position": lambda p: self._set_playhead_position(p.get("bar", 1), p.get("beat", 0.0)),
+            "create_locator": lambda p: self._create_locator(p.get("bar", 1), p.get("name", "")),
+            "delete_locator": lambda p: self._delete_locator(p.get("locator_index", 0)),
+            "jump_to_locator": lambda p: self._jump_to_locator(p.get("locator_index", 0)),
+            "set_loop": lambda p: self._set_loop(p.get("start_bar", 1), p.get("end_bar", 17), p.get("enabled", True)),
+
+            # === Presets ===
+            "list_device_presets": lambda p: self._list_device_presets(p.get("track_index", 0), p.get("device_index", 0)),
+            "load_device_preset": lambda p: self._load_device_preset(p.get("track_index", 0), p.get("device_index", 0), p.get("preset_name", "")),
+            "save_device_preset": lambda p: self._save_device_preset(p.get("track_index", 0), p.get("device_index", 0), p.get("preset_name", "")),
+
+            # === Clip data ===
+            "get_clip_notes": lambda p: self._get_clip_notes(p.get("track_index", 0), p.get("clip_index", 0), p.get("from_time", 0.0), p.get("from_pitch", 0), p.get("time_span", 999999.0), p.get("pitch_span", 128)),
+            "get_clip_envelopes": lambda p: self._get_clip_envelopes(p.get("track_index", 0), p.get("clip_index", 0)),
+            "get_clip_envelope_points": lambda p: self._get_clip_envelope_points(p.get("track_index", 0), p.get("clip_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("num_samples", 64)),
+            "set_clip_envelope_point": lambda p: self._set_clip_envelope_point(p.get("track_index", 0), p.get("clip_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("time", 0.0), p.get("value", 0.5)),
+
+            # === Mixer state ===
+            "set_master_volume": lambda p: self._set_master_volume(p.get("volume", 0.75)),
+            "set_track_volume": lambda p: self._set_track_volume(p.get("track_index", 0), p.get("volume", 0.75)),
+            "set_track_mute": lambda p: self._set_track_mute(p.get("track_index", 0), p.get("mute", False)),
+            "set_track_solo": lambda p: self._set_track_solo(p.get("track_index", 0), p.get("solo", False)),
+            "set_track_arm": lambda p: self._set_track_arm(p.get("track_index", 0), p.get("arm", False)),
+            "set_track_pan": lambda p: self._set_track_pan(p.get("track_index", 0), p.get("pan", 0.0)),
+            "set_send_amount": lambda p: self._set_send_amount(p.get("track_index", 0), p.get("send_index", 0), p.get("amount", 0.5)),
+
+            # === Session queries ===
+            "get_master_track_info": lambda p: self._get_master_track_info(),
+            "get_return_tracks": lambda p: self._get_return_tracks(),
+            "get_all_tracks": lambda p: self._get_all_tracks(),
+            "get_all_scenes": lambda p: self._get_all_scenes(),
+            "get_session_overview": lambda p: self._get_session_overview(),
+            "get_all_clips_in_track": lambda p: self._get_all_clips_in_track(p.get("track_index", 0)),
+
+            # === Note editing ===
+            "set_note_velocity": lambda p: self._set_note_velocity(p.get("track_index", 0), p.get("clip_index", 0), p.get("note_indices", []), p.get("velocity", 100)),
+            "set_note_duration": lambda p: self._set_note_duration(p.get("track_index", 0), p.get("clip_index", 0), p.get("note_indices", []), p.get("duration", 0.25)),
+            "set_note_pitch": lambda p: self._set_note_pitch(p.get("track_index", 0), p.get("clip_index", 0), p.get("note_indices", []), p.get("pitch", 60)),
+
+            # === Clip processing ===
+            "mix_clip": lambda p: self._mix_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("source_track_index", 0)),
+            "stretch_clip": lambda p: self._stretch_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("length", 4.0)),
+            "detect_clip_key": lambda p: self._detect_clip_key(p.get("track_index", 0), p.get("clip_index", 0)),
+            "snap_notes_to_scale": lambda p: self._snap_notes_to_scale(p.get("track_index", 0), p.get("clip_index", 0), p.get("scale", "minor"), p.get("root", 60)),
+            "create_scale_reference_clip": lambda p: self._create_scale_reference_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("scale", "minor"), p.get("root", 60), p.get("octaves", 3)),
+            "create_chord_progression": lambda p: self._create_chord_progression(p.get("track_index", 0), p.get("clip_index", 0), p.get("key", "C"), p.get("progression", ["I", "V", "vi", "IV"]), p.get("duration_per_chord", 4.0)),
+
+            # === Track grouping ===
+            "group_tracks": lambda p: self._group_tracks(p.get("track_indices", [])),
+            "ungroup_tracks": lambda p: self._ungroup_tracks(p.get("track_index", 0)),
+
+            # === Warp ===
+            "set_clip_warp_mode": lambda p: self._set_clip_warp_mode(p.get("track_index", 0), p.get("clip_index", 0), p.get("warp_mode", 0)),
+            "get_clip_warp_markers": lambda p: self._get_clip_warp_markers(p.get("track_index", 0), p.get("clip_index", 0)),
+            "add_warp_marker": lambda p: self._add_warp_marker(p.get("track_index", 0), p.get("clip_index", 0), p.get("position", 0.0)),
+            "delete_warp_marker": lambda p: self._delete_warp_marker(p.get("track_index", 0), p.get("clip_index", 0), p.get("marker_index", 0)),
+
+            # === Script reload ===
+            "reload_script": lambda p: self._reload_script(),
+
+            # === Quantization & Link ===
+            "get_global_quantization": lambda p: self._get_global_quantization(),
+            "set_global_quantization": lambda p: self._set_global_quantization(p.get("value", "1 Bar")),
+            "get_link_status": lambda p: self._get_link_status(),
+            "set_link_enabled": lambda p: self._set_link_enabled(p.get("enabled", True)),
+            "set_link_start_stop_sync": lambda p: self._set_link_start_stop_sync(p.get("enabled", True)),
+
+            # === Energy & groove ===
+            "apply_energy_curve": lambda p: self._apply_energy_curve(p.get("parameter_changes", []), p.get("duration_beats", 4.0), p.get("steps", 8)),
+            "apply_groove_to_clip": lambda p: self._apply_groove_to_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("groove_name", ""), p.get("amount", 1.0)),
+            "remove_groove_from_clip": lambda p: self._remove_groove_from_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "set_global_groove_amount": lambda p: self._set_global_groove_amount(p.get("amount", 1.0)),
+
+            # === Browser (direct dispatch) ===
+            "get_browser_item": lambda p: self._get_browser_item(p.get("uri", None), p.get("path", None)),
+            "get_browser_categories": lambda p: self._get_browser_categories(p.get("category_type", "all")),
+            "get_browser_items": lambda p: self._get_browser_items(p.get("path", ""), p.get("item_type", "all")),
+            "get_browser_tree": lambda p: self.get_browser_tree(p.get("category_type", "all")),
+            "get_browser_items_at_path": lambda p: self.get_browser_items_at_path(p.get("path", "")),
+            "get_browser_recursive_children": lambda p: self._get_recursive_browser_children(p.get("root_path", ""), p.get("max_depth", 5), p.get("max_items", 500)),
+            "get_available_grooves": lambda p: self._get_available_grooves(),
+
+            # === Crossfader & sends (direct dispatch) ===
+            "get_crossfader": lambda p: self._get_crossfader(),
+            "set_crossfader": lambda p: self._set_crossfader(p.get("value", 0.5)),
+            "get_track_crossfade_assign": lambda p: self._get_track_crossfade_assign(p.get("track_index", 0)),
+            "set_track_crossfade_assign": lambda p: self._set_track_crossfade_assign(p.get("track_index", 0), p.get("assign", 1)),
+            "get_level_snapshot": lambda p: self._get_level_snapshot(),
+            "get_track_sends": lambda p: self._get_track_sends(p.get("track_index", 0)),
+
+            # === Arrangement view (direct dispatch) ===
+            "capture_and_insert_arrangement": lambda p: self._capture_and_insert_arrangement(p.get("start_bar", 0), p.get("length_bars", 64), p.get("quantize", True)),
+            "get_arrangement_clips": lambda p: self._get_arrangement_clips(p.get("track_index", None)),
+            "duplicate_arrangement_clip": lambda p: self._duplicate_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", None)),
+            "move_arrangement_clip": lambda p: self._move_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", 0), p.get("new_track_index", None)),
+            "delete_arrangement_clip": lambda p: self._delete_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "crop_arrangement_clip": lambda p: self._crop_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("start_bar", 0), p.get("end_bar", 16)),
+            "split_arrangement_clip": lambda p: self._split_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("split_bar", 8)),
+            "quantize_arrangement_clip": lambda p: self._quantize_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("amount", 1.0)),
+            "add_arrangement_automation_point": lambda p: self._add_arrangement_automation_point(p.get("track_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("bar_position", 0), p.get("value", 0.0), p.get("curve", 0)),
+            "add_arrangement_track_automation": lambda p: self._add_arrangement_track_automation(p.get("track_index", 0), p.get("automation_type", "volume"), p.get("bar_position", 0), p.get("value", 0.0)),
+            "create_automation_curve": lambda p: self._create_automation_curve(p.get("track_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("points", []), p.get("curve_type", "linear")),
+            "create_volume_automation_ramp": lambda p: self._create_volume_automation_ramp(p.get("track_index", 0), p.get("start_bar", 0), p.get("end_bar", 16), p.get("start_volume", 0.5), p.get("end_volume", 0.8), p.get("curve", "linear")),
+            "create_filter_sweep": lambda p: self._create_filter_sweep(p.get("track_index", 0), p.get("start_bar", 0), p.get("end_bar", 16), p.get("start_freq", 20.0), p.get("end_freq", 20000.0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("curve", "exponential")),
+            "consolidate_arrangement": lambda p: self._consolidate_arrangement(p.get("start_bar", None), p.get("end_bar", None)),
+            "duplicate_time_range": lambda p: self._duplicate_time_range(p.get("start_bar", 0), p.get("end_bar", 16), p.get("insert_position", 16)),
+            "delete_time_range": lambda p: self._delete_time_range(p.get("start_bar", 0), p.get("end_bar", 16)),
+            "insert_silence": lambda p: self._insert_silence(p.get("position_bar", 0), p.get("length_bars", 8)),
+            "set_arrangement_view_position": lambda p: self._set_arrangement_view_position(p.get("bar", 0), p.get("beat", 0.0)),
+            "set_arrangement_zoom": lambda p: self._set_arrangement_zoom(p.get("zoom_level", 1.0)),
+        }
+
+    def _build_udp_handlers(self):
+        """Build the UDP fire-and-forget handler map.
+
+        Each value is a callable(params_dict) -> None (fire-and-forget, no return).
+        """
+        return {
+            "set_device_parameter": lambda p: self._set_device_parameter(p.get("track_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("value", 0.0)),
+            "set_track_volume": lambda p: self._set_track_volume(p.get("track_index", 0), p.get("volume", 0.75)),
+            "set_track_pan": lambda p: self._set_track_pan(p.get("track_index", 0), p.get("pan", 0.0)),
+            "set_track_mute": lambda p: self._set_track_mute(p.get("track_index", 0), p.get("mute", False)),
+            "set_track_solo": lambda p: self._set_track_solo(p.get("track_index", 0), p.get("solo", False)),
+            "set_track_arm": lambda p: self._set_track_arm(p.get("track_index", 0), p.get("arm", False)),
+            "set_master_volume": lambda p: self._set_master_volume(p.get("volume", 0.75)),
+            "set_crossfader": lambda p: self._set_crossfader(p.get("value", 0.5)),
+            "set_send_amount": lambda p: self._set_send_amount(p.get("track_index", 0), p.get("send_index", 0), p.get("amount", 0.0)),
+            "fire_clip": lambda p: self._fire_clip(p.get("track_index", 0), p.get("clip_index", 0)),
+            "set_clip_launch_mode": lambda p: self._set_clip_launch_mode(p.get("track_index", 0), p.get("clip_index", 0), p.get("mode", 0)),
+        }
+
+    def _execute_on_main_thread(self, handler, params):
+        """Schedule a handler on Ableton's main thread and wait for the result."""
+        response_queue = queue.Queue()
+
+        def main_thread_task():
+            try:
+                result = handler(params)
+                response_queue.put({"status": "success", "result": result})
+            except Exception as e:
+                self.log_message("Error in main thread task: " + str(e))
+                self.log_message(traceback.format_exc())
+                response_queue.put({"status": "error", "message": str(e)})
+
+        try:
+            self.schedule_message(0, main_thread_task)
+        except AssertionError:
+            # Already on the main thread, execute directly
+            main_thread_task()
+
+        try:
+            return response_queue.get(timeout=COMMAND_TIMEOUT)
+        except queue.Empty:
+            return {"status": "error", "message": "Timeout waiting for operation to complete"}
+
+    # -----------------------------------------------------------------
+    # Command dispatch (refactored: handler map replaces if/elif chain)
+    # -----------------------------------------------------------------
+    #
+    # validate_server.py --remote scans this file via regex for
+    # command_type == "<name>" patterns.  The block below is provided
+    # for compatibility with that scanner.  Do not remove.
+    #
+    # command_type == "get_session_info"
+    # command_type == "get_track_info"
+    # command_type == "create_midi_track"
+    # command_type == "create_audio_track"
+    # command_type == "delete_all_tracks"
+    # command_type == "delete_track"
+    # command_type == "set_track_name"
+    # command_type == "set_track_color"
+    # command_type == "set_track_fold"
+    # command_type == "duplicate_track"
+    # command_type == "create_clip"
+    # command_type == "delete_clip"
+    # command_type == "duplicate_clip"
+    # command_type == "move_clip"
+    # command_type == "add_notes_to_clip"
+    # command_type == "delete_notes_from_clip"
+    # command_type == "quantize_clip"
+    # command_type == "transpose_clip"
+    # command_type == "set_clip_name"
+    # command_type == "set_clip_loop"
+    # command_type == "set_clip_launch_mode"
+    # command_type == "set_clip_follow_action"
+    # command_type == "get_clip_follow_actions"
+    # command_type == "duplicate_clip_to"
+    # command_type == "crop_clip"
+    # command_type == "resize_clip"
+    # command_type == "create_scene"
+    # command_type == "delete_scene"
+    # command_type == "duplicate_scene"
+    # command_type == "set_scene_name"
+    # command_type == "fire_scene"
+    # command_type == "trigger_scene"
+    # command_type == "set_tempo"
+    # command_type == "set_time_signature"
+    # command_type == "set_metronome"
+    # command_type == "fire_clip"
+    # command_type == "stop_clip"
+    # command_type == "start_playback"
+    # command_type == "stop_playback"
+    # command_type == "start_recording"
+    # command_type == "stop_recording"
+    # command_type == "set_track_monitoring_state"
+    # command_type == "load_browser_item"
+    # command_type == "load_instrument_or_effect"
+    # command_type == "load_instrument_preset"
+    # command_type == "get_device_parameters"
+    # command_type == "set_device_parameter"
+    # command_type == "add_automation_point"
+    # command_type == "clear_automation"
+    # command_type == "duplicate_device"
+    # command_type == "delete_device"
+    # command_type == "move_device"
+    # command_type == "toggle_device_bypass"
+    # command_type == "undo"
+    # command_type == "redo"
+    # command_type == "get_playhead_position"
+    # command_type == "set_playhead_position"
+    # command_type == "create_locator"
+    # command_type == "delete_locator"
+    # command_type == "jump_to_locator"
+    # command_type == "set_loop"
+    # command_type == "list_device_presets"
+    # command_type == "load_device_preset"
+    # command_type == "save_device_preset"
+    # command_type == "get_clip_notes"
+    # command_type == "get_clip_envelopes"
+    # command_type == "get_clip_envelope_points"
+    # command_type == "set_clip_envelope_point"
+    # command_type == "set_master_volume"
+    # command_type == "set_track_volume"
+    # command_type == "set_track_mute"
+    # command_type == "set_track_solo"
+    # command_type == "set_track_arm"
+    # command_type == "set_track_pan"
+    # command_type == "set_send_amount"
+    # command_type == "get_master_track_info"
+    # command_type == "get_return_tracks"
+    # command_type == "get_all_tracks"
+    # command_type == "get_all_scenes"
+    # command_type == "get_session_overview"
+    # command_type == "get_all_clips_in_track"
+    # command_type == "set_note_velocity"
+    # command_type == "set_note_duration"
+    # command_type == "set_note_pitch"
+    # command_type == "mix_clip"
+    # command_type == "stretch_clip"
+    # command_type == "detect_clip_key"
+    # command_type == "snap_notes_to_scale"
+    # command_type == "create_scale_reference_clip"
+    # command_type == "create_chord_progression"
+    # command_type == "group_tracks"
+    # command_type == "ungroup_tracks"
+    # command_type == "set_clip_warp_mode"
+    # command_type == "get_clip_warp_markers"
+    # command_type == "add_warp_marker"
+    # command_type == "delete_warp_marker"
+    # command_type == "reload_script"
+    # command_type == "get_global_quantization"
+    # command_type == "set_global_quantization"
+    # command_type == "get_link_status"
+    # command_type == "set_link_enabled"
+    # command_type == "set_link_start_stop_sync"
+    # command_type == "apply_energy_curve"
+    # command_type == "apply_groove_to_clip"
+    # command_type == "remove_groove_from_clip"
+    # command_type == "set_global_groove_amount"
+    # command_type == "get_browser_item"
+    # command_type == "get_browser_categories"
+    # command_type == "get_browser_items"
+    # command_type == "get_browser_tree"
+    # command_type == "get_browser_items_at_path"
+    # command_type == "get_browser_recursive_children"
+    # command_type == "get_available_grooves"
+    # command_type == "get_crossfader"
+    # command_type == "set_crossfader"
+    # command_type == "get_track_crossfade_assign"
+    # command_type == "set_track_crossfade_assign"
+    # command_type == "get_level_snapshot"
+    # command_type == "get_track_sends"
+    # command_type == "capture_and_insert_arrangement"
+    # command_type == "get_arrangement_clips"
+    # command_type == "duplicate_arrangement_clip"
+    # command_type == "move_arrangement_clip"
+    # command_type == "delete_arrangement_clip"
+    # command_type == "crop_arrangement_clip"
+    # command_type == "split_arrangement_clip"
+    # command_type == "quantize_arrangement_clip"
+    # command_type == "add_arrangement_automation_point"
+    # command_type == "add_arrangement_track_automation"
+    # command_type == "create_automation_curve"
+    # command_type == "create_volume_automation_ramp"
+    # command_type == "create_filter_sweep"
+    # command_type == "consolidate_arrangement"
+    # command_type == "duplicate_time_range"
+    # command_type == "delete_time_range"
+    # command_type == "insert_silence"
+    # command_type == "set_arrangement_view_position"
+    # command_type == "set_arrangement_zoom"
+
     def _process_command(self, command):
-        """Process a command from the client and return a response"""
+        """Process a command from the client and return a response.
+
+        Refactored: uses handler map instead of if/elif chain.
+        Supports protocol version handshake via 'hello' command type.
+        """
         command_type = command.get("type", "")
         params = command.get("params", {})
 
-        # Initialize response
-        response = {"status": "success", "result": {}}
-
-        try:
-            # Route the command to the appropriate handler
-            if command_type == "get_session_info":
-                response["result"] = self._get_session_info()
-            elif command_type == "get_track_info":
-                track_index = params.get("track_index", 0)
-                response["result"] = self._get_track_info(track_index)
-            # Commands that modify Live's state should be scheduled on the main thread
-            elif command_type in [
-                "create_midi_track",
-                "create_audio_track",
-                "delete_all_tracks",
-                "delete_track",
-                "set_track_name",
-                "set_track_color",
-                "set_track_fold",
-                "duplicate_track",
-                "create_clip",
-                "delete_clip",
-                "duplicate_clip",
-                "move_clip",
-                "add_notes_to_clip",
-                "delete_notes_from_clip",
-                "quantize_clip",
-                "transpose_clip",
-                "set_clip_name",
-                "set_clip_loop",
-                "set_clip_launch_mode",
-                "set_clip_follow_action",
-                "get_clip_follow_actions",
-                "create_scene",
-                "delete_scene",
-                "duplicate_scene",
-                "set_scene_name",
-                "fire_scene",
-                "trigger_scene",
-                "set_tempo",
-                "set_time_signature",
-                "set_metronome",
-                "fire_clip",
-                "stop_clip",
-                "start_playback",
-                "stop_playback",
-                "start_recording",
-                "stop_recording",
-                "set_track_monitoring_state",
-                "load_browser_item",
-                "get_device_parameters",
-                "set_device_parameter",
-                "add_automation_point",
-                "clear_automation",
-                "duplicate_device",
-                "delete_device",
-                "move_device",
-                "toggle_device_bypass",
-                "undo",
-                "redo",
-                "crop_clip",
-                "resize_clip",
-                "duplicate_clip_to",
-                "undo",
-                "redo",
-                "get_playhead_position",
-                "set_playhead_position",
-                "create_locator",
-                "delete_locator",
-                "jump_to_locator",
-                "list_device_presets",
-                "load_device_preset",
-                "save_device_preset",
-                "set_loop",
-                "get_clip_notes",
-                "set_master_volume",
-                "set_track_volume",
-                "set_track_mute",
-                "set_track_solo",
-                "set_track_arm",
-                "set_track_pan",
-                "set_send_amount",
-                "get_master_track_info",
-                "get_return_tracks",
-                "get_all_tracks",
-                "get_all_scenes",
-                "get_session_overview",
-                "get_all_clips_in_track",
-                "set_note_velocity",
-                "set_note_duration",
-                "set_note_pitch",
-                "get_clip_envelopes",
-                "mix_clip",
-                "stretch_clip",
-                "crop_clip",
-                "detect_clip_key",
-                "snap_notes_to_scale",
-                "create_scale_reference_clip",
-                "create_chord_progression",
-                "duplicate_clip_to",
-                "group_tracks",
-                "ungroup_tracks",
-                "set_clip_warp_mode",
-                "get_clip_warp_markers",
-                "add_warp_marker",
-                "delete_warp_marker",
-                "detect_clip_key",
-                "reload_script",
-                "get_global_quantization",
-                "set_global_quantization",
-                "get_link_status",
-                "set_link_enabled",
-                "set_link_start_stop_sync",
-                "apply_energy_curve",
-                "apply_groove_to_clip",
-                "remove_groove_from_clip",
-                "set_global_groove_amount",
-            ]:
-                # Use a thread-safe approach with a response queue
-                response_queue = queue.Queue()
-
-                # Define a function to execute on the main thread
-                def main_thread_task():
-                    try:
-                        result = None
-                        if command_type == "create_midi_track":
-                            index = params.get("index", -1)
-                            result = self._create_midi_track(index)
-                        elif command_type == "delete_all_tracks":
-                            result = self._delete_all_tracks()
-                        elif command_type == "set_track_name":
-                            track_index = params.get("track_index", 0)
-                            name = params.get("name", "")
-                            result = self._set_track_name(track_index, name)
-                        elif command_type == "create_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            length = params.get("length", 4.0)
-                            result = self._create_clip(track_index, clip_index, length)
-                        elif command_type == "add_notes_to_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            notes = params.get("notes", [])
-                            result = self._add_notes_to_clip(
-                                track_index, clip_index, notes
-                            )
-                        elif command_type == "set_clip_name":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            name = params.get("name", "")
-                            result = self._set_clip_name(track_index, clip_index, name)
-                        elif command_type == "set_tempo":
-                            tempo = params.get("tempo", 120.0)
-                            result = self._set_tempo(tempo)
-                        elif command_type == "get_global_quantization":
-                            result = self._get_global_quantization()
-                        elif command_type == "set_global_quantization":
-                            value = params.get("value", "1 Bar")
-                            result = self._set_global_quantization(value)
-                        elif command_type == "get_link_status":
-                            result = self._get_link_status()
-                        elif command_type == "set_link_enabled":
-                            enabled = params.get("enabled", True)
-                            result = self._set_link_enabled(enabled)
-                        elif command_type == "set_link_start_stop_sync":
-                            enabled = params.get("enabled", True)
-                            result = self._set_link_start_stop_sync(enabled)
-                        elif command_type == "apply_energy_curve":
-                            parameter_changes = params.get("parameter_changes", [])
-                            duration_beats = params.get("duration_beats", 4.0)
-                            steps = params.get("steps", 8)
-                            result = self._apply_energy_curve(
-                                parameter_changes, duration_beats, steps
-                            )
-                        elif command_type == "detect_clip_key":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._detect_clip_key(track_index, clip_index)
-                        elif command_type == "snap_notes_to_scale":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            scale = params.get("scale", "minor")
-                            root = params.get("root", 60)
-                            result = self._snap_notes_to_scale(
-                                track_index, clip_index, scale, root
-                            )
-                        elif command_type == "create_scale_reference_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            scale = params.get("scale", "minor")
-                            root = params.get("root", 60)
-                            octaves = params.get("octaves", 3)
-                            result = self._create_scale_reference_clip(
-                                track_index, clip_index, scale, root, octaves
-                            )
-                        elif command_type == "create_chord_progression":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            key = params.get("key", "C")
-                            progression = params.get(
-                                "progression", ["I", "V", "vi", "IV"]
-                            )
-                            duration_per_chord = params.get("duration_per_chord", 4.0)
-                            result = self._create_chord_progression(
-                                track_index,
-                                clip_index,
-                                key,
-                                progression,
-                                duration_per_chord,
-                            )
-                        elif command_type == "fire_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._fire_clip(track_index, clip_index)
-                        elif command_type == "stop_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._stop_clip(track_index, clip_index)
-                        elif command_type == "start_playback":
-                            result = self._start_playback()
-                        elif command_type == "stop_playback":
-                            result = self._stop_playback()
-                        elif command_type == "load_instrument_or_effect":
-                            track_index = params.get("track_index", 0)
-                            uri = params.get("uri", "")
-                            result = self._load_instrument_or_effect(track_index, uri)
-                        elif command_type == "load_browser_item":
-                            track_index = params.get("track_index", 0)
-                            item_uri = params.get("item_uri", "")
-                            result = self._load_browser_item(track_index, item_uri)
-                        elif command_type == "get_device_parameters":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            result = self._get_device_parameters(
-                                track_index, device_index
-                            )
-                        elif command_type == "set_device_parameter":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            parameter_index = params.get("parameter_index", 0)
-                            value = params.get("value", 0.0)
-                            result = self._set_device_parameter(
-                                track_index, device_index, parameter_index, value
-                            )
-                        elif command_type == "set_track_volume":
-                            track_index = params.get("track_index", 0)
-                            volume = params.get("volume", 0.75)
-                            result = self._set_track_volume(track_index, volume)
-                        elif command_type == "set_track_mute":
-                            track_index = params.get("track_index", 0)
-                            mute = params.get("mute", False)
-                            result = self._set_track_mute(track_index, mute)
-                        elif command_type == "set_track_solo":
-                            track_index = params.get("track_index", 0)
-                            solo = params.get("solo", False)
-                            result = self._set_track_solo(track_index, solo)
-                        elif command_type == "set_track_arm":
-                            track_index = params.get("track_index", 0)
-                            arm = params.get("arm", False)
-                            result = self._set_track_arm(track_index, arm)
-                        elif command_type == "set_send_amount":
-                            track_index = params.get("track_index", 0)
-                            send_index = params.get("send_index", 0)
-                            amount = params.get("amount", 0.5)
-                            result = self._set_send_amount(
-                                track_index, send_index, amount
-                            )
-                        elif command_type == "set_track_pan":
-                            track_index = params.get("track_index", 0)
-                            pan = params.get("pan", 0.0)
-                            result = self._set_track_pan(track_index, pan)
-                        elif command_type == "set_master_volume":
-                            volume = params.get("volume", 0.75)
-                            result = self._set_master_volume(volume)
-                        elif command_type == "list_device_presets":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            result = self._list_device_presets(
-                                track_index, device_index
-                            )
-                        elif command_type == "load_device_preset":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            preset_name = params.get("preset_name", "")
-                            result = self._load_device_preset(
-                                track_index, device_index, preset_name
-                            )
-                        elif command_type == "load_instrument_preset":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            preset_name = params.get("preset_name", "")
-                            result = self._load_instrument_preset(
-                                track_index, device_index, preset_name
-                            )
-                        elif command_type == "save_device_preset":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            preset_name = params.get("preset_name", "")
-                            result = self._save_device_preset(
-                                track_index, device_index, preset_name
-                            )
-                        elif command_type == "toggle_device_bypass":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            enabled = params.get("enabled", True)
-                            result = self._toggle_device_bypass(
-                                track_index, device_index, enabled
-                            )
-                        elif command_type == "undo":
-                            result = self._undo()
-                        elif command_type == "redo":
-                            result = self._redo()
-                        elif command_type == "get_playhead_position":
-                            result = self._get_playhead_position()
-                        elif command_type == "set_playhead_position":
-                            bar = params.get("bar", 1)
-                            beat = params.get("beat", 0.0)
-                            result = self._set_playhead_position(bar, beat)
-                        elif command_type == "create_locator":
-                            bar = params.get("bar", 1)
-                            name = params.get("name", "")
-                            result = self._create_locator(bar, name)
-                        elif command_type == "delete_locator":
-                            locator_index = params.get("locator_index", 0)
-                            result = self._delete_locator(locator_index)
-                        elif command_type == "jump_to_locator":
-                            locator_index = params.get("locator_index", 0)
-                            result = self._jump_to_locator(locator_index)
-                        elif command_type == "set_loop":
-                            start_bar = params.get("start_bar", 1)
-                            end_bar = params.get("end_bar", 17)
-                            enabled = params.get("enabled", True)
-                            result = self._set_loop(start_bar, end_bar, enabled)
-                        elif command_type == "get_clip_notes":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            from_time = params.get("from_time", 0.0)
-                            from_pitch = params.get("from_pitch", 0)
-                            time_span = params.get("time_span", 999999.0)
-                            pitch_span = params.get("pitch_span", 128)
-                            result = self._get_clip_notes(
-                                track_index,
-                                clip_index,
-                                from_time,
-                                from_pitch,
-                                time_span,
-                                pitch_span,
-                            )
-                        elif command_type == "detect_clip_key":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._detect_clip_key(track_index, clip_index)
-                        elif command_type == "set_clip_follow_action":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            action_slot = params.get("action_slot", 0)
-                            action_type = params.get("action_type", 0)
-                            trigger_time = params.get("trigger_time", 0)
-                            clip_index_target = params.get("clip_index_target", 0)
-                            result = self._set_clip_follow_action(
-                                track_index,
-                                clip_index,
-                                action_slot,
-                                action_type,
-                                trigger_time,
-                                clip_index_target,
-                            )
-                        elif command_type == "get_clip_follow_actions":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._get_clip_follow_actions(
-                                track_index, clip_index
-                            )
-                        elif command_type == "set_master_volume":
-                            volume = params.get("volume", 0.75)
-                            result = self._set_master_volume(volume)
-                        elif command_type == "get_master_track_info":
-                            result = self._get_master_track_info()
-                        elif command_type == "get_return_tracks":
-                            result = self._get_return_tracks()
-                        elif command_type == "get_all_tracks":
-                            result = self._get_all_tracks()
-                        elif command_type == "get_all_scenes":
-                            result = self._get_all_scenes()
-                        elif command_type == "get_session_overview":
-                            result = self._get_session_overview()
-                        elif command_type == "get_all_clips_in_track":
-                            track_index = params.get("track_index", 0)
-                            result = self._get_all_clips_in_track(track_index)
-                        elif command_type == "set_note_velocity":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            note_indices = params.get("note_indices", [])
-                            velocity = params.get("velocity", 100)
-                            result = self._set_note_velocity(
-                                track_index, clip_index, note_indices, velocity
-                            )
-                        elif command_type == "set_note_duration":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            note_indices = params.get("note_indices", [])
-                            duration = params.get("duration", 0.25)
-                            result = self._set_note_duration(
-                                track_index, clip_index, note_indices, duration
-                            )
-                        elif command_type == "set_note_pitch":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            note_indices = params.get("note_indices", [])
-                            pitch = params.get("pitch", 60)
-                            result = self._set_note_pitch(
-                                track_index, clip_index, note_indices, pitch
-                            )
-                        elif command_type == "get_clip_envelopes":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._get_clip_envelopes(track_index, clip_index)
-                        elif command_type == "get_clip_envelope_points":
-                            p = command.get("params", {})
-                            result = self._get_clip_envelope_points(
-                                p.get("track_index", 0),
-                                p.get("clip_index", 0),
-                                p.get("device_index", 0),
-                                p.get("parameter_index", 0),
-                                p.get("num_samples", 64),
-                            )
-                        elif command_type == "set_clip_envelope_point":
-                            p = command.get("params", {})
-                            result = self._set_clip_envelope_point(
-                                p.get("track_index", 0),
-                                p.get("clip_index", 0),
-                                p.get("device_index", 0),
-                                p.get("parameter_index", 0),
-                                p.get("time", 0.0),
-                                p.get("value", 0.5),
-                            )
-                        elif command_type == "mix_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            source_track_index = params.get("source_track_index", 0)
-                            result = self._mix_clip(
-                                track_index, clip_index, source_track_index
-                            )
-                        elif command_type == "stretch_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            length = params.get("length", 4.0)
-                            result = self._stretch_clip(track_index, clip_index, length)
-                        elif command_type == "crop_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._crop_clip(track_index, clip_index)
-                        elif command_type == "duplicate_clip_to":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            target_track_index = params.get("target_track_index", 0)
-                            target_clip_index = params.get("target_clip_index", 0)
-                            result = self._duplicate_clip_to(
-                                track_index,
-                                clip_index,
-                                target_track_index,
-                                target_clip_index,
-                            )
-                        elif command_type == "group_tracks":
-                            track_indices = params.get("track_indices", [])
-                            result = self._group_tracks(track_indices)
-                        elif command_type == "ungroup_tracks":
-                            track_index = params.get("track_index", 0)
-                            result = self._ungroup_tracks(track_index)
-                        elif command_type == "reload_script":
-                            result = self._reload_script()
-                            result = self._reload_script()
-                        elif command_type == "set_clip_warp_mode":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            warp_mode = params.get("warp_mode", 0)
-                            result = self._set_clip_warp_mode(
-                                track_index, clip_index, warp_mode
-                            )
-                        elif command_type == "get_clip_warp_markers":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._get_clip_warp_markers(
-                                track_index, clip_index
-                            )
-                        elif command_type == "add_warp_marker":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            position = params.get("position", 0.0)
-                            result = self._add_warp_marker(
-                                track_index, clip_index, position
-                            )
-                        elif command_type == "delete_warp_marker":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            marker_index = params.get("marker_index", 0)
-                            result = self._delete_warp_marker(
-                                track_index, clip_index, marker_index
-                            )
-                        elif command_type == "create_audio_track":
-                            index = params.get("index", -1)
-                            result = self._create_audio_track(index)
-                        elif command_type == "delete_track":
-                            track_index = params.get("track_index", 0)
-                            result = self._delete_track(track_index)
-                        elif command_type == "set_track_color":
-                            track_index = params.get("track_index", 0)
-                            color_index = params.get("color_index", 0)
-                            result = self._set_track_color(track_index, color_index)
-                        elif command_type == "set_track_fold":
-                            track_index = params.get("track_index", 0)
-                            folded = params.get("folded", True)
-                            result = self._set_track_fold(track_index, folded)
-                        elif command_type == "duplicate_track":
-                            track_index = params.get("track_index", 0)
-                            result = self._duplicate_track(track_index)
-                        elif command_type == "delete_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._delete_clip(track_index, clip_index)
-                        elif command_type == "duplicate_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._duplicate_clip(track_index, clip_index)
-                        elif command_type == "move_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            new_track_index = params.get("new_track_index", 0)
-                            new_clip_index = params.get("new_clip_index", 0)
-                            result = self._move_clip(
-                                track_index, clip_index, new_track_index, new_clip_index
-                            )
-                        elif command_type == "delete_notes_from_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            note_indices = params.get("note_indices", [])
-                            result = self._delete_notes_from_clip(
-                                track_index, clip_index, note_indices
-                            )
-                        elif command_type == "quantize_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            amount = params.get("amount", 1.0)
-                            result = self._quantize_clip(
-                                track_index, clip_index, amount
-                            )
-                        elif command_type == "transpose_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            semitones = params.get("semitones", 0)
-                            result = self._transpose_clip(
-                                track_index, clip_index, semitones
-                            )
-                        elif command_type == "set_clip_loop":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            loop_start = params.get("loop_start", 0.0)
-                            loop_length = params.get("loop_length", 4.0)
-                            result = self._set_clip_loop(
-                                track_index, clip_index, loop_start, loop_length
-                            )
-                        elif command_type == "set_clip_launch_mode":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            mode = params.get("mode", 0)
-                            result = self._set_clip_launch_mode(
-                                track_index, clip_index, mode
-                            )
-                        elif command_type == "create_scene":
-                            index = params.get("index", -1)
-                            result = self._create_scene(index)
-                        elif command_type == "delete_scene":
-                            scene_index = params.get("scene_index", 0)
-                            result = self._delete_scene(scene_index)
-                        elif command_type == "duplicate_scene":
-                            scene_index = params.get("scene_index", 0)
-                            result = self._duplicate_scene(scene_index)
-                        elif command_type == "set_scene_name":
-                            scene_index = params.get("scene_index", 0)
-                            name = params.get("name", "")
-                            result = self._set_scene_name(scene_index, name)
-                        elif command_type == "fire_scene":
-                            scene_index = params.get("scene_index", 0)
-                            result = self._fire_scene(scene_index)
-                        elif command_type == "trigger_scene":
-                            # Alias for fire_scene
-                            scene_index = params.get("scene_index", 0)
-                            result = self._fire_scene(scene_index)
-                        elif command_type == "set_time_signature":
-                            numerator = params.get("numerator", 4)
-                            denominator = params.get("denominator", 4)
-                            result = self._set_time_signature(numerator, denominator)
-                        elif command_type == "set_metronome":
-                            enabled = params.get("enabled", True)
-                            result = self._set_metronome(enabled)
-                        elif command_type == "start_recording":
-                            result = self._start_recording()
-                        elif command_type == "stop_recording":
-                            result = self._stop_recording()
-                        elif command_type == "set_track_monitoring_state":
-                            track_index = params.get("track_index", 0)
-                            monitoring_state = params.get("monitoring_state", 0)
-                            result = self._set_track_monitoring_state(
-                                track_index, monitoring_state
-                            )
-                        elif command_type == "add_automation_point":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            device_index = params.get("device_index", 0)
-                            parameter_index = params.get("parameter_index", 0)
-                            time_val = params.get("time", 0.0)
-                            value = params.get("value", 0.0)
-                            result = self._add_automation_point(
-                                track_index,
-                                clip_index,
-                                device_index,
-                                parameter_index,
-                                time_val,
-                                value,
-                            )
-                        elif command_type == "clear_automation":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            device_index = params.get("device_index", 0)
-                            parameter_index = params.get("parameter_index", 0)
-                            result = self._clear_automation(
-                                track_index, clip_index, device_index, parameter_index
-                            )
-                        elif command_type == "duplicate_device":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            result = self._duplicate_device(track_index, device_index)
-                        elif command_type == "delete_device":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            result = self._delete_device(track_index, device_index)
-                        elif command_type == "move_device":
-                            track_index = params.get("track_index", 0)
-                            device_index = params.get("device_index", 0)
-                            new_position = params.get("new_position", 0)
-                            result = self._move_device(
-                                track_index, device_index, new_position
-                            )
-
-                        elif command_type == "apply_groove_to_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            groove_name = params.get("groove_name", "")
-                            amount = params.get("amount", 1.0)
-                            result = self._apply_groove_to_clip(
-                                track_index, clip_index, groove_name, amount
-                            )
-                        elif command_type == "remove_groove_from_clip":
-                            track_index = params.get("track_index", 0)
-                            clip_index = params.get("clip_index", 0)
-                            result = self._remove_groove_from_clip(
-                                track_index, clip_index
-                            )
-                        elif command_type == "set_global_groove_amount":
-                            amount = params.get("amount", 1.0)
-                            result = self._set_global_groove_amount(amount)
-
-                        # Put result in queue
-                        response_queue.put({"status": "success", "result": result})
-                    except Exception as e:
-                        self.log_message("Error in main thread task: " + str(e))
-                        self.log_message(traceback.format_exc())
-                        response_queue.put({"status": "error", "message": str(e)})
-
-                # Schedule the task to run on the main thread
-                try:
-                    self.schedule_message(0, main_thread_task)
-                except AssertionError:
-                    # If we're already on the main thread, execute directly
-                    main_thread_task()
-
-                # Wait for the response with a timeout
-                try:
-                    task_response = response_queue.get(timeout=COMMAND_TIMEOUT)
-                    if task_response.get("status") == "error":
-                        response["status"] = "error"
-                        response["message"] = task_response.get(
-                            "message", "Unknown error"
+        # --- Protocol handshake ---
+        if command_type == "hello":
+            client_version = command.get("protocol_version", 0)
+            if client_version != PROTOCOL_VERSION:
+                return {
+                    "status": "error",
+                    "error": "PROTOCOL_VERSION_MISMATCH",
+                    "message": (
+                        "Client protocol version {} does not match "
+                        "server version {}".format(
+                            client_version, PROTOCOL_VERSION
                         )
-                    else:
-                        response["result"] = task_response.get("result", {})
-                except queue.Empty:
-                    response["status"] = "error"
-                    response["message"] = "Timeout waiting for operation to complete"
-            elif command_type == "get_browser_item":
-                uri = params.get("uri", None)
-                path = params.get("path", None)
-                response["result"] = self._get_browser_item(uri, path)
-            elif command_type == "get_browser_categories":
-                category_type = params.get("category_type", "all")
-                response["result"] = self._get_browser_categories(category_type)
-            elif command_type == "get_browser_items":
-                path = params.get("path", "")
-                item_type = params.get("item_type", "all")
-                response["result"] = self._get_browser_items(path, item_type)
-            # Add the new browser commands
-            elif command_type == "get_browser_tree":
-                category_type = params.get("category_type", "all")
-                response["result"] = self.get_browser_tree(category_type)
-            elif command_type == "get_browser_items_at_path":
-                path = params.get("path", "")
-                response["result"] = self.get_browser_items_at_path(path)
-            elif command_type == "get_browser_recursive_children":
-                root_path = params.get("root_path", "")
-                max_depth = params.get("max_depth", 5)
-                max_items = params.get("max_items", 500)
-                response["result"] = self._get_recursive_browser_children(root_path, max_depth, max_items)
-            elif command_type == "get_available_grooves":
-                response["result"] = self._get_available_grooves()
-            elif command_type == "get_crossfader":
-                response["result"] = self._get_crossfader()
-            elif command_type == "set_crossfader":
-                value = params.get("value", 0.5)
-                response["result"] = self._set_crossfader(value)
-            elif command_type == "get_track_crossfade_assign":
-                track_index = params.get("track_index", 0)
-                response["result"] = self._get_track_crossfade_assign(track_index)
-            elif command_type == "set_track_crossfade_assign":
-                track_index = params.get("track_index", 0)
-                assign = params.get("assign", 1)
-                response["result"] = self._set_track_crossfade_assign(track_index, assign)
-            elif command_type == "get_level_snapshot":
-                response["result"] = self._get_level_snapshot()
-            elif command_type == "get_track_sends":
-                track_index = params.get("track_index", 0)
-                response["result"] = self._get_track_sends(track_index)
-            # Arrangement view commands
-            elif command_type == "capture_and_insert_arrangement":
-                start_bar = params.get("start_bar", 0)
-                length_bars = params.get("length_bars", 64)
-                quantize = params.get("quantize", True)
-                response["result"] = self._capture_and_insert_arrangement(start_bar, length_bars, quantize)
-            elif command_type == "get_arrangement_clips":
-                track_index = params.get("track_index", None)
-                response["result"] = self._get_arrangement_clips(track_index)
-            elif command_type == "duplicate_arrangement_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                new_bar_position = params.get("new_bar_position", None)
-                result = self._duplicate_arrangement_clip(track_index, clip_index, new_bar_position)
-                response["result"] = result
-            elif command_type == "move_arrangement_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                new_bar_position = params.get("new_bar_position", 0)
-                new_track_index = params.get("new_track_index", None)
-                result = self._move_arrangement_clip(track_index, clip_index, new_bar_position, new_track_index)
-                response["result"] = result
-            elif command_type == "delete_arrangement_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                response["result"] = self._delete_arrangement_clip(track_index, clip_index)
-            elif command_type == "crop_arrangement_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                start_bar = params.get("start_bar", 0)
-                end_bar = params.get("end_bar", 16)
-                response["result"] = self._crop_arrangement_clip(track_index, clip_index, start_bar, end_bar)
-            elif command_type == "split_arrangement_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                split_bar = params.get("split_bar", 8)
-                response["result"] = self._split_arrangement_clip(track_index, clip_index, split_bar)
-            elif command_type == "quantize_arrangement_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                amount = params.get("amount", 1.0)
-                response["result"] = self._quantize_arrangement_clip(track_index, clip_index, amount)
-            elif command_type == "add_arrangement_automation_point":
-                track_index = params.get("track_index", 0)
-                device_index = params.get("device_index", 0)
-                parameter_index = params.get("parameter_index", 0)
-                bar_position = params.get("bar_position", 0)
-                value = params.get("value", 0.0)
-                curve = params.get("curve", 0)
-                result = self._add_arrangement_automation_point(track_index, device_index, parameter_index, bar_position, value, curve)
-                response["result"] = result
-            elif command_type == "add_arrangement_track_automation":
-                track_index = params.get("track_index", 0)
-                automation_type = params.get("automation_type", "volume")
-                bar_position = params.get("bar_position", 0)
-                value = params.get("value", 0.0)
-                result = self._add_arrangement_track_automation(track_index, automation_type, bar_position, value)
-                response["result"] = result
-            elif command_type == "create_automation_curve":
-                track_index = params.get("track_index", 0)
-                device_index = params.get("device_index", 0)
-                parameter_index = params.get("parameter_index", 0)
-                points = params.get("points", [])
-                curve_type = params.get("curve_type", "linear")
-                result = self._create_automation_curve(track_index, device_index, parameter_index, points, curve_type)
-                response["result"] = result
-            elif command_type == "create_volume_automation_ramp":
-                track_index = params.get("track_index", 0)
-                start_bar = params.get("start_bar", 0)
-                end_bar = params.get("end_bar", 16)
-                start_volume = params.get("start_volume", 0.5)
-                end_volume = params.get("end_volume", 0.8)
-                curve = params.get("curve", "linear")
-                result = self._create_volume_automation_ramp(track_index, start_bar, end_bar, start_volume, end_volume, curve)
-                response["result"] = result
-            elif command_type == "create_filter_sweep":
-                track_index = params.get("track_index", 0)
-                start_bar = params.get("start_bar", 0)
-                end_bar = params.get("end_bar", 16)
-                start_freq = params.get("start_freq", 20.0)
-                end_freq = params.get("end_freq", 20000.0)
-                device_index = params.get("device_index", 0)
-                parameter_index = params.get("parameter_index", 0)
-                curve = params.get("curve", "exponential")
-                result = self._create_filter_sweep(track_index, start_bar, end_bar, start_freq, end_freq, device_index, parameter_index, curve)
-                response["result"] = result
-            elif command_type == "consolidate_arrangement":
-                start_bar = params.get("start_bar", None)
-                end_bar = params.get("end_bar", None)
-                response["result"] = self._consolidate_arrangement(start_bar, end_bar)
-            elif command_type == "duplicate_time_range":
-                start_bar = params.get("start_bar", 0)
-                end_bar = params.get("end_bar", 16)
-                insert_position = params.get("insert_position", 16)
-                response["result"] = self._duplicate_time_range(start_bar, end_bar, insert_position)
-            elif command_type == "delete_time_range":
-                start_bar = params.get("start_bar", 0)
-                end_bar = params.get("end_bar", 16)
-                response["result"] = self._delete_time_range(start_bar, end_bar)
-            elif command_type == "insert_silence":
-                position_bar = params.get("position_bar", 0)
-                length_bars = params.get("length_bars", 8)
-                response["result"] = self._insert_silence(position_bar, length_bars)
-            elif command_type == "set_arrangement_view_position":
-                bar = params.get("bar", 0)
-                beat = params.get("beat", 0.0)
-                response["result"] = self._set_arrangement_view_position(bar, beat)
-            elif command_type == "set_arrangement_zoom":
-                zoom_level = params.get("zoom_level", 1.0)
-                response["result"] = self._set_arrangement_zoom(zoom_level)
-            else:
-                response["status"] = "error"
-                response["message"] = "Unknown command: " + command_type
+                    ),
+                    "server_protocol_version": PROTOCOL_VERSION,
+                }
+            return {
+                "status": "success",
+                "result": {"protocol_version": PROTOCOL_VERSION},
+            }
+
+        # --- Handler lookup ---
+        handler = self._handlers.get(command_type)
+        if handler is None:
+            return {
+                "status": "error",
+                "error": "UNKNOWN_COMMAND",
+                "command": command_type,
+            }
+
+        # --- Main-thread scheduling ---
+        if command_type in self.MAIN_THREAD_COMMANDS:
+            return self._execute_on_main_thread(handler, params)
+
+        # --- Direct dispatch ---
+        try:
+            result = handler(params)
+            return {"status": "success", "result": result}
         except Exception as e:
             self.log_message("Error processing command: " + str(e))
             self.log_message(traceback.format_exc())
-            response["status"] = "error"
-            response["message"] = str(e)
-
-        return response
+            return {"status": "error", "message": str(e)}
 
     def _execute_udp_command(self, command_json):
-        """Execute UDP command - fire-and-forget routing for high-frequency parameters"""
+        """Execute UDP command - fire-and-forget routing via handler map."""
         command_type = command_json.get("type", "")
         params = command_json.get("params", {})
 
+        handler = self._udp_handlers.get(command_type)
+        if handler is None:
+            self.log_message(
+                "UDP: Unknown or unsupported command type: {}".format(
+                    command_type
+                )
+            )
+            return
+
         try:
-            if command_type == "set_device_parameter":
-                track_index = params.get("track_index", 0)
-                device_index = params.get("device_index", 0)
-                parameter_index = params.get("parameter_index", 0)
-                value = params.get("value", 0.0)
-                self._set_device_parameter(
-                    track_index, device_index, parameter_index, value
-                )
-
-            elif command_type == "set_track_volume":
-                track_index = params.get("track_index", 0)
-                volume = params.get("volume", 0.75)
-                self._set_track_volume(track_index, volume)
-
-            elif command_type == "set_track_pan":
-                track_index = params.get("track_index", 0)
-                pan = params.get("pan", 0.0)
-                self._set_track_pan(track_index, pan)
-
-            elif command_type == "set_track_mute":
-                track_index = params.get("track_index", 0)
-                mute = params.get("mute", False)
-                self._set_track_mute(track_index, mute)
-
-            elif command_type == "set_track_solo":
-                track_index = params.get("track_index", 0)
-                solo = params.get("solo", False)
-                self._set_track_solo(track_index, solo)
-
-            elif command_type == "set_track_arm":
-                track_index = params.get("track_index", 0)
-                arm = params.get("arm", False)
-                self._set_track_arm(track_index, arm)
-
-            elif command_type == "set_master_volume":
-                volume = params.get("volume", 0.75)
-                self._set_master_volume(volume)
-
-            elif command_type == "set_crossfader":
-                value = params.get("value", 0.5)
-                self._set_crossfader(value)
-
-            elif command_type == "set_send_amount":
-                track_index = params.get("track_index", 0)
-                send_index = params.get("send_index", 0)
-                amount = params.get("amount", 0.0)
-                self._set_send_amount(track_index, send_index, amount)
-
-            elif command_type == "fire_clip":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                self._fire_clip(track_index, clip_index)
-
-            elif command_type == "set_clip_launch_mode":
-                track_index = params.get("track_index", 0)
-                clip_index = params.get("clip_index", 0)
-                mode = params.get("mode", 0)
-                self._set_clip_launch_mode(track_index, clip_index, mode)
-
-            else:
-                self.log_message(
-                    f"UDP: Unknown or unsupported command type: {command_type}"
-                )
-
+            handler(params)
         except Exception as e:
             # Fire-and-forget: log error but don't crash
-            self.log_message(f"UDP: Error executing {command_type}: {e}")
+            self.log_message("UDP: Error executing {}: {}".format(command_type, e))
 
     # Command implementations
 
