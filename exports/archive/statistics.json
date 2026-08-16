@@ -1,0 +1,149 @@
+{
+  "metadata": {
+    "total_sessions": 6,
+    "generated_date": "2026-08-16T11:16:34.532340",
+    "generators_used": {
+      "10min_mix": 3,
+      "genre_mix": 1,
+      "smart_mix": 2
+    }
+  },
+  "by_genre": {
+    "dub": 4,
+    "unknown": 2
+  },
+  "by_source": {
+    "10min_mix": 3,
+    "smart_mix": 2,
+    "genre_mix": 1
+  },
+  "by_tempo_bucket": {
+    "100-109": 3,
+    "110-119": 1,
+    "70-79": 3,
+    "90-99": 11
+  },
+  "by_energy_bucket": {
+    "medium": 6
+  },
+  "by_section_type": {
+    "build": 17,
+    "verse": 12,
+    "drop": 12,
+    "breakdown": 11,
+    "intro": 6,
+    "finale": 5,
+    "outro": 3
+  },
+  "by_tool": {
+    "arrangement_capture": 3,
+    "dub": 3,
+    "fat_beatz": 3,
+    "genre_processing": 1
+  },
+  "tempo_stats": {
+    "min": 75,
+    "max": 110.0,
+    "avg": 87.5,
+    "median": 90.0
+  },
+  "energy_stats": {
+    "min": 0.55,
+    "max": 0.65,
+    "avg": 0.62
+  },
+  "duration_stats": {
+    "min_minutes": 44.0,
+    "max_minutes": 217.6,
+    "avg_minutes": 102.3
+  },
+  "by_genre_tempo": {
+    "dub": {
+      "count": 4,
+      "min": 75.0,
+      "max": 90.0,
+      "avg": 86.2
+    },
+    "unknown": {
+      "count": 2,
+      "min": 90.0,
+      "max": 90.0,
+      "avg": 90.0
+    }
+  },
+  "section_type_counts": {
+    "build": 17,
+    "verse": 12,
+    "drop": 12,
+    "breakdown": 11,
+    "intro": 6,
+    "finale": 5,
+    "outro": 3
+  },
+  "tracks_used": {
+    "4": 2
+  },
+  "mood_distribution": {
+    "balanced": 2
+  },
+  "timeline": [
+    {
+      "id": "10min_mix_20260728_002030",
+      "source": "10min_mix",
+      "genre": "dub",
+      "timestamp": "2026-07-28T00:20:30"
+    },
+    {
+      "id": "10min_mix_20260728_002058",
+      "source": "10min_mix",
+      "genre": "dub",
+      "timestamp": "2026-07-28T00:20:58"
+    },
+    {
+      "id": "10min_mix_20260728_002359",
+      "source": "10min_mix",
+      "genre": "dub",
+      "timestamp": "2026-07-28T00:23:59"
+    },
+    {
+      "id": "smart_mix_balanced_20260728_054115",
+      "source": "smart_mix",
+      "genre": "unknown",
+      "timestamp": "2026-07-28T05:41:15"
+    },
+    {
+      "id": "smart_mix_balanced_20260728_054133",
+      "source": "smart_mix",
+      "genre": "unknown",
+      "timestamp": "2026-07-28T05:41:33"
+    },
+    {
+      "id": "genre_mix_dub_20260728_055304",
+      "source": "genre_mix",
+      "genre": "dub",
+      "timestamp": "2026-07-28T05:53:04"
+    }
+  ],
+  "gaps": {
+    "missing_genres": [
+      "ambient",
+      "dnb",
+      "hip-hop",
+      "house",
+      "reggae",
+      "techno"
+    ],
+    "missing_keys": [
+      "all"
+    ],
+    "tempo_range_gaps": [
+      "<70",
+      "80-89",
+      "120-139",
+      "140+"
+    ],
+    "underrepresented_tools": [
+      "polish"
+    ]
+  }
+}

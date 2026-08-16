@@ -1,0 +1,236 @@
+sessions:
+- id: 10min_mix_20260728_002030
+  source: 10min_mix
+  genre: dub
+  key: null
+  tempo:
+    min: 90.0
+    max: 100.0
+    base: 90.0
+  tracks: null
+  duration:
+    total_bars: 264
+    total_bars_computed: 264
+    duration_minutes: 44.0
+  energy:
+    min: 0.3
+    max: 1.0
+    avg: 0.65
+  sections:
+  - intro
+  - verse
+  - build
+  - drop
+  - verse
+  - breakdown
+  - build
+  - drop
+  - breakdown
+  - build
+  - finale
+  num_sections: 11
+  tools_used:
+  - arrangement_capture
+  - dub
+  - fat_beatz
+  timestamp: '2026-07-28T00:20:30'
+  processing: null
+  mood: null
+  scenes_used: null
+  elapsed_time: 1.8051223754882812
+- id: 10min_mix_20260728_002058
+  source: 10min_mix
+  genre: dub
+  key: null
+  tempo:
+    min: 90.0
+    max: 100.0
+    base: 90.0
+  tracks: null
+  duration:
+    total_bars: 264
+    total_bars_computed: 264
+    duration_minutes: 44.0
+  energy:
+    min: 0.3
+    max: 1.0
+    avg: 0.65
+  sections:
+  - intro
+  - verse
+  - build
+  - drop
+  - verse
+  - breakdown
+  - build
+  - drop
+  - breakdown
+  - build
+  - finale
+  num_sections: 11
+  tools_used:
+  - arrangement_capture
+  - dub
+  - fat_beatz
+  timestamp: '2026-07-28T00:20:58'
+  processing: null
+  mood: null
+  scenes_used: null
+  elapsed_time: 2.075446367263794
+- id: 10min_mix_20260728_002359
+  source: 10min_mix
+  genre: dub
+  key: null
+  tempo:
+    min: 90.0
+    max: 100.0
+    base: 90.0
+  tracks: null
+  duration:
+    total_bars: 264
+    total_bars_computed: 264
+    duration_minutes: 44.0
+  energy:
+    min: 0.3
+    max: 1.0
+    avg: 0.65
+  sections:
+  - intro
+  - verse
+  - build
+  - drop
+  - verse
+  - breakdown
+  - build
+  - drop
+  - breakdown
+  - build
+  - finale
+  num_sections: 11
+  tools_used:
+  - arrangement_capture
+  - dub
+  - fat_beatz
+  timestamp: '2026-07-28T00:23:59'
+  processing: null
+  mood: null
+  scenes_used: null
+  elapsed_time: 1.7184090614318848
+- id: genre_mix_dub_20260728_055304
+  source: genre_mix
+  genre: dub
+  key: null
+  tempo:
+    min: 75
+    max: 75
+    base: 75.0
+  tracks: null
+  duration:
+    total_bars: 272
+    total_bars_computed: 272
+    duration_minutes: 217.6
+  energy:
+    min: 0.2
+    max: 0.9
+    avg: 0.55
+  sections:
+  - intro
+  - verse
+  - build
+  - drop
+  - verse
+  - breakdown
+  - build
+  - drop
+  - outro
+  num_sections: 9
+  tools_used:
+  - genre_processing
+  timestamp: '2026-07-28T05:53:04'
+  processing:
+    sub_bass_boost: 12
+    echo_feedback: 0.9
+    reverb_decay: 4.0
+    filter_resonance: 0.8
+    stereo_width: 0.7
+  mood: null
+  scenes_used: null
+  elapsed_time: null
+- id: smart_mix_balanced_20260728_054115
+  source: smart_mix
+  genre: unknown
+  key: null
+  tempo:
+    min: 90.0
+    max: 90.0
+    base: 90.0
+  tracks: 4
+  duration:
+    total_bars: 195
+    total_bars_computed: 195
+    duration_minutes: 130.0
+  energy:
+    min: 0.23
+    max: 1.0
+    avg: 0.62
+  sections:
+  - intro
+  - verse
+  - build
+  - drop
+  - verse
+  - breakdown
+  - build
+  - drop
+  - breakdown
+  - build
+  - finale
+  - outro
+  num_sections: 12
+  tools_used: []
+  timestamp: '2026-07-28T05:41:15'
+  processing: null
+  mood: balanced
+  scenes_used: 8
+  elapsed_time: null
+- id: smart_mix_balanced_20260728_054133
+  source: smart_mix
+  genre: unknown
+  key: null
+  tempo:
+    min: 90.0
+    max: 110.0
+    base: 90.0
+  tracks: 4
+  duration:
+    total_bars: 201
+    total_bars_computed: 201
+    duration_minutes: 134.0
+  energy:
+    min: 0.26
+    max: 0.97
+    avg: 0.63
+  sections:
+  - intro
+  - verse
+  - build
+  - drop
+  - verse
+  - breakdown
+  - build
+  - drop
+  - breakdown
+  - build
+  - finale
+  - outro
+  num_sections: 12
+  tools_used: []
+  timestamp: '2026-07-28T05:41:33'
+  processing: null
+  mood: balanced
+  scenes_used: 8
+  elapsed_time: null
+metadata:
+  total_sessions: 6
+  scanned_files: 6
+  validation_errors: []
