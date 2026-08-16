@@ -1,0 +1,110 @@
+# ⚙️ System Configuration — Ableton MCP Extended
+#
+# Single source of truth for ports, timeouts, UDP whitelist,
+# drum-kit FileIds, drum pattern grids, and instrument preset URIs.
+# Consumed by MCP_Server/system_config.py (mirrors the taxonomy.yaml
+# loader pattern from music-research).
+
+# ── Network ────────────────────────────────────────────────────────────────
+ports:
+  tcp: 9877
+  udp: 9878
+
+reconnect:
+  max_attempts: 3
+  delays:              # exponential back-off (seconds)
+    - 1.0
+    - 2.0
+    - 4.0
+
+# ── UDP Whitelist ────────────────────────────────────────────────────────────
+# ONLY these 10 commands may be sent via the UDP fire-and-forget channel.
+# All other commands (get_*, delete_*, quantize, undo/redo, recording, …)
+# MUST use TCP.
+udp_whitelist:
+  - set_device_parameter
+  - set_track_volume
+  - set_track_pan
+  - set_track_mute
+  - set_track_solo
+  - set_track_arm
+  - set_master_volume
+  - set_send_amount
+  - fire_clip
+  - set_clip_launch_mode
+
+# ── Drum Kits (FileId URIs) ─────────────────────────────────────────────────
+# Never load an empty Drum Rack; always use a kit preset with a specific FileId.
+drum_kits:
+  default: "query:Drums#FileId_58622"
+
+# ── Drum Pattern Grids ──────────────────────────────────────────────────────
+# Times are in beats within a single bar (0.0 – 4.0).
+# Each entry lists which instrument hits at which beat position.
+drum_patterns:
+  one_drop:
+    description: "Classic dub techno - kick on 1, delayed snare"
+    bpm_range: [70, 80]
+    grid: |
+      |X---|----|--X-|----|
+    notes:
+      kick:  [2.0]
+      snare: [1.0, 3.0]
+      hat:   [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5]
+
+  rockers:
+    description: "Jamaican skank - kick/hat offbeat emphasis"
+    bpm_range: [75, 85]
+    grid: |
+      |X-X-|---|X-X-|---|
+    notes:
+      kick:  [0.0, 2.0]
+      snare: [1.0, 3.0]
+      hat:   [0.5, 1.5, 2.5, 3.5]
+
+  steppers:
+    description: "Dub steppers - 4-on-floor kick"
+    bpm_range: [75, 85]
+    grid: |
+      |X---|X---|X---|X---|
+    notes:
+      kick:  [0.0, 1.0, 2.0, 3.0]
+      snare: [1.0, 3.0]
+      hat:   [0.5, 1.5, 2.5, 3.5]
+
+  house_basic:
+    description: "Four-on-the-floor with clap"
+    bpm_range: [120, 130]
+    grid: |
+      |X---|---|X---|---|
+    notes:
+      kick: [0.0, 1.0, 2.0, 3.0]
+      clap: [1.0, 3.0]
+      hat:  [0.5, 1.5, 2.5, 3.5]
+
+  techno_4x4:
+    description: "Driving techno - continuous kick"
+    bpm_range: [125, 140]
+    grid: |
+      |X---|X---|X---|X---|
+    notes:
+      kick: [0.0, 1.0, 2.0, 3.0]
+      hat:  [0.5, 1.5, 2.5, 3.5]
+
+  dub_techno:
+    description: "Sparse dub techno - offbeat accents"
+    bpm_range: [125, 135]
+    grid: |
+      |X---|----|--X-|----|
+    notes:
+      kick: [0.0, 2.5, 3.0]
+      hat:  [0.5, 2.0]
+
+# ── Instrument Presets ────────────────────────────────────────────────────────
+# Query URIs for commonly loaded Ableton instruments and effects.
+instrument_presets:
+  drums_default: "query:Drums#FileId_58622"
+  reverb:        "query:Audio Effects#Reverb"
+  delay:         "query:Audio Effects#Delay"
+  eq_eight:      "query:Audio Effects#EQ Eight"
+  compressor:    "query:Audio Effects#Compressor"
