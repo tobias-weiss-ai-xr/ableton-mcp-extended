@@ -44,6 +44,9 @@ xy_controller = [
 dev = [
     "pytest",
     "pytest-cov",
+    "numpy",
+    "sounddevice",
+    "pyyaml",
 ]
 
 [tool.pytest.ini_options]
