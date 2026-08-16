@@ -1,44 +1,27 @@
 # AGENTS.md - Ableton MCP Extended
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 Control Ableton Live via AI assistants using Model Context Protocol. Dual TCP/UDP architecture.
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 ## KEY FILES
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Task | Location | Notes |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 |------|----------|-------|
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | MCP server (6411 lines) | `MCP_Server/server.py` | 152 `@server.tool` decorators, 239 command functions |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Remote Script (5867 lines) | `AbletonMCP_Remote_Script/__init__.py` | Socket server + Ableton API bridge, **now with full Arrangement View API (15+ new methods)** |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Arrangement View (NEW) | `MCP_Server/arrangement_tools.py` (**~70KB**) | **30+ arrangement tools** - session-to-arrangement, clip editing, automation, **DUB-SPECIFIC FEATURES (filter sweeps, echo/delay, reverb, sub-bass EQ)** |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Performance Optimized | `MCP_Server/arrangement_performance.py` (**~38KB**) | **5 optimized tools** - batch processing, caching, adaptive timing, benchmarking |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Fat Beatz Suite (NEW) | `MCP_Server/fat_beatz_tools.py` (**~53KB**) | **15+ tools** - bass enhancement, drum fattening, stereo widening, sidechain, mastering, one-shot beat creation |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
+| Production Pipeline (NEW) | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style) |
 | 10-Min Mix Gen (NEW) | `scripts/create_10min_mix.py`, `scripts/create_10min_mix_advanced.py`, `scripts/create_10min_mix_windows.py`, `scripts/create_10min_mix_simple.py` | Generate complete **10-minute dub × fat beatz mixes** with structured arrangement, Windows-compatible versions |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Smart Mix Gen (NEW) | `scripts/create_smart_mix.py` | **Adaptive** mix generator that intelligently configures based on available Ableton scenes and tracks |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Genre Mix Gen (NEW) | `scripts/genre_mix_generator_fixed.py` | **Genre-specific** mix templates (dub, hip-hop, techno, house, DnB, ambient) with authentic structure and processing |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Polish Suite (NEW) | `scripts/polish_suite.py` | **Professional-grade** finalization: analyze, balance, stereo imaging, automation, export preparation with **genre presets** and **polish scoring** (0-100) |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | MIDI effects | `MCP_Server/midi_effects.py` | Arpeggiator, chord, scale, etc. |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Browser cache | `MCP_Server/browser_cache.py` | SQLite persistent cache for instruments/effects |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Entry point | `MCP_Server/__init__.py` → `ableton-mcp-extended` | `pip install -e .` |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Voice integration | `elevenlabs_mcp/server.py` | ElevenLabs TTS MCP server |
-| **Production Pipeline (NEW)** | `scripts/production_pipeline.py` | **Complete workflow**: mix creation + MP3 conversion + video + YouTube upload (OpenMusic-style)
 | Server watchdog | `MCP_Server/server_watchdog.py` | Auto-restarts MCP server on crash |
+
+Generated tool docs: `docs/TOOLS.md` (run `MCP_Server/docgen.py`)
 
 ## ARCHITECTURE
 
