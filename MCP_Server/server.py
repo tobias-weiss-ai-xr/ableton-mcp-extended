@@ -756,7 +756,6 @@ MODIFYING_COMMANDS = frozenset(
         "delete_locator",
         "jump_to_locator",
         "set_loop",
-        "get_clip_notes",
     }
 )
 

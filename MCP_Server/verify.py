@@ -58,7 +58,6 @@ VERIFY_STRATEGY: Dict[str, SnapshotStrategy] = {
     "set_clip_launch_mode":[("get_all_clips_in_track", lambda p: {"track_index": p.get("track_index", 0)})],
     "fire_clip":           [("get_all_clips_in_track", lambda p: {"track_index": p.get("track_index", 0)})],
     "stop_clip":           [("get_all_clips_in_track", lambda p: {"track_index": p.get("track_index", 0)})],
-    "get_clip_notes":      [],  # read-only, no verify needed but in modifying list
 
     # Scene operations → session info
     "create_scene":        [("get_session_info", None)],

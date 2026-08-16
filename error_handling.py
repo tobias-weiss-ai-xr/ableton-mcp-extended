@@ -198,7 +198,7 @@ class SessionErrorHandler:
                 except Exception:
                     pass
 
-            Reset all filters to mid range
+            # Reset all filters to mid range
             for track_idx in range(5):
                 # Attempt to reset filter cutoff (device 0, param 2)
                 try:
