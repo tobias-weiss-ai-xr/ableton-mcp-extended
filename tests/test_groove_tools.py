@@ -71,7 +71,10 @@ def test_groove_tool_names_registered(mock_mcp, mock_ableton_connection):
 # ── Test 3: Handler names match in __init__.py (`_get_available_grooves`, etc.) ──
 
 
-def test_groove_handlers_called_in_ableton_connection(mock_ableton_connection):
+def test_groove_handlers_called_in_ableton_connection(mock_mcp, mock_ableton_connection):
+    # Register tools with this test's own mock connection
+    register_groove_tools(mock_mcp, lambda: mock_ableton_connection)
+
     # This test focuses on the internal calls *within* the tools, not registration
     # `list_groove_templates` tool calls `get_available_grooves`
     from MCP_Server.groove_tools import list_groove_templates
@@ -110,7 +113,10 @@ def test_server_py_registers_groove_tools():
 # ── Test 5: All 4 handlers are registered in the command dispatch in `__init__.py` ──
 
 
-def test_remote_script_handlers_dispatch(mock_ableton_connection):
+def test_remote_script_handlers_dispatch(mock_mcp, mock_ableton_connection):
+    # Register tools with this test's own mock connection
+    register_groove_tools(mock_mcp, lambda: mock_ableton_connection)
+
     # This test verifies the remote script's dispatch contains the groove commands.
     # Since we can't directly inspect `__init__.py`'s internal dispatch dict from here
     # without loading the remote script, we'll check if the *tools* call the expected remote commands.
@@ -134,6 +140,9 @@ def test_remote_script_handlers_dispatch(mock_ableton_connection):
 
 
 def test_apply_groove_invalid_amount_clamped(mock_mcp, mock_ableton_connection):
+    # Register tools with this test's own mock connection
+    register_groove_tools(mock_mcp, lambda: mock_ableton_connection)
+
     mock_ctx = MagicMock()
     from MCP_Server.groove_tools import apply_groove_to_clip
 
@@ -158,6 +167,9 @@ def test_apply_groove_invalid_amount_clamped(mock_mcp, mock_ableton_connection):
 
 
 def test_set_global_groove_invalid_amount_clamped(mock_mcp, mock_ableton_connection):
+    # Register tools with this test's own mock connection
+    register_groove_tools(mock_mcp, lambda: mock_ableton_connection)
+
     mock_ctx = MagicMock()
     from MCP_Server.groove_tools import set_global_groove_amount
 
