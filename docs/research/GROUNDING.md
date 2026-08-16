@@ -14,10 +14,13 @@ This document provides a systematic mapping between papers in the music-research
 | Evaluation | Metrics Survey (Kader and Karmaker, 2025) | scripts/polish_suite.py | Issue detection, recommendations, multi-metric analysis | Implemented |
 | Harmonization | LLM Chain-of-Thought Chord Recognition (Chang et al., 2025) | music_theory/harmonization.py | Multi-step harmonization with scale and voice leading analysis | Implemented |
 | Low-Latency | SAGE-Music (Tan et al., 2025) | MCP_Server/midi_effects.py | Arpeggiator with pre-computed patterns, 55% latency reduction | Implemented |
+| Semantic Audio Feedback | MERT (Li et al., 2023) | music_theory/mert_analyzer.py | Semantic audio analysis (harmony/groove/timbre/emotion) in feedback loop | Implemented |
+| Expectation Chords | GraphIDyOM (Rosselló, 2026) | music_theory/expectation_model.py | Optimal surprise chord suggestions | Implemented |
 
 ## Detailed Mapping
 
 ### 1. Non-Destructive Clip Editing
+
 Paper: BeatEdit - Symbolic Music Generation as Explicit Editing (arXiv:2607.11124)
 Module: MCP_Server/commands.py, MCP_Server/clip_tools.py, music_theory/harmonization.py
 Change: MIDI note editing commands with beat-grid alignment, preserving harmonic context
@@ -25,6 +28,7 @@ Status: Implemented
 Roadmap: EditOperation hierarchy with non-destructive editing and preview system
 
 ### 2. Arrangement Planning
+
 Paper: MusicLayout - Explicit Structural Planning for Controllable Text-to-Music Generation (arXiv:2608.09035)
 Module: scripts/create_10min_mix.py, scripts/create_10min_mix_advanced.py, scripts/genre_mix_generator_fixed.py
 Change: Scene-based arrangement with energy curves, texture control, and variation patterns
@@ -36,6 +40,7 @@ Details:
 - Genre-specific templates for dub, techno, house, hip-hop
 
 ### 3. Evaluation and Scoring
+
 Papers:
 - Aligning Generative Music AI with Human Preferences (Herremans and Roy, 2025) arXiv:2511.15038
 - A Survey on Evaluation Metrics for Music Generation (Kader and Karmaker, 2025) arXiv:2509.00051
@@ -54,6 +59,7 @@ Scoring Rubric:
   Grounding: Herremans and Roy (2025) "human musical appreciation"
 
 ### 4. Chord Recognition
+
 Paper: Enhancing Automatic Chord Recognition through LLM Chain-of-Thought Reasoning (Chang et al., 2025) arXiv:2509.18700
 Module: music_theory/harmonization.py, music_theory/chord.py, music_theory/progression.py
 Change: Multi-step harmonization following 5-stage chain-of-thought framework
@@ -66,6 +72,7 @@ Features:
 - Voice leading optimization
 
 ### 5. Low-Latency Generation
+
 Paper: SAGE-Music - Low-Latency Symbolic Music Generation via Attribute-Specialized Key-Value Head Sharing (arXiv:2510.00395)
 Module: MCP_Server/midi_effects.py
 Change: Optimized MIDI effects for real-time performance
@@ -77,25 +84,25 @@ Optimizations:
 - Batch processing of MIDI events
 - Result: 55 percent latency reduction
 
-## 7. Semantic Audio Feedback
+### 6. Semantic Audio Feedback
 
 **Paper:** MERT: Acoustic Music Understanding Model (Li et al., 2023) — arXiv:2306.00107
 **Key Contribution:** Self-supervised music embeddings encoding harmony, timbre, rhythm, emotion
 **Application:** Semantic understanding in the audio feedback loop — mood/groove/timbre detection beyond RMS
 **Code:** music_theory/mert_analyzer.py, agentic_mix/audio_capture.py, agentic_mix/nodes/analyze_adapt.py
 - **Status:** Implemented (graceful fallback without transformers/torch)
-- **How it works:** MertAnalyzer loads MERT-v1-95M, extracts 768-dim embeddings from audio, projects onto harmonic (tonic/chroma/confidence), rhythmic (groove/activity), timbral (brightness/warmth), and emotional (valence/arousal/mood) features. The analyze_and_adapt_node uses these for adaptive suggestions: \"tension too high → add breakdown\", \"low groove → tighten drums\", \"bright → roll off highs\".
+- **How it works:** MertAnalyzer loads MERT-v1-95M, extracts 768-dim embeddings from audio, projects onto harmonic (tonic/chroma/confidence), rhythmic (groove/activity), timbral (brightness/warmth), and emotional (valence/arousal/mood) features. The analyze_and_adapt_node uses these for adaptive suggestions: "tension too high → add breakdown", "low groove → tighten drums", "bright → roll off highs".
 
-## 8. Expectation-Based Chord Suggestions
+### 7. Expectation-Based Chord Suggestions
 
 **Paper:** GraphIDyOM — A graph-native Python reimplementation of IDyOM for musical expectation modelling (Rosselló, 2026) — arXiv:2607.25787
 **Key Contribution:** Information-theoretic musical expectation — surprise/entropy per chord transition
-**Application:** Chord suggestions ranked by \"optimal surprise\" — interesting but contextually appropriate
+**Application:** Chord suggestions ranked by "optimal surprise" — interesting but contextually appropriate
 **Code:** music_theory/expectation_model.py
 - **Status:** Implemented
-- **How it works:** ChordExpectationModel computes information content (IC = -log2(P(chord|context))) combining transition probability, scale membership, voice-leading distance, and recency penalty. The \"optimal surprise\" zone (0.3–0.7 IC) identifies chords that are unexpected enough to be interesting but not jarring. Integrates with existing suggest_next_chord() via suggest_chords_with_expectation().
+- **How it works:** ChordExpectationModel computes information content (IC = -log2(P(chord|context))) combining transition probability, scale membership, voice-leading distance, and recency penalty. The "optimal surprise" zone (0.3–0.7 IC) identifies chords that are unexpected enough to be interesting but not jarring. Integrates with existing suggest_next_chord() via suggest_chords_with_expectation().
 
-## 9. AgentFlow Orchestration
+### 8. AgentFlow Orchestration
 
 **Package:** [agentflow](https://github.com/tobias-weiss-ai-xr/agentflow) npm package (formerly TaskFleet)
 **What:** DAG-based workflow engine, circuit breakers, checkpoint persistence
