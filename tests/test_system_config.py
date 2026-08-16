@@ -292,3 +292,52 @@ class TestDefaultsConsistency:
 
     def test_defaults_udp_matches_expected(self):
         assert set(_DEFAULTS["udp_whitelist"]) == set(EXPECTED_UDP_WHITELIST)
+
+
+# ── 10. Table-driven: port accessors (core contract) ───────────────────────
+
+@pytest.mark.parametrize("name, expected_field", [
+    ("tcp", "tcp_port"),
+    ("udp", "udp_port"),
+    ("reconnect", "reconnect"),  # non-port accessor name
+])
+def test_get_port_table(name, expected_field):
+    result = get_port(name)
+    assert isinstance(result, int)
+    assert result > 0
+
+
+# ── 11. Table-driven: UDP whitelist must NOT contain non-UDP commands ────────
+
+@pytest.mark.parametrize("forbidden_prefix", [
+    "get_",
+    "delete_",
+    "create_",
+    "set_track_volume_exceeds",
+    "quantize",
+    "undo",
+    "redo",
+    "start_",
+    "stop_",
+])
+def test_udp_whitelist_excludes(forbidden_prefix):
+    wl = udp_whitelist()
+    hits = [c for c in wl if c.startswith(forbidden_prefix)]
+    assert not hits, f"UDP whitelist must not contain {forbidden_prefix}* commands: {hits}"
+
+
+# ── 12. Table-driven: drum pattern must have non-empty note grids ────────────
+
+@pytest.mark.parametrize("pattern_name", [
+    "one_drop",
+    "rockers",
+    "steppers",
+    "house_basic",
+    "techno_4x4",
+    "dub_techno",
+])
+def test_pattern_has_notes_table(pattern_name):
+    from MCP_Server.system_config import drum_pattern
+    grid = drum_pattern(pattern_name)
+    assert grid is not None, f"pattern {pattern_name} returned None"
+    assert len(grid) > 0, f"pattern {pattern_name} is empty"

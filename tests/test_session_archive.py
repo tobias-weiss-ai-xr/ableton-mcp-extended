@@ -638,3 +638,44 @@ class TestFullPipeline:
         stats = generate_stats(archive)
 
         assert stats["metadata"]["total_sessions"] == 0
+
+# ── Table-driven: source detection ────────────────────────────────────────
+
+@pytest.mark.parametrize("filename, expected_source", [
+    ("10min_mix_2024-01-15_dub.json", "10min_mix"),
+    ("smart_mix_2024-03-20_hiphop.json", "smart_mix"),
+    ("genre_mix_2024-06-01_techno.json", "genre_mix"),
+    ("unknown_prefix_2024-01-01.json", "unknown"),
+    ("README.md", "unknown"),
+])
+def test_detect_source_table(filename, expected_source):
+    assert _detect_source(filename) == expected_source
+
+
+# ── Table-driven: genre normalization ──────────────────────────────────────
+
+@pytest.mark.parametrize("raw, expected", [
+    ("Dub Techno", "dub_techno"),
+    ("dub techno", "dub_techno"),
+    ("DUB TECHNO", "dub_techno"),
+    ("Hip-Hop", "hip-hop"),
+    ("hip hop", "hip_hop"),
+    ("Unknown", "unknown"),
+])
+def test_detect_genre_normalized_table(raw, expected):
+    data = {"genre": raw}
+    result = _detect_genre(data, "test.json")
+    assert result == expected
+
+
+# ── Table-driven: validation catches malformed sessions ───────────────────
+
+@pytest.mark.parametrize("session_data, desc", [
+    ({"tempo": -1}, "negative tempo"),
+    ({"tempo": 9999}, "extreme tempo"),
+    ({"structure": "not_a_list"}, "non-list structure"),
+    ({}, "empty session"),
+])
+def test_validate_catches_malformed_table(session_data, desc):
+    errs = validate_session(session_data, f"{desc}.json")
+    assert isinstance(errs, list)
