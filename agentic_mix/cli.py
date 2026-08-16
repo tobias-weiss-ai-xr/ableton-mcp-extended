@@ -1,8 +1,10 @@
 """
-CLI runner for the LangGraph agentic mix pipeline.
+CLI runner for the agentic mix pipeline.
 
 Usage:
     python -m agentic_mix.cli --genre dub_techno --tempo 126 --duration 120
+
+    python -m agentic_mix.cli --orchestrator agentflow --genre dub_techno --tempo 126 --duration 120
 
 Or programmatically:
     from agentic_mix.cli import main
@@ -13,19 +15,26 @@ import sys
 from .graph import run_pipeline
 from .state import Config
 
+# ── Lazy imports for AgentFlow mode ────────────────────────────────────────
+_has_agentflow = False
+try:
+    from orchestration.agentflow_runner import AgentFlowRunner
+    _has_agentflow = True
+except ImportError:
+    _has_agentflow = False
+
 
 def parse_args() -> Config:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Ableton Live agentic mix generator using LangGraph",
+        description="Ableton Live agentic mix generator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-epilog="""
-Examples:
-  # Dub techno 2h mix
+        epilog="""Examples:
+  # Dub techno 2h mix (LangGraph)
   python -m agentic_mix.cli --genre dub_techno --tempo 126 --duration 120
 
-  # House 1h mix with high variation
-  python -m agentic_mix.cli --genre house --tempo 124 --duration 60 --variation 0.8
+  # House 1h mix with high variation (AgentFlow)
+  python -m agentic_mix.cli --orchestrator agentflow --genre house --tempo 124 --duration 60 --variation 0.8
 
   # Ambient 30m mix
   python -m agentic_mix.cli --genre ambient --tempo 90 --duration 30 --energy gentle
@@ -46,10 +55,12 @@ Examples:
                        default="gradual", help="Energy curve type")
     parser.add_argument("--variation", type=float, default=0.5,
                        help="Variation level (0.0-1.0)")
+    parser.add_argument("--orchestrator", choices=["langgraph", "agentflow"],
+                       default="langgraph",
+                       help="Orchestration engine (default: langgraph, use agentflow for DAG + circuit breakers + checkpoints)")
 
     args = parser.parse_args()
 
-    # Create and validate Config
     config = Config(
         tempo=args.tempo,
         duration_minutes=args.duration,
@@ -78,7 +89,7 @@ def print_metrics(metrics: dict):
     transitions = metrics.get("section_transitions", [])
     if transitions:
         print(f"\nSections: {len(transitions)}")
-        for t in transitions[:5]:  # Show first 5
+        for t in transitions[:5]:
             print(f"  - {t['name']}: energy={t['energy_level']:.2f}, technique={t['technique']}")
         if len(transitions) > 5:
             print(f"  ... and {len(transitions) - 5} more sections")
@@ -99,7 +110,6 @@ def print_metrics(metrics: dict):
 def main():
     """Main entry point."""
     try:
-        # Parse configuration
         config = parse_args()
 
         print("=" * 60)
@@ -112,28 +122,53 @@ def main():
         print(f"Key:       {config.key}")
         print(f"Energy:    {config.energy_curve}")
         print(f"Variation: {config.variation_level}")
+        print(f"Orchestrator: {args.orchestrator}")
         print("=" * 60)
 
-        # Run the pipeline
+        if args.orchestrator == "agentflow" and _has_agentflow:
+            print("\n--- AgentFlow Mode ---")
+            print("Features: DAG execution, circuit breakers, checkpoint persistence")
+            print("Circuit breakers protect against Ableton MCP failures")
+            print("Checkpoints enable resume after crashes (2-hour mix friendly)")
+
+            runner = AgentFlowRunner()
+            try:
+                result = runner.run(config, timeout=config.duration_minutes * 60)
+
+                print_feedback(result.get("feedback", []))
+                print_metrics(result.get("metrics", {}))
+
+                if result.get("error"):
+                    print(f"\n[ERROR] {result['error']}")
+                    sys.exit(1)
+
+                if result.get("status") == "completed":
+                    print("\n[SUCCESS] Mix generation complete (AgentFlow)!")
+                    sys.exit(0)
+                else:
+                    print(f"\n[WARN] Status: {result.get('status')}")
+                    sys.exit(1)
+            finally:
+                pass
+            return
+
+        if args.orchestrator == "agentflow" and not _has_agentflow:
+            print("\n[WARN] AgentFlow not available (npm install in orchestration/agentflow_bridge/), falling back to LangGraph")
+
         result = run_pipeline(config)
 
-        # Print feedback
         print_feedback(result["feedback"])
-
-        # Print metrics
         print_metrics(result["metrics"])
 
-        # Check for errors
         if result["error"]:
             print(f"\n[ERROR] {result['error']}")
             sys.exit(1)
 
-        # Check completion
         if result["complete"]:
             print("\n[SUCCESS] Mix generation complete!")
             sys.exit(0)
         else:
-            print("\n[WARNING] Mix generation incomplete")
+            print("\n[WARN] Mix generation incomplete")
             sys.exit(1)
 
     except KeyboardInterrupt:

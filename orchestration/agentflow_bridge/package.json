@@ -1,0 +1,14 @@
+{
+  "name": "ableton-agentflow-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AgentFlow orchestration bridge for Ableton MCP Extended",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "agentflow": "file:../../../TaskFleet"
+  }
+}
