@@ -1,0 +1,7 @@
+REMAINING ISSUES FOUND IN AUDIT
+================================================================================
+
+1. Missing advanced patterns: 4
+2. No bar count limit
+3. Negative bars not validated
+4. Minimal instrument tracks in 5 genres

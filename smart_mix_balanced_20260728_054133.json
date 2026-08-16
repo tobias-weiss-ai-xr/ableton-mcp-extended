@@ -1,0 +1,132 @@
+{
+  "status": "success",
+  "structure": [
+    {
+      "name": "Void",
+      "section_type": "intro",
+      "scene_index": 0,
+      "bars": 18,
+      "bpm": 90.0,
+      "energy": 0.3,
+      "start_bar": 0,
+      "transition": null
+    },
+    {
+      "name": "Dub Foundation",
+      "section_type": "verse",
+      "scene_index": 1,
+      "bars": 18,
+      "bpm": 90.0,
+      "energy": 0.63,
+      "start_bar": 18,
+      "transition": null
+    },
+    {
+      "name": "Tension",
+      "section_type": "build",
+      "scene_index": 2,
+      "bars": 5,
+      "bpm": 90.0,
+      "energy": 0.82,
+      "start_bar": 36,
+      "transition": null
+    },
+    {
+      "name": "Filter Sweep",
+      "section_type": "drop",
+      "scene_index": 5,
+      "bars": 25,
+      "bpm": 100.0,
+      "energy": 0.97,
+      "start_bar": 41,
+      "transition": "sudden"
+    },
+    {
+      "name": "Groove",
+      "section_type": "verse",
+      "scene_index": 4,
+      "bars": 20,
+      "bpm": 100.0,
+      "energy": 0.6,
+      "start_bar": 66,
+      "transition": null
+    },
+    {
+      "name": "Silence",
+      "section_type": "breakdown",
+      "scene_index": 7,
+      "bars": 20,
+      "bpm": 100.0,
+      "energy": 0.41,
+      "start_bar": 86,
+      "transition": null
+    },
+    {
+      "name": "Tension",
+      "section_type": "build",
+      "scene_index": 6,
+      "bars": 6,
+      "bpm": 100.0,
+      "energy": 0.7,
+      "start_bar": 106,
+      "transition": null
+    },
+    {
+      "name": "Reverb Explosion",
+      "section_type": "drop",
+      "scene_index": 3,
+      "bars": 27,
+      "bpm": 110.0,
+      "energy": 0.87,
+      "start_bar": 112,
+      "transition": null
+    },
+    {
+      "name": "Echo Chamber",
+      "section_type": "breakdown",
+      "scene_index": 2,
+      "bars": 20,
+      "bpm": 110.0,
+      "energy": 0.38,
+      "start_bar": 139,
+      "transition": null
+    },
+    {
+      "name": "Tension",
+      "section_type": "build",
+      "scene_index": 6,
+      "bars": 5,
+      "bpm": 110.0,
+      "energy": 0.73,
+      "start_bar": 159,
+      "transition": null
+    },
+    {
+      "name": "Final Dub",
+      "section_type": "finale",
+      "scene_index": 2,
+      "bars": 25,
+      "bpm": 110.0,
+      "energy": 0.85,
+      "start_bar": 164,
+      "transition": null
+    },
+    {
+      "name": "Closing",
+      "section_type": "outro",
+      "scene_index": 1,
+      "bars": 12,
+      "bpm": 110.0,
+      "energy": 0.26,
+      "start_bar": 189,
+      "transition": "echo_build"
+    }
+  ],
+  "mood": "balanced",
+  "base_bpm": 90.0,
+  "total_bars": 201,
+  "total_time_minutes": 134.0,
+  "scenes_used": 8,
+  "num_scenes_available": 8,
+  "num_tracks": 4
+}

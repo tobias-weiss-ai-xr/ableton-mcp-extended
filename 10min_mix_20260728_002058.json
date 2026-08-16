@@ -1,0 +1,116 @@
+{
+  "status": "success",
+  "structure": [
+    {
+      "name": "Deep Space",
+      "section_type": "intro",
+      "scene_index": 0,
+      "bars": 24,
+      "bpm": 90.0,
+      "energy": 0.3,
+      "description": "Atmospheric dub intro with slow filter sweeps and echo"
+    },
+    {
+      "name": "Dub Foundation",
+      "section_type": "verse",
+      "scene_index": 1,
+      "bars": 24,
+      "bpm": 90.0,
+      "energy": 0.6,
+      "description": "Dub groove with walking bass and subtle echo"
+    },
+    {
+      "name": "Rising Tension",
+      "section_type": "build",
+      "scene_index": 2,
+      "bars": 8,
+      "bpm": 90.0,
+      "energy": 0.75,
+      "description": "Filter rises, echo builds, tension increases"
+    },
+    {
+      "name": "Dub Bomb",
+      "section_type": "drop",
+      "scene_index": 3,
+      "bars": 32,
+      "bpm": 95.0,
+      "energy": 0.95,
+      "description": "Full dub explosion with massive bass and echo"
+    },
+    {
+      "name": "Steppers Groove",
+      "section_type": "verse",
+      "scene_index": 4,
+      "bars": 24,
+      "bpm": 95.0,
+      "energy": 0.65,
+      "description": "Dub steppers rhythm with bouncing bass"
+    },
+    {
+      "name": "Echo Chamber",
+      "section_type": "breakdown",
+      "scene_index": 5,
+      "bars": 24,
+      "bpm": 95.0,
+      "energy": 0.35,
+      "description": "Atmospheric breakdown with huge echo and reverb"
+    },
+    {
+      "name": "Tension Rising",
+      "section_type": "build",
+      "scene_index": 2,
+      "bars": 8,
+      "bpm": 95.0,
+      "energy": 0.7,
+      "description": "Build with rising filter and increasing echo"
+    },
+    {
+      "name": "Final Dub Apocalypse",
+      "section_type": "drop",
+      "scene_index": 6,
+      "bars": 48,
+      "bpm": 100.0,
+      "energy": 1.0,
+      "description": "Maximum intensity with all effects at full"
+    },
+    {
+      "name": "Cosmic Echo",
+      "section_type": "breakdown",
+      "scene_index": 5,
+      "bars": 24,
+      "bpm": 100.0,
+      "energy": 0.4,
+      "description": "Final atmospheric moment with infinite echo"
+    },
+    {
+      "name": "Return",
+      "section_type": "build",
+      "scene_index": 2,
+      "bars": 8,
+      "bpm": 100.0,
+      "energy": 0.5,
+      "description": "Final build before the last drop"
+    },
+    {
+      "name": "Grand Finale + Dub Fade",
+      "section_type": "finale",
+      "scene_index": 6,
+      "bars": 40,
+      "bpm": 100.0,
+      "energy": 0.9,
+      "description": "Final celebration followed by graceful dub fade-out"
+    }
+  ],
+  "dub_result": {
+    "status": "error",
+    "result": {},
+    "message": "Unknown command: create_dub_arrangement"
+  },
+  "fat_result": true,
+  "capture_result": {
+    "status": "error",
+    "result": {},
+    "message": "Unknown command: ultimate_arrangement_capture"
+  },
+  "elapsed_time": 2.075446367263794
+}

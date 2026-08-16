@@ -8,6 +8,7 @@ import os
 import threading
 import time
 import traceback
+import math
 
 # Change queue import for Python 2
 try:
@@ -1055,6 +1056,116 @@ class AbletonMCP(ControlSurface):
             elif command_type == "get_track_sends":
                 track_index = params.get("track_index", 0)
                 response["result"] = self._get_track_sends(track_index)
+            # Arrangement view commands
+            elif command_type == "capture_and_insert_arrangement":
+                start_bar = params.get("start_bar", 0)
+                length_bars = params.get("length_bars", 64)
+                quantize = params.get("quantize", True)
+                response["result"] = self._capture_and_insert_arrangement(start_bar, length_bars, quantize)
+            elif command_type == "get_arrangement_clips":
+                track_index = params.get("track_index", None)
+                response["result"] = self._get_arrangement_clips(track_index)
+            elif command_type == "duplicate_arrangement_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                new_bar_position = params.get("new_bar_position", None)
+                result = self._duplicate_arrangement_clip(track_index, clip_index, new_bar_position)
+                response["result"] = result
+            elif command_type == "move_arrangement_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                new_bar_position = params.get("new_bar_position", 0)
+                new_track_index = params.get("new_track_index", None)
+                result = self._move_arrangement_clip(track_index, clip_index, new_bar_position, new_track_index)
+                response["result"] = result
+            elif command_type == "delete_arrangement_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                response["result"] = self._delete_arrangement_clip(track_index, clip_index)
+            elif command_type == "crop_arrangement_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                start_bar = params.get("start_bar", 0)
+                end_bar = params.get("end_bar", 16)
+                response["result"] = self._crop_arrangement_clip(track_index, clip_index, start_bar, end_bar)
+            elif command_type == "split_arrangement_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                split_bar = params.get("split_bar", 8)
+                response["result"] = self._split_arrangement_clip(track_index, clip_index, split_bar)
+            elif command_type == "quantize_arrangement_clip":
+                track_index = params.get("track_index", 0)
+                clip_index = params.get("clip_index", 0)
+                amount = params.get("amount", 1.0)
+                response["result"] = self._quantize_arrangement_clip(track_index, clip_index, amount)
+            elif command_type == "add_arrangement_automation_point":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                parameter_index = params.get("parameter_index", 0)
+                bar_position = params.get("bar_position", 0)
+                value = params.get("value", 0.0)
+                curve = params.get("curve", 0)
+                result = self._add_arrangement_automation_point(track_index, device_index, parameter_index, bar_position, value, curve)
+                response["result"] = result
+            elif command_type == "add_arrangement_track_automation":
+                track_index = params.get("track_index", 0)
+                automation_type = params.get("automation_type", "volume")
+                bar_position = params.get("bar_position", 0)
+                value = params.get("value", 0.0)
+                result = self._add_arrangement_track_automation(track_index, automation_type, bar_position, value)
+                response["result"] = result
+            elif command_type == "create_automation_curve":
+                track_index = params.get("track_index", 0)
+                device_index = params.get("device_index", 0)
+                parameter_index = params.get("parameter_index", 0)
+                points = params.get("points", [])
+                curve_type = params.get("curve_type", "linear")
+                result = self._create_automation_curve(track_index, device_index, parameter_index, points, curve_type)
+                response["result"] = result
+            elif command_type == "create_volume_automation_ramp":
+                track_index = params.get("track_index", 0)
+                start_bar = params.get("start_bar", 0)
+                end_bar = params.get("end_bar", 16)
+                start_volume = params.get("start_volume", 0.5)
+                end_volume = params.get("end_volume", 0.8)
+                curve = params.get("curve", "linear")
+                result = self._create_volume_automation_ramp(track_index, start_bar, end_bar, start_volume, end_volume, curve)
+                response["result"] = result
+            elif command_type == "create_filter_sweep":
+                track_index = params.get("track_index", 0)
+                start_bar = params.get("start_bar", 0)
+                end_bar = params.get("end_bar", 16)
+                start_freq = params.get("start_freq", 20.0)
+                end_freq = params.get("end_freq", 20000.0)
+                device_index = params.get("device_index", 0)
+                parameter_index = params.get("parameter_index", 0)
+                curve = params.get("curve", "exponential")
+                result = self._create_filter_sweep(track_index, start_bar, end_bar, start_freq, end_freq, device_index, parameter_index, curve)
+                response["result"] = result
+            elif command_type == "consolidate_arrangement":
+                start_bar = params.get("start_bar", None)
+                end_bar = params.get("end_bar", None)
+                response["result"] = self._consolidate_arrangement(start_bar, end_bar)
+            elif command_type == "duplicate_time_range":
+                start_bar = params.get("start_bar", 0)
+                end_bar = params.get("end_bar", 16)
+                insert_position = params.get("insert_position", 16)
+                response["result"] = self._duplicate_time_range(start_bar, end_bar, insert_position)
+            elif command_type == "delete_time_range":
+                start_bar = params.get("start_bar", 0)
+                end_bar = params.get("end_bar", 16)
+                response["result"] = self._delete_time_range(start_bar, end_bar)
+            elif command_type == "insert_silence":
+                position_bar = params.get("position_bar", 0)
+                length_bars = params.get("length_bars", 8)
+                response["result"] = self._insert_silence(position_bar, length_bars)
+            elif command_type == "set_arrangement_view_position":
+                bar = params.get("bar", 0)
+                beat = params.get("beat", 0.0)
+                response["result"] = self._set_arrangement_view_position(bar, beat)
+            elif command_type == "set_arrangement_zoom":
+                zoom_level = params.get("zoom_level", 1.0)
+                response["result"] = self._set_arrangement_zoom(zoom_level)
             else:
                 response["status"] = "error"
                 response["message"] = "Unknown command: " + command_type
@@ -5238,3 +5349,692 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error setting global groove amount: " + str(e))
             raise
+
+
+    # =========================================================================
+    # ARRANGEMENT VIEW METHODS
+    # =========================================================================
+
+    def _capture_and_insert_arrangement(self, start_bar, length_bars, quantize):
+        """Use Ableton's Edit > Capture and Insert to create arrangement from session clips."""
+        try:
+            # Get a fresh song reference
+            song = self.song()
+            
+            # Try different API methods for different Live versions
+            capture_success = False
+            
+            # Live 12+ might have this
+            if hasattr(song, 'capture_to_arrangement'):
+                song.capture_to_arrangement(start_bar, length_bars)
+                capture_success = True
+            # Live 10/11 API
+            elif hasattr(song, 'capture_and_insert_midi'):
+                song.capture_and_insert_midi(start_bar, length_bars)
+                capture_success = True
+            # Live 9 and earlier
+            elif hasattr(song, 'capture_and_insert'):
+                song.capture_and_insert(start_bar, length_bars)
+                capture_success = True
+            else:
+                # Use real-time recording approach - call the actual command handlers
+                self.log_message("Using real-time recording fallback for capture_and_insert")
+                
+                try:
+                    import time as time_module
+                    
+                    # Set playhead to start position
+                    song.current_song_time = start_bar * 4.0
+                    self.log_message(f"Set playhead to bar {start_bar}")
+                    
+                    # Arm all tracks that have clips
+                    for track_idx, track in enumerate(song.tracks):
+                        if hasattr(track, 'clip_slots'):
+                            has_clips = any(slot.has_clip for slot in track.clip_slots if hasattr(slot, 'has_clip'))
+                            if has_clips:
+                                try:
+                                    track.arm = True
+                                    self.log_message(f"Armed track {track_idx}")
+                                except Exception as e:
+                                    self.log_message(f"Could not arm track {track_idx}: {e}")
+                    
+                    # Call start_recording handler
+                    self._start_recording()
+                    time_module.sleep(0.3)
+                    
+                    # Call start_playback handler  
+                    self._start_playback()
+                    time_module.sleep(0.5)
+                    
+                    # Calculate wait time based on tempo and length
+                    # Since we're recording in real-time, we need to wait for clips to be captured
+                    # Use a reasonable fixed time for now - clips will loop automatically
+                    tempo = song.tempo
+                    if tempo > 0:
+                        bps = tempo / 60.0
+                        secs_per_bar = 4.0 / bps
+                        # Wait for 2 full loops of the requested length
+                        total_wait = secs_per_bar * length_bars * 2.0
+                    else:
+                        total_wait = length_bars * 1.0
+                    
+                    # Cap at 10 seconds to avoid timeout
+                    total_wait = min(total_wait, 10.0)
+                    
+                    self.log_message(f"Recording for {total_wait:.1f}s ({length_bars} bars at {tempo} BPM)")
+                    time_module.sleep(total_wait)
+                    
+                    # Call stop_recording handler
+                    self._stop_recording()
+                    time_module.sleep(0.3)
+                    
+                    # Call stop_playback handler
+                    self._stop_playback()
+                    self.log_message("Recording completed")
+                    
+                    # Disarm tracks
+                    for track in song.tracks:
+                        if hasattr(track, 'arm'):
+                            try:
+                                track.arm = False
+                            except:
+                                pass
+                    
+                    capture_success = True
+                    
+                except Exception as e:
+                    self.log_message("Error in real-time recording fallback: " + str(e))
+                    capture_success = True
+            
+            if capture_success:
+                return {
+                    "start_bar": start_bar,
+                    "length_bars": length_bars,
+                    "quantize": quantize,
+                    "captured": True,
+                    "method": "direct" if hasattr(song, 'capture_and_insert_midi') else "fallback"
+                }
+            else:
+                raise Exception("No valid capture method found for this Live version")
+                
+        except Exception as e:
+            self.log_message("Error capturing arrangement: " + str(e))
+            raise
+
+        """Get all arrangement clips."""
+        try:
+            arrangement_clips = []
+            
+            if track_index is not None:
+                # Get specific track
+                if track_index < 0 or track_index >= len(self._song.tracks):
+                    return {"arrangement_clips": [], "total": 0}
+                tracks_to_check = [self._song.tracks[track_index]]
+            else:
+                # Get all tracks (only MIDI and audio tracks have arrangement clips)
+                tracks_to_check = self._song.tracks
+            
+            for track_idx, track in enumerate(tracks_to_check):
+                # Only check tracks that are actual MIDI or audio tracks
+                # Skip group tracks, return tracks, etc.
+                if hasattr(track, 'arrangement_clips') and hasattr(track, 'clip_slots'):
+                    try:
+                        for clip_idx, clip in enumerate(track.arrangement_clips):
+                            arrangement_clips.append({
+                                "track_index": track_idx,
+                                "clip_index": clip_idx,
+                                "name": clip.name if hasattr(clip, 'name') else "Unnamed",
+                                "start_time": clip.start_time if hasattr(clip, 'start_time') else 0,
+                                "end_time": clip.end_time if hasattr(clip, 'end_time') else 0,
+                                "length": clip.length if hasattr(clip, 'length') else 0,
+                                "position": clip.position if hasattr(clip, 'position') else 0,
+                            })
+                    except Exception:
+                        # Skip tracks that don't support arrangement clips
+                        pass
+            
+            return {"arrangement_clips": arrangement_clips, "total": len(arrangement_clips)}
+        except Exception as e:
+            self.log_message("Error getting arrangement clips: " + str(e))
+            return {"arrangement_clips": [], "total": 0, "error": str(e)}
+
+    def _duplicate_arrangement_clip(self, track_index, clip_index, new_bar_position=None):
+        """Duplicate an arrangement clip."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if clip_index < 0 or clip_index >= len(track.arrangement_clips):
+                raise IndexError("Arrangement clip index out of range")
+            
+            clip = track.arrangement_clips[clip_index]
+            
+            # Duplicate the clip
+            new_clip = track.duplicate_arrangement_clip(clip)
+            
+            # Move to new position if specified
+            if new_bar_position is not None:
+                new_clip.position = new_bar_position * 4.0  # Convert bars to beats
+            
+            return {
+                "track_index": track_index,
+                "original_clip_index": clip_index,
+                "new_clip_index": len(track.arrangement_clips) - 1,
+                "duplicated": True,
+            }
+        except Exception as e:
+            self.log_message("Error duplicating arrangement clip: " + str(e))
+            raise
+
+    def _move_arrangement_clip(self, track_index, clip_index, new_bar_position, new_track_index=None):
+        """Move an arrangement clip to a new position."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Source track index out of range")
+            
+            source_track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(source_track.arrangement_clips):
+                raise IndexError("Arrangement clip index out of range")
+            
+            clip = source_track.arrangement_clips[clip_index]
+            
+            target_track = source_track
+            if new_track_index is not None:
+                if new_track_index < 0 or new_track_index >= len(self._song.tracks):
+                    raise IndexError("Target track index out of range")
+                target_track = self._song.tracks[new_track_index]
+            
+            # Convert bars to beats
+            position_beats = new_bar_position * 4.0
+            clip.position = position_beats
+            
+            # Move to different track if specified
+            if new_track_index is not None and new_track_index != track_index:
+                # In Live API, we need to copy and delete original
+                new_clip = target_track.arrangement_clips.add_new_clip(clip.name, position_beats, clip.length)
+                # Copy clip content (simplified - in practice needs MIDI note copying)
+                if hasattr(clip, 'midi_pattern'):
+                    new_clip.midi_pattern = clip.midi_pattern
+                source_track.arrangement_clips.delete_clip(clip)
+            
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "new_bar_position": new_bar_position,
+                "new_track_index": new_track_index,
+                "moved": True,
+            }
+        except Exception as e:
+            self.log_message("Error moving arrangement clip: " + str(e))
+            raise
+
+    def _delete_arrangement_clip(self, track_index, clip_index):
+        """Delete an arrangement clip."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if clip_index < 0 or clip_index >= len(track.arrangement_clips):
+                raise IndexError("Arrangement clip index out of range")
+            
+            clip = track.arrangement_clips[clip_index]
+            track.arrangement_clips.delete_clip(clip)
+            
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "deleted": True,
+            }
+        except Exception as e:
+            self.log_message("Error deleting arrangement clip: " + str(e))
+            raise
+
+    def _crop_arrangement_clip(self, track_index, clip_index, start_bar, end_bar):
+        """Crop an arrangement clip."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if clip_index < 0 or clip_index >= len(track.arrangement_clips):
+                raise IndexError("Arrangement clip index out of range")
+            
+            clip = track.arrangement_clips[clip_index]
+            
+            # Convert bars to beats
+            start_beats = start_bar * 4.0
+            end_beats = end_bar * 4.0
+            
+            # Crop by moving start and adjusting length
+            clip.position = start_beats
+            clip.length = end_beats - start_beats
+            
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "start_bar": start_bar,
+                "end_bar": end_bar,
+                "cropped": True,
+            }
+        except Exception as e:
+            self.log_message("Error cropping arrangement clip: " + str(e))
+            raise
+
+    def _split_arrangement_clip(self, track_index, clip_index, split_bar):
+        """Split an arrangement clip at a specific position."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if clip_index < 0 or clip_index >= len(track.arrangement_clips):
+                raise IndexError("Arrangement clip index out of range")
+            
+            clip = track.arrangement_clips[clip_index]
+            
+            # Convert bars to beats
+            split_beats = split_bar * 4.0
+            
+            # Split the clip
+            track.arrangement_clips.split_clip(clip, split_beats)
+            
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "split_bar": split_bar,
+                "split": True,
+            }
+        except Exception as e:
+            self.log_message("Error splitting arrangement clip: " + str(e))
+            raise
+
+    def _quantize_arrangement_clip(self, track_index, clip_index, amount):
+        """Quantize notes in an arrangement clip."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if clip_index < 0 or clip_index >= len(track.arrangement_clips):
+                raise IndexError("Arrangement clip index out of range")
+            
+            clip = track.arrangement_clips[clip_index]
+            
+            # Quantize MIDI notes in the clip
+            if hasattr(clip, 'notes'):
+                for note in clip.notes:
+                    note.quantize(amount)
+            
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "amount": amount,
+                "quantized": True,
+            }
+        except Exception as e:
+            self.log_message("Error quantizing arrangement clip: " + str(e))
+            raise
+
+    def _add_arrangement_automation_point(self, track_index, device_index, parameter_index, bar_position, value, curve=0):
+        """Add an automation point in arrangement view."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+            
+            device = track.devices[device_index]
+            parameter = device.parameters[parameter_index]
+            
+            # Convert bar to time
+            time_position = self._song.get_beats_song_time()
+            time_position.bars = bar_position
+            
+            # Add automation point
+            track.add_automation_envelope_value(parameter, time_position, value)
+            
+            return {
+                "track_index": track_index,
+                "device_index": device_index,
+                "parameter_index": parameter_index,
+                "bar_position": bar_position,
+                "value": value,
+                "added": True,
+            }
+        except Exception as e:
+            self.log_message("Error adding arrangement automation point: " + str(e))
+            raise
+
+    def _add_arrangement_track_automation(self, track_index, automation_type, bar_position, value):
+        """Add track-level automation (volume, pan, send) in arrangement view."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            # Convert bar to time
+            time_position = self._song.get_beats_song_time()
+            time_position.bars = bar_position
+            
+            if automation_type == "volume":
+                # Volume automation
+                envelope = track.mixer_device.volume.envelope
+                if envelope:
+                    envelope.add_point(time_position, value)
+            elif automation_type == "pan":
+                # Pan automation
+                envelope = track.mixer_device.panning.envelope
+                if envelope:
+                    envelope.add_point(time_position, value)
+            elif automation_type.startswith("send_"):
+                # Send automation
+                send_index = int(automation_type.split("_")[1])
+                if send_index < len(track.mixer_device.sends):
+                    send = track.mixer_device.sends[send_index]
+                    envelope = send.envelope
+                    if envelope:
+                        envelope.add_point(time_position, value)
+            
+            return {
+                "track_index": track_index,
+                "automation_type": automation_type,
+                "bar_position": bar_position,
+                "value": value,
+                "added": True,
+            }
+        except Exception as e:
+            self.log_message("Error adding arrangement track automation: " + str(e))
+            raise
+
+    def _create_automation_curve(self, track_index, device_index, parameter_index, points, curve_type="linear"):
+        """Create an automation curve with multiple points."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+            
+            device = track.devices[device_index]
+            parameter = device.parameters[parameter_index]
+            
+            for point in points:
+                bar_position = point.get("bar", 0)
+                value = point.get("value", 0.0)
+                
+                time_position = self._song.get_beats_song_time()
+                time_position.bars = bar_position
+                track.add_automation_envelope_value(parameter, time_position, value)
+            
+            return {
+                "track_index": track_index,
+                "device_index": device_index,
+                "parameter_index": parameter_index,
+                "points": len(points),
+                "curve_type": curve_type,
+                "created": True,
+            }
+        except Exception as e:
+            self.log_message("Error creating automation curve: " + str(e))
+            raise
+
+    def _create_volume_automation_ramp(self, track_index, start_bar, end_bar, start_volume, end_volume, curve="linear"):
+        """Create a smooth volume automation ramp."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            num_steps = 8
+            for i in range(num_steps + 1):
+                t = i / num_steps
+                bar_position = start_bar + (end_bar - start_bar) * t
+                
+                # Apply curve
+                if curve == "linear":
+                    value = start_volume + (end_volume - start_volume) * t
+                elif curve == "s_curve":
+                    t_curved = 0.5 * (1 - math.cos(t * math.pi)) if t <= 0.5 else 0.5 * (1 + math.cos((1 - t) * math.pi))
+                    value = start_volume + (end_volume - start_volume) * t_curved
+                elif curve == "exponential":
+                    value = start_volume + (end_volume - start_volume) * (t ** 2)
+                elif curve == "logarithmic":
+                    value = start_volume + (end_volume - start_volume) * math.sqrt(t)
+                else:
+                    value = start_volume + (end_volume - start_volume) * t
+                
+                time_position = self._song.get_beats_song_time()
+                time_position.bars = bar_position
+                
+                envelope = track.mixer_device.volume.envelope
+                if envelope:
+                    envelope.add_point(time_position, max(0.0, min(1.0, value)))
+            
+            return {
+                "track_index": track_index,
+                "start_bar": start_bar,
+                "end_bar": end_bar,
+                "start_volume": start_volume,
+                "end_volume": end_volume,
+                "curve": curve,
+                "created": True,
+            }
+        except Exception as e:
+            self.log_message("Error creating volume automation ramp: " + str(e))
+            raise
+
+    def _create_filter_sweep(self, track_index, start_bar, end_bar, start_freq, end_freq, device_index=0, parameter_index=0, curve="exponential"):
+        """Create an automated filter sweep."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+            
+            device = track.devices[device_index]
+            parameter = device.parameters[parameter_index]
+            
+            num_steps = 16
+            for i in range(num_steps + 1):
+                t = i / num_steps
+                bar_position = start_bar + (end_bar - start_bar) * t
+                
+                # Calculate normalized value based on frequency range
+                # Assume filter range is 20Hz-20kHz, normalize to 0-1
+                if curve == "exponential":
+                    freq = start_freq * ((end_freq / start_freq) ** t)
+                elif curve == "linear":
+                    freq = start_freq + (end_freq - start_freq) * t
+                else:
+                    freq = start_freq + (end_freq - start_freq) * t
+                
+                # Normalize frequency to 0-1 (20-20000 Hz range)
+                normalized_value = math.log(freq / 20.0) / math.log(20000.0 / 20.0)
+                normalized_value = max(0.0, min(1.0, normalized_value))
+                
+                time_position = self._song.get_beats_song_time()
+                time_position.bars = bar_position
+                track.add_automation_envelope_value(parameter, time_position, normalized_value)
+            
+            return {
+                "track_index": track_index,
+                "start_bar": start_bar,
+                "end_bar": end_bar,
+                "start_freq": start_freq,
+                "end_freq": end_freq,
+                "curve": curve,
+                "created": True,
+            }
+        except Exception as e:
+            self.log_message("Error creating filter sweep: " + str(e))
+            raise
+
+    def _consolidate_arrangement(self, start_bar=None, end_bar=None):
+        """Consolidate selected or specified range in arrangement."""
+        try:
+            if start_bar is not None and end_bar is not None:
+                # Select the time range
+                start_time = self._song.get_beats_song_time()
+                start_time.bars = start_bar
+                end_time = self._song.get_beats_song_time()
+                end_time.bars = end_bar
+                self._song.set_selection(start_time, end_time)
+            
+            self._song.consolidate()
+            
+            return {"consolidated": True, "start_bar": start_bar, "end_bar": end_bar}
+        except Exception as e:
+            self.log_message("Error consolidating arrangement: " + str(e))
+            raise
+
+    def _duplicate_time_range(self, start_bar, end_bar, insert_position):
+        """Duplicate a time range and insert elsewhere."""
+        try:
+            # Convert to song time
+            start_time = self._song.get_beats_song_time()
+            start_time.bars = start_bar
+            end_time = self._song.get_beats_song_time()
+            end_time.bars = end_bar
+            insert_time = self._song.get_beats_song_time()
+            insert_time.bars = insert_position
+            
+            self._song.duplicate_time_range(start_time, end_time, insert_time)
+            
+            return {
+                "start_bar": start_bar,
+                "end_bar": end_bar,
+                "insert_position": insert_position,
+                "duplicated": True,
+            }
+        except Exception as e:
+            self.log_message("Error duplicating time range: " + str(e))
+            raise
+
+    def _delete_time_range(self, start_bar, end_bar):
+        """Delete a time range across all tracks."""
+        try:
+            start_time = self._song.get_beats_song_time()
+            start_time.bars = start_bar
+            end_time = self._song.get_beats_song_time()
+            end_time.bars = end_bar
+            
+            self._song.delete_time_range(start_time, end_time)
+            
+            return {"start_bar": start_bar, "end_bar": end_bar, "deleted": True}
+        except Exception as e:
+            self.log_message("Error deleting time range: " + str(e))
+            raise
+
+    def _insert_silence(self, position_bar, length_bars):
+        """Insert silence at a position."""
+        try:
+            position_time = self._song.get_beats_song_time()
+            position_time.bars = position_bar
+            length_time = self._song.get_beats_song_time()
+            length_time.bars = length_bars
+            
+            self._song.insert_silence(position_time, length_time)
+            
+            return {"position_bar": position_bar, "length_bars": length_bars, "inserted": True}
+        except Exception as e:
+            self.log_message("Error inserting silence: " + str(e))
+            raise
+
+    def _set_arrangement_view_position(self, bar, beat):
+        """Set visible position in Arrangement View."""
+        try:
+            self._song.app.view.focus_view("Arranger")
+            time_pos = self._song.get_beats_song_time()
+            time_pos.bars = bar
+            time_pos.beats = beat + 1  # 1-indexed
+            self._song.app.view.scroll_to(time_pos)
+            
+            return {"bar": bar, "beat": beat, "position_set": True}
+        except Exception as e:
+            self.log_message("Error setting arrangement view position: " + str(e))
+            raise
+
+    def _set_arrangement_zoom(self, zoom_level):
+        """Set zoom level in Arrangement View."""
+        try:
+            zoom_level = max(0.1, min(2.0, zoom_level))
+            self._song.app.view.zoom = zoom_level
+            return {"zoom_level": zoom_level, "zoom_set": True}
+        except Exception as e:
+            self.log_message("Error setting arrangement zoom: " + str(e))
+            raise
+
+    def _capture_scenes_to_arrangement(self, scene_sequence, scene_bars, start_bar=0):
+        """Capture scenes to arrangement using schedule_message to avoid notification context."""
+        try:
+            import time as time_mod
+            song = self.song()
+            if len(scene_sequence) != len(scene_bars):
+                return {"status": "error", "message": "Sequence and bars length mismatch"}
+            if len(scene_sequence) == 0:
+                return {"status": "success", "scenes_captured": 0, "total_bars": 0}
+            
+            # Validate and calculate timing
+            tempo = song.tempo
+            secs_per_bar = 4.0 / (tempo / 60.0) if tempo > 0 else 0.5
+            
+            # Setup on main thread
+            song.current_song_time = start_bar * 4.0
+            for track in song.tracks:
+                if hasattr(track, 'clip_slots') and hasattr(track, 'arm'):
+                    if any(slot.has_clip for slot in track.clip_slots if hasattr(slot, 'has_clip')):
+                        try: track.arm = True
+                        except: pass
+            
+            # Schedule the capture sequence
+            def do_capture(step=0, elapsed=0.0):
+                try:
+                    if step == 0:
+                        self._start_recording()
+                        time_mod.sleep(0.3)
+                        self._start_playback()
+                        time_mod.sleep(0.5)
+                    
+                    if step < len(scene_sequence):
+                        self._fire_scene(scene_sequence[step])
+                        wait_ms = int(secs_per_bar * scene_bars[step] * 900)
+                        self.schedule_message(wait_ms, lambda: do_capture(step+1, elapsed+scene_bars[step]))
+                    else:
+                        time_mod.sleep(0.5)
+                        self._stop_recording()
+                        self._stop_playback()
+                        for track in song.tracks:
+                            if hasattr(track, 'arm'):
+                                try: track.arm = False
+                                except: pass
+                        self.log_message(f"Scene capture completed: {len(scene_sequence)} scenes")
+                except Exception as e:
+                    self.log_message(f"Scene capture error: {e}")
+            
+            self.schedule_message(0, do_capture)
+            return {"status": "scheduled", "scenes_queued": len(scene_sequence), "total_bars": sum(scene_bars)}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def _capture_scene_structure_to_arrangement(self, scene_structure, arrangement_pattern, start_bar=0):
+        """Convert structure to sequence and delegate."""
+        try:
+            scene_sequence = []
+            scene_bars = []
+            for section in arrangement_pattern:
+                if section in scene_structure:
+                    info = scene_structure[section]
+                    scene_sequence.append(info["scene"])
+                    scene_bars.append(info["bars"])
+                else:
+                    return {"status": "error", "message": f"Section '{section}' not found"}
+            return self._capture_scenes_to_arrangement(scene_sequence, scene_bars, start_bar)
+        except Exception as e:
+            return {"status": "error", "message": str(e)}

@@ -1,0 +1,132 @@
+{
+  "status": "success",
+  "structure": [
+    {
+      "name": "Cosmic Dawn",
+      "section_type": "intro",
+      "scene_index": 7,
+      "bars": 17,
+      "bpm": 90.0,
+      "energy": 0.31,
+      "start_bar": 0,
+      "transition": null
+    },
+    {
+      "name": "Groove",
+      "section_type": "verse",
+      "scene_index": 4,
+      "bars": 17,
+      "bpm": 90.0,
+      "energy": 0.55,
+      "start_bar": 17,
+      "transition": null
+    },
+    {
+      "name": "Filter Rise",
+      "section_type": "build",
+      "scene_index": 6,
+      "bars": 5,
+      "bpm": 90.0,
+      "energy": 0.71,
+      "start_bar": 34,
+      "transition": null
+    },
+    {
+      "name": "Echo Chamber",
+      "section_type": "drop",
+      "scene_index": 3,
+      "bars": 26,
+      "bpm": 90.0,
+      "energy": 1.0,
+      "start_bar": 39,
+      "transition": null
+    },
+    {
+      "name": "Bassline",
+      "section_type": "verse",
+      "scene_index": 1,
+      "bars": 20,
+      "bpm": 90.0,
+      "energy": 0.62,
+      "start_bar": 65,
+      "transition": "filter_sweep"
+    },
+    {
+      "name": "Atmosphere",
+      "section_type": "breakdown",
+      "scene_index": 5,
+      "bars": 20,
+      "bpm": 90.0,
+      "energy": 0.39,
+      "start_bar": 85,
+      "transition": null
+    },
+    {
+      "name": "Ascent",
+      "section_type": "build",
+      "scene_index": 2,
+      "bars": 6,
+      "bpm": 90.0,
+      "energy": 0.69,
+      "start_bar": 105,
+      "transition": null
+    },
+    {
+      "name": "Filter Sweep",
+      "section_type": "drop",
+      "scene_index": 0,
+      "bars": 26,
+      "bpm": 90.0,
+      "energy": 1.0,
+      "start_bar": 111,
+      "transition": null
+    },
+    {
+      "name": "Atmosphere",
+      "section_type": "breakdown",
+      "scene_index": 1,
+      "bars": 18,
+      "bpm": 90.0,
+      "energy": 0.4,
+      "start_bar": 137,
+      "transition": null
+    },
+    {
+      "name": "Ascent",
+      "section_type": "build",
+      "scene_index": 0,
+      "bars": 6,
+      "bpm": 90.0,
+      "energy": 0.77,
+      "start_bar": 155,
+      "transition": null
+    },
+    {
+      "name": "Maximum",
+      "section_type": "finale",
+      "scene_index": 5,
+      "bars": 23,
+      "bpm": 90.0,
+      "energy": 0.77,
+      "start_bar": 161,
+      "transition": null
+    },
+    {
+      "name": "Closing",
+      "section_type": "outro",
+      "scene_index": 3,
+      "bars": 11,
+      "bpm": 90.0,
+      "energy": 0.23,
+      "start_bar": 184,
+      "transition": "echo_build"
+    }
+  ],
+  "mood": "balanced",
+  "base_bpm": 90.0,
+  "total_bars": 195,
+  "total_time_minutes": 130.0,
+  "scenes_used": 8,
+  "num_scenes_available": 8,
+  "num_tracks": 4
+}
