@@ -55,3 +55,9 @@ Thumbs.db
 # Runtime state
 nul
 scripts/automation_state.json
+
+# Generated exports
+exports/runs/*.json
+
+# Log files directory
+logs/
