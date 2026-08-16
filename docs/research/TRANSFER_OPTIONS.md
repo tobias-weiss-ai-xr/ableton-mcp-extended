@@ -12,7 +12,7 @@ Source: [music-research](https://github.com/tobias-weiss-ai-xr/music-research)
 | 1 | MERT (2306.00107) | Semantic audio embeddings in feedback loop | Low | **High** | ✅ Implemented |
 | 2 | GraphIDyOM (2607.25787) | Expectation-based chord suggestions | Low | **High** | ✅ Implemented |
 | 3 | Libretto (2606.22708) | Symbolic grammar layer for agentic pipeline | Medium | **High** | 🔲 Planned |
-| 4 | AgentFlow (npm package) | DAG/circuit-breaker/checkpoint orchestration | Medium | **High** | 🔲 Planned |
+| 4 | AgentFlow (npm package) | DAG/circuit-breaker/checkpoint orchestration | Medium | **High** | ✅ Implemented |
 | 5 | WeaveMuse (2509.11183) | Multi-agent architecture for agentic_mix | High | **High** | 🔲 Planned |
 | 5 | CompLex (2508.19603) | Agent-built music theory lexicon | Medium | Medium | 🔲 Planned |
 | 6 | SongFormer (2510.02797) | Auto-detect section boundaries in Live Sets | Low | Medium | 🔲 Planned |
@@ -24,7 +24,7 @@ Source: [music-research](https://github.com/tobias-weiss-ai-xr/music-research)
 | 12 | Preference Alignment (2511.15038) | RLHF-style tuning of arrangement agent | Medium | Medium | 🔲 Planned |
 | 13 | MuScriptor (2607.08168) | Audio→MIDI transcription for agent editing | Medium | Medium | 🔲 Planned |
 | 14 | Music Flamingo (2511.10289) | Richer audio descriptions for feedback loop | Medium | Medium | 🔲 Planned |
-| 15 | AgentFlow Orchestration | DAG + circuit breakers + checkpoint for mix pipeline | Medium | **High** | 🔲 Planned |
+| 15 | AgentFlow Orchestration | DAG + circuit breakers + checkpoint for mix pipeline | Medium | **High** | ✅ Implemented |
 | 16 | Full-Song Framework (2607.20253) | Lyrics-to-song with vocal generation | High | Low | 🔲 Planned |
 | 17 | Diff-Symbo (2608.05222) | Diffusion-based symbolic generation | High | Low | 🔲 Planned |
 | 18 | MindMelody (2605.01235) | EEG biofeedback in audio loop | High | Low | 🔲 Planned |
@@ -56,24 +56,29 @@ Source: [music-research](https://github.com/tobias-weiss-ai-xr/music-research)
 **Why:** Fixes the representation gap: arrangement decisions are currently opaque between nodes. A grammar layer makes them **inspectable and editable** before committing MIDI
 **Effort:** ~400 lines. New `grammar.py` module, `plan_grammar_node` and `render_grammar_node`, integration into LangGraph pipeline
 
-### 🔲 Option 4 — AgentFlow Orchestration for Agentic Mix (replaces LangGraph)
+### ✅ Option 4 — AgentFlow Orchestration for Agentic Mix (replaces LangGraph)
 **Package:** [agentflow](https://github.com/tobias-weiss-ai-xr/agentflow) (npm, formerly TaskFleet)
 **What:** DAG-based workflow engine, circuit breakers, event bus, state machines, checkpoint persistence
-**Transfers to:** `agentic_mix/` — refactor LangGraph pipeline to use AgentFlow
+**Transfers to:** `orchestration/` — new orchestration layer wrapping `agentic_mix/` nodes
 **Why:** Current LangGraph pipeline is a linear chain with no resilience (Ableton MCP failures crash the mix). AgentFlow adds:
 - **Circuit breakers** — auto-retry when Ableton MCP calls fail (e.g., transport control, clip creation)
 - **Checkpoint/restore** — resume long 2-hour mixes after crashes
 - **DAG execution** — specialist agents run as parallel DAG tasks instead of linear chain
 - **Event bus** — loose coupling between arrangement, mixing, and audio analysis
-**Effort:** ~500 lines (swap LangGraph for AgentFlow, wire circuit breakers around MCP calls). Prerequisite for Option 3 (Libretto grammar) and Option 5 (WeaveMuse multi-agent)
-**Note:** AgentFlow is TypeScript; agentic_mix is Python. Integration via subprocess HTTP invoker or thin Python wrapper calling the Node.js engine.
+**Effort:** ~600 lines implemented. Node.js bridge + Python agent server + circuit breaker
+**Architecture:**
+- `orchestration/agentflow_bridge/` — Node.js bridge using agentflow npm package
+- `orchestration/agentflow_runner.py` — Python runner (starts bridge, submits workflow, polls)
+- `orchestration/circuit_breaker.py` — Per-operation circuit breakers for Ableton MCP
+- CLI: `--orchestrator agentflow` (default: langgraph for backward compat)
+**Note:** AgentFlow is TypeScript; agentic_mix is Python. Integration via HTTP subprocess invoker (Node.js bridge calls Python agent server on localhost).
 
 ### 🔲 Option 5 — WeaveMuse Multi-Agent Architecture
 **Paper:** WeaveMuse (Karystinaios, 2025) — arXiv:2509.11183
 **What:** Specialist agents (one per concern) + manager agent coordinates
 **Transfers to:** `agentic_mix/` — refactor linear chain into specialist/manager pattern
 **Why:** Current pipeline is monolithic. Specialist agents (drums, harmony, FX, mixing) enable independent improvement and clearer reasoning
-**Effort:** ~800 lines (significant refactor). New agent classes, manager node, state protocol changes. **Best done after AgentFlow integration (Option 4)**
+**Effort:** ~800 lines (significant refactor). New agent classes, manager node, state protocol changes. **Prerequisite (Option 4) now implemented**
 
 ### 🔲 Option 5 — CompLex Auto Music Theory Lexicon
 **Paper:** CompLex (Hu et al., 2025) — arXiv:2508.19603
