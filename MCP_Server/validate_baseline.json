@@ -1,0 +1,16 @@
+{
+  "description": "Pre-existing violations recorded for CI baseline comparison.",
+  "generated_by": "MCP_Server/validate_server.py --baseline",
+  "violation_count": 9,
+  "violations": [
+    "normalized_param:MCP_Server/arrangement_tools.py:create_dub_arrangement:param 'reverb_decay_max' default=4.0 outside [0.0, 1.0]",
+    "udp_transport:MCP_Server/optimization_tools.py:optimize_cpu_usage:send_command_udp('toggle_device_bypass') -- not in UDP whitelist",
+    "unknown_command:MCP_Server/fat_beatz_tools.py:add_sub_bass_harmonic:send_command('set_track_audio_from') -- no handler in Remote Script dispatch",
+    "unknown_command:MCP_Server/fat_beatz_tools.py:boost_bass_frequencies:send_command('get_track_devices') -- no handler in Remote Script dispatch",
+    "unknown_command:MCP_Server/fat_beatz_tools.py:create_fat_beat:send_command('add_note') -- no handler in Remote Script dispatch",
+    "unknown_command:MCP_Server/fat_beatz_tools.py:setup_sidechain_pump:send_command('set_device_sidechain') -- no handler in Remote Script dispatch",
+    "unknown_command:MCP_Server/midi_effects.py:apply_midi_effect_preset:send_command('get_track_devices') -- no handler in Remote Script dispatch",
+    "unknown_command:MCP_Server/optimization_tools.py:optimize_cpu_usage:send_command('freeze_track') -- no handler in Remote Script dispatch",
+    "unknown_command:MCP_Server/server.py:create_generative_session:send_command('create_drum_pattern') -- no handler in Remote Script dispatch"
+  ]
+}
