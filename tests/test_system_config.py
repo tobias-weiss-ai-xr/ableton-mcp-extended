@@ -393,3 +393,18 @@ class TestMutationKillingValueAssertions:
         assert len(delays) > 0
         assert all(isinstance(d, (int, float)) for d in delays)
         assert reconnect_max_attempts() > 0
+
+
+class TestPortFallbackMutationKilling:
+    """Force the get_port ternary default path (ports dict without the key)."""
+
+    def test_get_port_fallback_when_ports_empty(self, tmp_path):
+        from MCP_Server.system_config import get_port, reload_config
+        cfg = tmp_path / "sys.yaml"
+        cfg.write_text("ports: {}\n", encoding="utf-8")
+        try:
+            reload_config(cfg)
+            assert get_port("tcp") == 9877   # ternary default path (name == "tcp")
+            assert get_port("udp") == 9878   # ternary default path (else branch)
+        finally:
+            reload_config()  # restore module singleton for other tests
