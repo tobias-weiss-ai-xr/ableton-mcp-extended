@@ -404,3 +404,32 @@ class TestValidateRegistryKillsMutations:
         errs = validate_registry(reg)
         dup_errs = [e for e in errs if "Duplicate" in e]
         assert not dup_errs, f"Single entry should not have duplicates: {dup_errs}"
+
+
+class TestMutationKillingValueAssertions:
+    """Value-asserting tests for remaining mutation survivors."""
+
+    def test_default_commandspec_not_modifying(self):
+        """Mutation: 'modifying: bool = False' -> True must change behavior."""
+        from MCP_Server.command_registry import CommandSpec
+        spec = CommandSpec(name="plain_cmd")
+        assert spec.modifying is False, "Default modifying must be False"
+
+        # And UDP commands built without explicit modifying must remain non-modifying
+        udp = CommandSpec(name="udp_cmd", transport="udp")
+        assert udp.modifying is False
+
+    def test_has_normalized_range_min_only(self):
+        """Mutation: 'a is not None or b is not None' -> 'and' / drop 'not'."""
+        from MCP_Server.command_registry import ParamSpec
+        # Only min_value set, max_value None — must still report a range
+        p = ParamSpec(type="float", min_value=0.0)
+        assert p.has_normalized_range() is True, "min-only param must have a range"
+
+        # Only max_value set too
+        p2 = ParamSpec(type="float", max_value=1.0)
+        assert p2.has_normalized_range() is True
+
+        # Neither set — no range
+        p3 = ParamSpec(type="float")
+        assert p3.has_normalized_range() is False
