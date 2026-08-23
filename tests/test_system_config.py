@@ -398,13 +398,26 @@ class TestMutationKillingValueAssertions:
 class TestPortFallbackMutationKilling:
     """Force the get_port ternary default path (ports dict without the key)."""
 
-    def test_get_port_fallback_when_ports_empty(self, tmp_path):
+    def test_get_port_fallback_when_ports_null(self, tmp_path):
         from MCP_Server.system_config import get_port, reload_config
+        # ports: null must not crash get_port; per-key default fallback applies
         cfg = tmp_path / "sys.yaml"
-        cfg.write_text("ports: {}\n", encoding="utf-8")
+        cfg.write_text("ports: null\n", encoding="utf-8")
         try:
             reload_config(cfg)
-            assert get_port("tcp") == 9877   # ternary default path (name == "tcp")
-            assert get_port("udp") == 9878   # ternary default path (else branch)
+            assert get_port("tcp") == 9877   # falls back to default branch
+            assert get_port("udp") == 9878   # falls back to default branch
         finally:
             reload_config()  # restore module singleton for other tests
+
+    def test_get_port_partial_ports_dict(self, tmp_path):
+        from MCP_Server.system_config import get_port, reload_config
+        # Config defines only udp; omitted tcp falls back per-key to default
+        cfg = tmp_path / "sys.yaml"
+        cfg.write_text("ports:\n  udp: 9999\n", encoding="utf-8")
+        try:
+            reload_config(cfg)
+            assert get_port("udp") == 9999   # configured value wins
+            assert get_port("tcp") == 9877   # missing key -> default branch
+        finally:
+            reload_config()

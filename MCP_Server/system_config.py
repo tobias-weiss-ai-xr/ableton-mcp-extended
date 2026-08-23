@@ -150,9 +150,19 @@ def _config() -> Dict[str, Any]:
     return _cfg
 
 
+def _port_default(name: str) -> int:
+    """Default port for a well-known name, falling back to 9878 for unknown."""
+    return 9877 if name == "tcp" else 9878
+
+
 def get_port(name: str = "tcp") -> int:
-    """Return a port number by name (``"tcp"`` or ``"udp"``)."""
-    return _config().get("ports", {}).get(name, 9877 if name == "tcp" else 9878)
+    """Return a port number by name (``"tcp"`` or ``"udp"``).
+
+    Looks up the merged config; when the ``ports`` section is absent, null, or
+    lacks the requested name, falls back to the built-in defaults.
+    """
+    ports = _config().get("ports") or {}
+    return ports[name] if name in ports else _port_default(name)
 
 
 def tcp_port() -> int:
