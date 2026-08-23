@@ -107,3 +107,27 @@ class TestMutationKillingValueAssertions:
         monkeypatch.setattr(sys, "argv", ["docgen"])
         dg.main()
         dg.main()  # second run: mkdir(exist_ok=True); must not raise
+
+
+@pytest.mark.parametrize("name,docstring,expected", [
+    ("set_track_volume", "set track volume", "udp"),
+    ("create_midi_track", "create a session track", "session-setup"),
+    ("capture_to_arrangement", "arrangement capture, record region", "arrangement"),
+    ("set_master_volume", "mixer level, volume control", "udp"),
+    ("load_instrument_or_effect", "load device, reverb preset", "effects"),
+    ("add_notes_to_clip", "midi note entry, quantize", "midi"),
+    ("create_drum_pattern", "build groove, pattern generator", "generation"),
+    ("optimize_mix", "optimize, balance, polish levels", "mixing"),  # mixing rule precedes optimization
+    ("dub_echo_sweep", "dub delay, fat_beatz effect", "dub"),
+    ("live_performance", "performance, live dj set", "performance"),
+    ("advanced_smart_mix", "advanced, intelligent ai mix", "mixing"),  # mixing rule precedes advanced
+    ("total_chaos", "unrelated words only", "other"),
+], ids=["udp_set_volume", "volume", "pan", "send_amount", "udp_master",
+        "effects", "midi", "generation", "optimize_is_mixing", "dub",
+        "performance", "advanced_is_mixing"])
+class TestCategorizeToolTable:
+    """Table-driven categorization cases (S2)."""
+
+    def test_category(self, name, docstring, expected):
+        from MCP_Server.docgen import categorize_tool
+        assert categorize_tool(name, docstring) == expected

@@ -140,3 +140,24 @@ class TestMutationKillingValueAssertions:
         assert {"real_one", "real_two"} == names, \
             "only @*.tool() decorated functions must be counted as tools"
         assert len(tools) == 2
+
+
+@pytest.mark.parametrize("name,expected", [
+    ("set_track_volume", True),   # volume -> normalized
+    ("volume", True),
+    ("pan", True),
+    ("send_amount", True),
+    ("feedback", True),
+    ("track_index", False),        # no normalized word
+    ("name", False),
+    ("pitch", False),
+    ("ctx", False),
+    ("clip_index", False),
+], ids=["set_track_volume", "volume", "pan", "send_amount", "feedback",
+        "track_index", "name", "pitch", "ctx", "clip_index"])
+class TestIsNormalizedParamTable:
+    """Table-driven cases for the normalized-param heuristic (S2)."""
+
+    def test_heuristic(self, name, expected):
+        from MCP_Server.validate_server import is_normalized_param
+        assert is_normalized_param(name) is expected
