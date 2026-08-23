@@ -529,8 +529,9 @@ def main():
     print("Generating QUICK_REFERENCE.md...")
     quick_ref_md = generate_quick_reference_md(tools)
     
-    # Ensure docs directory exists
-    DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    # Ensure docs directory exists (directory is version-controlled, so
+    # only exist_ok matters — parents always exist).
+    DOCS_DIR.mkdir(exist_ok=True)
     
     # Write files
     tools_path = DOCS_DIR / "TOOLS.md"
