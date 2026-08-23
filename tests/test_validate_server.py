@@ -90,3 +90,53 @@ class TestViolation:
         assert "unnormalized" in s
         assert "test.py" in s
         assert "test_fn" in s
+
+
+class TestMutationKillingValueAssertions:
+    """Kill remaining validate_server mutation survivors."""
+
+    def test_boundary_float_defaults_are_valid(self, tmp_path):
+        from MCP_Server.validate_server import check_normalized_params, parse_tools
+        p = tmp_path / "boundary_tools.py"
+        p.write_text(
+            'from mcp.server.fastmcp import FastMCP\n'
+            'server = FastMCP("b")\n'
+            '@server.tool()\n'
+            'def set_volume(volume: float = 0.0) -> None:\n'
+            '    "set the volume"\n'
+            '    pass\n'
+            '@server.tool()\n'
+            'def set_pan(pan: float = 1.0) -> None:\n'
+            '    "set the pan"\n'
+            '    pass\n',
+            encoding="utf-8")
+        tools = parse_tools(str(p))
+        assert len(tools) == 2
+        viols = check_normalized_params(tools)
+        assert not any(v.check == "normalized_param" for v in viols), \
+            "exact 0.0 / 1.0 defaults must be inside the valid range"
+
+    def test_precise_tool_count_excludes_non_tool_decorators(self, tmp_path):
+        from MCP_Server.validate_server import parse_tools
+        p = tmp_path / "decorator_tools.py"
+        p.write_text(
+            'from mcp.server.fastmcp import FastMCP\n'
+            'server = FastMCP("d")\n'
+            '@server.tool()\n'
+            'def real_one() -> None:\n'
+            '    "doc"\n'
+            '    pass\n'
+            '@server.tool("named")\n'
+            'def real_two() -> None:\n'
+            '    "doc"\n'
+            '    pass\n'
+            '@server.something_else()\n'
+            'def not_a_tool() -> None:\n'
+            '    "doc"\n'
+            '    pass\n',
+            encoding="utf-8")
+        tools = parse_tools(str(p))
+        names = {t.name for t in tools}
+        assert {"real_one", "real_two"} == names, \
+            "only @*.tool() decorated functions must be counted as tools"
+        assert len(tools) == 2
