@@ -65,14 +65,22 @@ def note(pitch, start_beat, dur=1.0, vel=100):
 
 
 def loop(bar_pattern, bars, loop_beats=4.0, start_bar=0):
-    """Repeat a 1-bar (or N-bar) pattern over `bars` bars of a clip."""
+    """Repeat a 1-bar (or N-bar) pattern over `bars` bars of a clip.
+
+    Notes whose tail would exceed the clip length are pruned so every clip
+    stays exactly its section length (no overflow past the end).
+    """
     out = []
     base = start_bar * 4.0
+    clip_end = bars * 4.0
     n_loops = int(bars * 4.0 // loop_beats)
     for L in range(max(n_loops, 1)):
         for n in bar_pattern:
+            start = n["start"] + base + L * loop_beats
+            if start + n["duration"] > clip_end + 1e-6:
+                continue
             d = dict(n)
-            d["start"] = n["start"] + base + L * loop_beats
+            d["start"] = start
             out.append(d)
     return out
 
