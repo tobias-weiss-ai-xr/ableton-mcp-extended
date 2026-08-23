@@ -28,8 +28,10 @@ DRUM_HAT_C  = 42
 DRUM_HAT_O  = 46
 DRUM_PERC   = 56          # cowbell-ish / woodblock zone on the kit
 
+C1, F1, G1 = 24, 29, 31                       # sub octave roots
 C2, F2, G2, C3 = 36, 41, 43, 48
 F3 = 53
+D4 = 62
 Eb3, G3, Bb3 = 51, 55, 58
 C4, Eb4, F4, G4, Bb4 = 60, 63, 65, 67, 70
 C5 = 72
