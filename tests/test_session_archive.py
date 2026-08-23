@@ -762,8 +762,9 @@ class TestMutationKillingValueAssertions:
 
     def test_validate_bars_zero_is_invalid(self):
         from scripts.session_archive import validate_session
-        errs = validate_session({"structure": [{"bars": 0, "bpm": 75}]}, "bars_zero.json")
-        assert any("bars" in e for e in errs), "bars=0 must be reported invalid"
+        errs = validate_session({"structure": [{"bars": 0, "bpm": 75}]}, "x.json")
+        assert any("bars" in e and "positive" in e for e in errs), \
+            "bars=0 must be reported as non-positive"
 
     def test_build_archive_twice_no_raise(self, tmp_path):
         from scripts.session_archive import build_archive
@@ -780,3 +781,29 @@ class TestMutationKillingValueAssertions:
         text = (exports / "archive" / "sessions.yaml").read_text(encoding="utf-8")
         assert not text.lstrip().startswith("{"), "archive must be block-style YAML"
         assert text.splitlines()[0].startswith("sessions:")
+
+
+class TestArchiveSkipSemantics:
+    """Soft validation warnings must NOT skip archiving; only hard parse
+    failures (torn/non-JSON-object content) are skipped."""
+
+    def test_soft_warnings_still_archived(self, tmp_path):
+        from scripts.session_archive import build_archive
+        exports = tmp_path / "exports"
+        runs = exports / "runs"
+        runs.mkdir(parents=True)
+        (runs / "smart_mix_a.json").write_text('{"tempo": 120}', encoding="utf-8")
+        (runs / "smart_mix_b.json").write_text('{"bpm": 90}', encoding="utf-8")
+        out = build_archive(exports)
+        # 'status' missing is a soft warning, not a parse failure -> both stored
+        assert out["metadata"]["total_sessions"] == 2
+
+    def test_torn_json_is_skipped(self, tmp_path):
+        from scripts.session_archive import build_archive
+        exports = tmp_path / "exports"
+        runs = exports / "runs"
+        runs.mkdir(parents=True)
+        (runs / "smart_mix_torn.json").write_text('{"tempo": 1', encoding="utf-8")
+        (runs / "smart_mix_ok.json").write_text('{"status": "success", "tempo": 120}', encoding="utf-8")
+        out = build_archive(exports)
+        assert out["metadata"]["total_sessions"] == 1

@@ -335,7 +335,7 @@ def build_archive(exports_dir: Path) -> dict[str, Any]:
         "validation_errors": all_errors,
     }}
 
-    archive_dir.mkdir(parents=True, exist_ok=True)
+    archive_dir.mkdir(exist_ok=True)
     sessions_file.write_text(
         yaml.dump(archive, default_flow_style=False, allow_unicode=True, sort_keys=False),
         encoding="utf-8",
