@@ -746,3 +746,37 @@ class TestMutationKillingValueAssertions:
             [{"name": "A", "bars": 8, "bpm": 120}],
         )
         assert result["total_bars"] == 8
+
+
+class TestMutationKillingValueAssertions:
+    """Value-asserting tests for remaining session_archive mutation survivors."""
+
+    def test_detect_genre_from_filename_dash_form(self):
+        from scripts.session_archive import _detect_genre
+        # Filename uses dash form; OR-based matching must resolve to deep_house
+        result = _detect_genre({}, "mix_deep-house_20260801_000000.json")
+        assert result == "deep_house"
+        # And underscore form as well
+        result2 = _detect_genre({}, "mix_deep_house_20260801_000000.json")
+        assert result2 == "deep_house"
+
+    def test_validate_bars_zero_is_invalid(self):
+        from scripts.session_archive import validate_session
+        errs = validate_session({"structure": [{"bars": 0, "bpm": 75}]}, "bars_zero.json")
+        assert any("bars" in e for e in errs), "bars=0 must be reported invalid"
+
+    def test_build_archive_twice_no_raise(self, tmp_path):
+        from scripts.session_archive import build_archive
+        exports = tmp_path / "exports"
+        (exports / "runs").mkdir(parents=True)
+        build_archive(exports)
+        build_archive(exports)  # second run: archive dir already exists (exist_ok)
+
+    def test_archive_yaml_is_block_style(self, tmp_path):
+        from scripts.session_archive import build_archive
+        exports = tmp_path / "exports"
+        (exports / "runs").mkdir(parents=True)
+        build_archive(exports)
+        text = (exports / "archive" / "sessions.yaml").read_text(encoding="utf-8")
+        assert not text.lstrip().startswith("{"), "archive must be block-style YAML"
+        assert text.splitlines()[0].startswith("sessions:")
