@@ -36,7 +36,45 @@ Eb3, G3, Bb3 = 51, 55, 58
 C4, Eb4, F4, G4, Bb4 = 60, 63, 65, 67, 70
 C5 = 72
 
-KIT_URI = "query:Drums#FileId_58622"
+# Verified browser URIs (resolved live via get_browser_item)
+DRUMS_URI   = "query:Drums#FileId_58622"              # 32 Pad Kit Jazz.adg
+DRUMS2_URI  = "query:Drums#FileId_58623"              # 32 Pad Kit Rock.adg
+BASS_URI    = "query:Sounds#Bass:FileId_49654"        # 101 Essential Bass.adg
+PAD_URI     = "query:Sounds#Pad:FileId_45564"         # 5ths Glass Motion Pad.adv
+STRINGS_URI = "query:Sounds#Pad:FileId_45565"
+LEAD_URI    = "query:Sounds#Synth%20Lead:FileId_50175"  # A Date With Analog.adv
+
+FX_REVERB    = "query:AudioFx#Reverb"
+FX_DELAY     = "query:AudioFx#Delay"
+FX_ECHO      = "query:AudioFx#Echo"
+FX_FDELAY    = "query:AudioFx#Filter%20Delay"
+FX_EQ8       = "query:AudioFx#EQ%20Eight"
+FX_COMP      = "query:AudioFx#Compressor"
+FX_AFILTER   = "query:AudioFx#Auto%20Filter"
+FX_DRUMBUSS  = "query:AudioFx#Drum%20Buss"
+FX_SATURATOR = "query:AudioFx#Saturator"
+FX_UTILITY   = "query:AudioFx#Utility"
+
+# (track name, instrument URI, [effect URIs in chain order])
+TRACKS = [
+    ("DRUMS",   DRUMS_URI,  [FX_DRUMBUSS]),                  # punch + drive
+    ("BASS",    BASS_URI,   [FX_EQ8, FX_COMP]),              # clean low end
+    ("SUB",     BASS_URI,   [FX_AFILTER, FX_SATURATOR]),     # dark LP = sub octave feel
+    ("CHORDS",  PAD_URI,    [FX_DELAY, FX_UTILITY]),         # dub stab echoes
+    ("PADS",    STRINGS_URI, [FX_REVERB]),                   # wash
+    ("MELODY",  LEAD_URI,   [FX_DELAY, FX_REVERB]),          # dub delay throws
+    ("FX/PERC", DRUMS2_URI, [FX_FDELAY, FX_REVERB]),         # the dub cannon
+]
+
+# Post-load device tweaks: track -> [(device_index, param_name_substr, value)]
+# Values are set within the device's real [min, max] via get_device_parameters.
+DEVICE_TWEAKS = {
+    2: [(1, "Frequency", 0.06)],               # SUB Auto Filter: very dark
+    3: [(1, "Feedback", 0.62), (1, "Dry/Wet", 0.35)],   # CHORDS Delay: dub repeats
+    5: [(1, "Feedback", 0.55), (1, "Dry/Wet", 0.30)],   # MELODY Delay
+    6: [(1, "Feedback", 0.72), (1, "Dry/Wet", 0.45)],   # FX Filter Delay: cannon
+}
+
 
 # ─── 5-minute dub structure: (name, bars) — 96 bars @ 75 BPM ≈ 5:07 ────────
 SCENES = [
@@ -47,16 +85,6 @@ SCENES = [
     ("BREAKDOWN", 16),   # drums stripped, dub hole
     ("JUMP",       8),   # groove returns, resonator peak
     ("OUTRO",     12),   # filter down, echo decay, fade
-]
-
-TRACKS = [
-    ("DRUMS",    KIT_URI),
-    ("BASS",     "query:Instruments#Wavetable"),
-    ("SUB",      "query:Instruments#Operator"),
-    ("CHORDS",   "query:Instruments#Wavetable"),
-    ("PADS",     "query:Instruments#Analog"),
-    ("MELODY",   "query:Instruments#Wavetable"),
-    ("FX/PERC",  KIT_URI),
 ]
 
 
@@ -210,7 +238,7 @@ class AbletonClient:
     def connect(self):
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock.settimeout(15)
+            self.sock.settimeout(30)
             self.sock.connect((self.host, self.port))
             return True
         except Exception as e:
@@ -223,12 +251,21 @@ class AbletonClient:
         msg = json.dumps({"type": cmd, "params": params or {}}).encode() + b"\n"
         try:
             self.sock.sendall(msg)
-            raw = self.sock.recv(8192).decode()
+            raw = self.sock.recv(262144).decode()
             return json.loads(raw) if raw else {"status": "ok"}
         except Exception as e:
             print(f"[ERR] {cmd}: {e}")
             self.sock = None
             return {"status": "error"}
+
+    def send_checked(self, cmd, params=None, what=""):
+        """Send and RAISE on error status - silent failures are how instruments
+        get 'forgotten'. Every load/create MUST pass through here."""
+        r = self.send(cmd, params)
+        status = r.get("status") if isinstance(r, dict) else None
+        if status != "success":
+            raise RuntimeError(f"{what or cmd} failed: {json.dumps(r)[:220]}")
+        return r
 
     def close(self):
         if self.sock:
@@ -244,14 +281,72 @@ class DubFiveMin:
         self.n_scenes = len(SCENES)
 
     # ── track/model helpers ───────────────────────────────────────────────
-    def create_track(self, idx, name, uri):
+    def create_track(self, idx, name, instrument_uri, effect_uris):
         print(f"  track {idx}: {name}")
-        self.c.send("create_midi_track", {"index": idx})
+        self.c.send_checked("create_midi_track", {"index": idx}, f"create track {name}")
         time.sleep(0.15)
         self.c.send("set_track_name", {"track_index": idx, "name": name})
-        if uri:
-            self.c.send("load_instrument_or_effect", {"track_index": idx, "uri": uri})
-            time.sleep(0.45)
+        # instrument
+        self.c.send_checked("load_browser_item",
+                            {"track_index": idx, "item_uri": instrument_uri},
+                            f"load instrument {instrument_uri}")
+        time.sleep(0.6)
+        # effects (appended to device chain in order)
+        for fx in effect_uris:
+            self.c.send_checked("load_browser_item",
+                                {"track_index": idx, "item_uri": fx},
+                                f"load effect {fx}")
+            time.sleep(0.5)
+        # verify device chain
+        n_expected = 1 + len(effect_uris)
+        n_got = self._device_count(idx)
+        if n_got < n_expected:
+            raise RuntimeError(
+                f"{name}: expected {n_expected} devices, found {n_got} - load failed")
+        print(f"    devices: {n_got}/{n_expected} OK")
+
+    def _device_count(self, track_idx):
+        r = self.c.send("get_track_info", {"track_index": track_idx})
+        devs = r.get("result", {}).get("devices")
+        return len(devs) if isinstance(devs, list) else -1
+
+    def _param_map(self, track_idx, device_idx):
+        """{lowercase param name: (index, min, max, current)} for a device."""
+        r = self.c.send("get_device_parameters",
+                      {"track_index": track_idx, "device_index": device_idx})
+        params = r.get("result", {}).get("parameters") or []
+        out = {}
+        for i, p in enumerate(params):
+            if isinstance(p, dict):
+                nm = str(p.get("name", "")).lower()
+                out[nm] = (i, float(p.get("min", 0.0)), float(p.get("max", 1.0)),
+                           p.get("value", p.get("real_value", 0.0)))
+        return out
+
+    def apply_device_tweaks(self):
+        """Set dub-critical device params, mapped into each param's real range."""
+        for track_idx, tweaks in DEVICE_TWEAKS.items():
+            for device_idx, name_substr, frac in tweaks:
+                pmap = self._param_map(track_idx, device_idx)
+                if not pmap:
+                    print(f"    [warn] no params on track {track_idx} dev {device_idx}")
+                    continue
+                hit = pmap.get(name_substr.lower())
+                if hit is None:
+                    for nm, spec in pmap.items():
+                        if name_substr.lower() in nm:
+                            hit = spec
+                            break
+                if hit is None:
+                    print(f"    [warn] {name_substr!r} not on track {track_idx} "
+                          f"dev {device_idx} (has {sorted(pmap)[:6]})")
+                    continue
+                i, lo, hi, _cur = hit
+                value = lo + (hi - lo) * frac
+                self.c.send("set_device_parameter",
+                            {"track_index": track_idx, "device_index": device_idx,
+                             "parameter_index": i, "value": value})
+            print(f"  tweaks applied: track {track_idx}")
 
     def add_clip(self, track_idx, clip_idx, length_beats, notes):
         self.c.send("create_clip", {"track_index": track_idx, "clip_index": clip_idx,
@@ -322,9 +417,12 @@ class DubFiveMin:
         print("[tempo] 75 BPM")
         c.send("set_tempo", {"bpm": 75.0})
 
-        print("[tracks] creating 7 MIDI tracks")
-        for i, (name, uri) in enumerate(TRACKS):
-            self.create_track(i, name, uri)
+        print("[tracks] 7 MIDI tracks + instruments + effects")
+        for i, (name, uri, fx) in enumerate(TRACKS):
+            self.create_track(i, name, uri, fx)
+
+        print("[devices] dub tweaks (filter darkness, delay feedback)")
+        self.apply_device_tweaks()
 
         print("[scenes] creating %d scenes" % self.n_scenes)
         for i in range(self.n_scenes):
