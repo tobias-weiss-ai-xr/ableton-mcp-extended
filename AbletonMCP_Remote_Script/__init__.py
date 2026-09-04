@@ -578,6 +578,8 @@ class AbletonMCP(ControlSurface):
             "get_arrangement_clips": lambda p: self._get_arrangement_clips(p.get("track_index", None)),
             "build_arrangement": lambda p: self._build_arrangement(p.get("sections", [])),
             "get_arrangement_clip_notes": lambda p: self._get_arrangement_clip_notes(p.get("track_index", 0), p.get("clip_index", 0)),
+            "lom_probe": lambda p: self._lom_probe(p.get("target", ""), p.get("names", [])),
+            "set_clip_automation": lambda p: self._set_clip_automation(p.get("track_index", 0), p.get("clip_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("points", []), read_times=p.get("read_times")),
             "duplicate_arrangement_clip": lambda p: self._duplicate_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", None)),
             "move_arrangement_clip": lambda p: self._move_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", 0), p.get("new_track_index", None)),
             "delete_arrangement_clip": lambda p: self._delete_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0)),
@@ -5195,6 +5197,109 @@ class AbletonMCP(ControlSurface):
             return {"placed": ok_n, "total": len(results), "items": results}
         except Exception as e:
             self.log_message("Error building arrangement: " + str(e))
+            raise
+
+    def _set_clip_automation(self, track_index, clip_index, device_index,
+                             parameter_index, points, **kwargs):
+        """Write automation breakpoints onto a session clip (Live 12
+        AutomationEnvelope API). points: [[time_beats, value, curve], ...]."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.clip_slots):
+                raise IndexError("Clip index out of range")
+            slot = track.clip_slots[clip_index]
+            if not slot.has_clip:
+                raise Exception("No clip in slot")
+            clip = slot.clip
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+            device = track.devices[device_index]
+            if parameter_index < 0 or parameter_index >= len(device.parameters):
+                raise IndexError("Parameter index out of range")
+            parameter = device.parameters[parameter_index]
+            try:
+                env = clip.create_automation_envelope(parameter)
+            except Exception:
+                getter = getattr(clip, "automation_envelope", None)
+                env = None
+                if getter is not None:
+                    for mk in (lambda: getter(parameter), lambda: getter()):
+                        try:
+                            env = mk()
+                            if env is not None:
+                                break
+                        except Exception:
+                            env = None
+                if env is None:
+                    raise
+            added = 0
+            for pt in points:
+                t = float(pt[0])
+                v = float(pt[1])
+                cv = float(pt[2]) if len(pt) > 2 else 0.5
+                env.insert_step(t, v, cv)
+                added += 1
+            read_times = [float(x) for x in
+                          (kwargs.get("read_times") or [pt[0] for pt in points])]
+            readback = []
+            for t in read_times:
+                try:
+                    readback.append(env.value_at_time(t))
+                except Exception:
+                    readback.append(None)
+            return {"added": added, "readback": readback}
+        except Exception as e:
+            self.log_message("Error in set_clip_automation: " + str(e))
+            raise
+
+    def _lom_probe(self, target, names):
+        """Report attributes + signatures + docs on a live LOM object."""
+        import inspect
+        try:
+            objs = {"song": self._song, "song_view": self._song.view}
+            if self._song.tracks and len(self._song.tracks[0].devices) > 0:
+                try:
+                    objs["env"] = self._song.tracks[0].clip_slots[0].clip \
+                        .create_automation_envelope(
+                            self._song.tracks[0].devices[0].parameters[0])
+                except Exception:
+                    pass
+            if self._song.tracks:
+                objs["track"] = self._song.tracks[0]
+                if self._song.tracks[0].devices:
+                    objs["param"] = self._song.tracks[0].devices[0].parameters[0]
+                if len(self._song.tracks[0].clip_slots) > 0:
+                    slot = self._song.tracks[0].clip_slots[0]
+                    if slot.has_clip:
+                        objs["clip"] = slot.clip
+                if len(self._song.tracks) > 0:
+                    acs = self._song.tracks[0].arrangement_clips
+                    if len(acs) > 0:
+                        objs["aclip"] = acs[0]
+            obj = objs.get(target)
+            if obj is None:
+                return {"error": "no object for target", "target": target}
+            out = {}
+            for n in names or []:
+                try:
+                    a = getattr(obj, n, None)
+                except Exception:
+                    a = None
+                if a is None:
+                    out[n] = False
+                    continue
+                info = True
+                try:
+                    info = {"sig": str(inspect.signature(a)),
+                            "doc": (a.__doc__ or "")[:400]}
+                except Exception:
+                    info = {"sig": "?", "doc": (getattr(a, "__doc__", "") or "")[:400]}
+                out[n] = info
+            return {"target": target, "attrs": out}
+        except Exception as e:
+            self.log_message("lom_probe error: " + str(e))
             raise
 
     def _get_arrangement_clip_notes(self, track_index, clip_index):
