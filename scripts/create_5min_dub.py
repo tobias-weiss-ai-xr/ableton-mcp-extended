@@ -926,8 +926,10 @@ class DubFiveMin:
         per_track = {}
         for cl in clips:
             per_track[cl.get("track_index")] = per_track.get(cl.get("track_index"), 0) + 1
+        starts = sorted(float(cl.get("start_time", 0)) for cl in clips)
         print(f"[arrange] verification: {len(clips)} arrangement clips "
               f"per-track {dict(sorted(per_track.items()))}")
+        print(f"[arrange] start_times(beats): {starts}")
         print(f"[arrange] {offset} bars laid out: "
               + " ".join(f"{n}@{o}" for (n, b), o in
                          zip(SCENES, [0, 12, 28, 36, 60, 76, 84])))
