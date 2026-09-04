@@ -61,3 +61,4 @@ exports/runs/*.json
 
 # Log files directory
 logs/
+projects/

@@ -896,43 +896,41 @@ class DubFiveMin:
         print(f"[arrange] cleared {removed} stray arrangement clips")
 
     def arrange(self):
-        """Fast layout of the arrangement via per-section capture at 600 BPM.
-        Detects if the captured method uses BEATS (Live 12 direct) vs BARS
-        (real-time fallback) and adapts `start_bar` units accordingly."""
+        """Lay the full arrangement out via build_arrangement (instant):
+        copy each section's session clips into the Arrangement with
+        Track.duplicate_clip_to_arrangement. No real-time recording,
+        no tempo changes. Then verify with get_arrangement_clips."""
         c = self.c
-        print("[arrange] laying out 96 bars via fast capture")
+        print("[arrange] building 96-bar arrangement via duplicate-to-arrangement")
         c.send("stop_playback")
-        c.send_checked("set_tempo", {"tempo": self.ARRANGE_BPM}, "set tempo 600")
-        time.sleep(0.20)
-        c.send_checked("start_playback", descr="start_playback")
-        time.sleep(0.15)
-        beats_mode = True
+        self.clear_arrangement()
+        sections = []
         offset = 0
-        sections_tab = ""
         for si, (sname, sbars) in enumerate(SCENES):
-            c.send_checked("trigger_scene", {"scene_index": si}, f"trigger {sname}")
-            time.sleep(0.1 if si == 0 else 0.08)
-            pos = offset * 4.0 if beats_mode else float(offset)
-            r = c.send_checked("capture_and_insert_arrangement",
-                               {"start_bar": pos, "length_bars": sbars,
-                                "quantize": True},
-                               f"capture {sname}")
-            res = (r or {}).get("result") or {}
-            method = res.get("method")
-            if method:
-                if si == 0:
-                    beats_mode = (method == "direct")
-                    unit = "beats" if beats_mode else "bars"
-                    print(f"  capture API: {method} -> start_bar unit = {unit}")
-                sections_tab = "  "
-            sec_disp = f"{sname}:{offset}-{offset + sbars}"
-            print(f"{sections_tab}{sec_disp:>12s} ok [{method or 'n/a'}]")
-            # let the section play through at 600 BPM before the next trigger
-            time.sleep(sbars * 4 * 60.0 / self.ARRANGE_BPM + 0.10)
+            for ti in range(len(TRACKS)):
+                sections.append({"track_index": ti, "clip_index": si,
+                                 "position_bar": float(offset)})
             offset += sbars
-        c.send("stop_playback")
-        c.send_checked("set_tempo", {"tempo": 75.0}, "restore tempo 75")
-        print(f"[arrange] {offset} bars laid into Arrangement")
+        r = c.send_checked("build_arrangement", {"sections": sections},
+                           "build_arrangement")
+        res = (r or {}).get("result") or {}
+        placed, total = res.get("placed"), res.get("total")
+        print(f"[arrange] placed {placed}/{total} section-clips")
+        for item in (res.get("items") or []):
+            if item.get("status") != "ok":
+                print(f"  [warn] t{item.get('track_index')} s{item.get('clip_index')}"
+                      f" @bar {item.get('position_bar')}: {item.get('error')}")
+        # Verify with the repaired reader
+        vr = c.send("get_arrangement_clips")
+        clips = ((vr or {}).get("result") or {}).get("arrangement_clips") or []
+        per_track = {}
+        for cl in clips:
+            per_track[cl.get("track_index")] = per_track.get(cl.get("track_index"), 0) + 1
+        print(f"[arrange] verification: {len(clips)} arrangement clips "
+              f"per-track {dict(sorted(per_track.items()))}")
+        print(f"[arrange] {offset} bars laid out: "
+              + " ".join(f"{n}@{o}" for (n, b), o in
+                         zip(SCENES, [0, 12, 28, 36, 60, 76, 84])))
 
     def capture(self):
         """Legacy real-time capture (~5:07). Start playback, chain through

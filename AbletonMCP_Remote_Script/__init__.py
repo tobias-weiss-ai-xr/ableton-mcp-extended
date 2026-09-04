@@ -576,6 +576,7 @@ class AbletonMCP(ControlSurface):
             # === Arrangement view (direct dispatch) ===
             "capture_and_insert_arrangement": lambda p: self._capture_and_insert_arrangement(p.get("start_bar", 0), p.get("length_bars", 64), p.get("quantize", True)),
             "get_arrangement_clips": lambda p: self._get_arrangement_clips(p.get("track_index", None)),
+            "build_arrangement": lambda p: self._build_arrangement(p.get("sections", [])),
             "duplicate_arrangement_clip": lambda p: self._duplicate_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", None)),
             "move_arrangement_clip": lambda p: self._move_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", 0), p.get("new_track_index", None)),
             "delete_arrangement_clip": lambda p: self._delete_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0)),
@@ -5103,6 +5104,51 @@ class AbletonMCP(ControlSurface):
         except Exception as e:
             self.log_message("Error getting arrangement clips: " + str(e))
             return {"arrangement_clips": [], "total": 0, "error": str(e)}
+
+    def _build_arrangement(self, sections):
+        """Copy session clips into the Arrangement (instant, no recording).
+
+        sections: list of {track_index, clip_index, position_bar}
+        Uses Track.duplicate_clip_to_arrangement (Live 11+); time is in beats.
+        """
+        try:
+            song = self.song()
+            results = []
+            for i, item in enumerate(sections):
+                ti = int(item.get("track_index", 0))
+                ci = int(item.get("clip_index", 0))
+                bar = float(item.get("position_bar", 0.0))
+                entry = {"section": i, "track_index": ti, "clip_index": ci,
+                         "position_bar": bar}
+                try:
+                    if ti < 0 or ti >= len(song.tracks):
+                        raise IndexError("Track index out of range")
+                    track = song.tracks[ti]
+                    slot = track.clip_slots[ci]
+                    if slot.clip is None:
+                        entry.update(status="error", error="empty clip slot")
+                    else:
+                        time_beats = bar * 4.0
+                        if hasattr(track, "duplicate_clip_to_arrangement"):
+                            track.duplicate_clip_to_arrangement(slot.clip, time_beats)
+                            entry.update(status="ok",
+                                         method="track.duplicate_clip_to_arrangement")
+                        elif hasattr(song, "duplicate_clip_to_arrangement"):
+                            song.duplicate_clip_to_arrangement(track, slot.clip,
+                                                               time_beats)
+                            entry.update(status="ok",
+                                         method="song.duplicate_clip_to_arrangement")
+                        else:
+                            entry.update(status="error",
+                                         error="no duplicate_clip_to_arrangement API")
+                except Exception as e:
+                    entry.update(status="error", error=str(e))
+                results.append(entry)
+            ok_n = sum(1 for r in results if r.get("status") == "ok")
+            return {"placed": ok_n, "total": len(results), "items": results}
+        except Exception as e:
+            self.log_message("Error building arrangement: " + str(e))
+            raise
 
     def _duplicate_arrangement_clip(self, track_index, clip_index, new_bar_position=None):
         """Duplicate an arrangement clip."""
