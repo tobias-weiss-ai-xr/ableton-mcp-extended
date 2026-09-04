@@ -113,26 +113,26 @@ DEVICE_TWEAKS = {
     6: [(1, "Feedback", 0.72), (1, "1 Filter Freq", 0.45)],  # FX Filter Delay
 }
 
-# Clip automation: classic dub arcs. Track -> (param_substr, {section: [(beat,
-# value_frac), ...]}). *** EXPERIMENTAL - OFF BY DEFAULT (--auto) ***
-# Live 12.4.3 LOM: Clip.create_automation_event does NOT exist. The real API
-# is clip.create_automation_envelope(parameter) -> AutomationEnvelope with
-# insert_step/value_at_time (see Remote Script _set_clip_automation). BUT the
-# argument semantics are undocumented and hostile: empirically the 2nd arg
-# acts as a start position in an unknown unit, the 3rd as a ramp SLOPE
-# (readback n(t) = arg3 * (t - arg2) / 23 exactly), the 1st arg is ignored,
-# and dB values are reinterpreted as positions. Until the real semantics are
-# pinned (Live 12.1+ WIP API, no docs shipped), automated writes produce
-# wrong-valued envelopes - so automation is gated behind --auto.
+# Clip automation: classic dub arcs. Track -> (param_substr, device_substr,
+# {section: [(beat, value_frac), ...]}). VALUE SEMANTICS SOLVED (see commit
+# 79d34c7 + Ableton's own Push2 automation_component.py):
+#   clip.automation_envelope(param) -> existing envelope (METHOD taking param)
+#   clip.create_automation_envelope(param) -> new envelope
+#   clip.clear_envelope(param) / clear_all_envelopes() -> wipe
+#   envelope.insert_step(start_beat, length_beats, value_REAL_UNITS)
+#   envelope.value_at_time(beat) -> real value (boundary reads pre-step)
+# Ramp segments become interpolated 2-beat staircases (_staircase). Written
+# directly onto ARRANGEMENT clips after arrange() - duplicate_clip_to_
+# arrangement copies NOTES but NOT envelopes (verify_automation checks).
 AUTOMATION = [
-    (0, "Drive", {  # DRUMS DrumBuss drive: crunch riser
+    (0, "Drive", "Drum Buss", {  # DRUMS DrumBuss drive: crunch riser
         "BUILD": [(0, 0.10), (8, 0.25), (16, 0.40), (24, 0.55), (31.9, 0.60)],
         "DROP": [(0, 0.50), (95.9, 0.45)],
         "BREAKDOWN": [(0, 0.05)],
         "JUMP": [(0, 0.55), (31.9, 0.50)],
         "OUTRO": [(0, 0.30), (47.9, 0.0)],
     }),
-    (2, "Frequency", {  # SUB Auto Filter: the master dub arc
+    (2, "Frequency", "Auto Filter", {  # SUB Auto Filter: the master dub arc
         "INTRO": [(0, 0.05), (47.9, 0.09)],
         "GROOVE": [(0, 0.10), (63.9, 0.14)],
         "BUILD": [(0, 0.15), (8, 0.35), (16, 0.55), (24, 0.75), (31.9, 0.85)],
@@ -141,7 +141,7 @@ AUTOMATION = [
         "JUMP": [(0, 0.70), (31.9, 0.75)],
         "OUTRO": [(0, 0.50), (16, 0.30), (31.9, 0.15), (47.9, 0.05)],
     }),
-    (2, "Drive", {  # SUB Saturator
+    (2, "Drive", "Saturator", {  # SUB Saturator (Auto Filter also has Drive!)
         "GROOVE": [(0, 0.30)],
         "BUILD": [(0, 0.30), (31.9, 0.75)],
         "DROP": [(0, 0.70)],
@@ -149,27 +149,27 @@ AUTOMATION = [
         "JUMP": [(0, 0.65)],
         "OUTRO": [(0, 0.40), (47.9, 0.10)],
     }),
-    (3, "Feedback", {  # CHORDS Delay: dub cannon in breakdown
+    (3, "Feedback", "Delay", {  # CHORDS Delay: dub cannon in breakdown
         "BREAKDOWN": [(0, 0.62), (63.9, 0.90)],
         "JUMP": [(0, 0.80)],
         "OUTRO": [(0, 0.70), (47.9, 0.50)],
     }),
-    (3, "Dry/Wet", {  # CHORDS Delay wet rises in breakdown
+    (3, "Dry/Wet", "Delay", {  # CHORDS Delay wet rises in breakdown
         "BREAKDOWN": [(0, 0.35), (63.9, 0.70)],
         "OUTRO": [(0, 0.50), (47.9, 0.30)],
     }),
-    (5, "Feedback", {  # MELODY Delay
+    (5, "Feedback", "Delay", {  # MELODY Delay
         "DROP": [(0, 0.55)],
         "BREAKDOWN": [(0, 0.60), (63.9, 0.75)],
         "OUTRO": [(0, 0.50)],
     }),
-    (6, "1 Filter Freq", {  # FX Filter Delay: slow sweep in drop
+    (6, "1 Filter Freq", "Filter Delay", {  # FX Filter Delay: slow sweep in drop
         "DROP": [(0, 0.30), (31.9, 0.70), (63.9, 0.30), (95.9, 0.60)],
         "BREAKDOWN": [(0, 0.60)],
         "JUMP": [(0, 0.20), (31.9, 0.80)],
         "OUTRO": [(0, 0.30), (47.9, 0.10)],
     }),
-    (6, "1 Feedback", {  # FX Filter Delay feedback
+    (6, "1 Feedback", "Filter Delay", {  # FX Filter Delay feedback
         "BREAKDOWN": [(0, 0.72), (63.9, 0.85)],
         "JUMP": [(0, 0.72)],
     }),
@@ -806,28 +806,74 @@ class DubFiveMin:
                              "value": value})
             print(f"  tweaks applied: track {track_idx}")
 
-    def _resolve_param_all_devices(self, track_idx, name_substr):
+    def _resolve_param_all_devices(self, track_idx, name_substr, dev_sub=None):
         """Scan every device on the track; return (dev_idx, p_idx, lo, hi)
-        for the first device whose parameter contains name_substr."""
+        for the first device matching dev_sub whose parameter contains
+        name_substr."""
         key = name_substr.lower()
+        dk = (dev_sub or "").lower()
         for d in range(max(1, self._device_count(track_idx))):
-            for nm, (i, lo, hi, _cur) in self._param_map(track_idx, d).items():
-                if key in nm:
-                    return (d, i, lo, hi)
+            r = self.c.send("get_device_parameters",
+                            {"track_index": track_idx, "device_index": d})
+            res = (r or {}).get("result") or {}
+            if dk and dk not in str(res.get("device_name", "")).lower():
+                continue
+            for p in res.get("parameters") or []:
+                if key in str(p.get("name", "")).lower():
+                    return (d, p["index"], float(p.get("min", 0.0)),
+                            float(p.get("max", 1.0)))
         return None
 
-    def automate(self):
-        """Write dub automation arcs onto the session clips (device params
-        only - mixer/sends are not clip-automatable). Clips must already
-        exist (build_clips); run BEFORE arrange() so the duplication
-        carries the envelopes into the arrangement."""
+    @staticmethod
+    def _staircase(pts, clen, lo, hi, step=2.0):
+        """Expand breakpoints [(beat, frac), ...] into Push2-canonical
+        [start, length, value] step segments; long segments become an
+        interpolated staircase (AutomationEnvelope has no ramp API)."""
+        bp = {}
+        for b, f in pts:
+            bp[min(float(b), clen)] = max(0.0, min(1.0, float(f)))
+        bp = sorted(bp.items())
+        segs = []
+        for i, (t0, f0) in enumerate(bp):
+            t1 = bp[i + 1][0] if i + 1 < len(bp) else clen
+            f1 = bp[i + 1][1] if i + 1 < len(bp) else f0
+            n = max(1, int(round((t1 - t0) / step)))
+            for k in range(n):
+                s0 = t0 + (t1 - t0) * k / n
+                s1 = t0 + (t1 - t0) * (k + 1) / n
+                frac = f0 + (f1 - f0) * (k + 0.5) / n
+                segs.append((s0, max(s1 - s0, 0.25), lo + (hi - lo) * frac))
+        return segs
+
+    def _send_retry(self, cmd, params, tries=5, delay=1.5):
+        """Send with retries - Live refuses some automation writes with
+        'Changes cannot be triggered by notifications' (transient)."""
+        r = None
+        for _ in range(tries):
+            r = self.c.send(cmd, params)
+            if (r or {}).get("status") == "success":
+                return r
+            time.sleep(delay)
+        return r
+
+    def automate(self, arrangement=False):
+        """Write dub automation arcs onto device params (mixer/sends are not
+        clip-automatable). mode: session clips (build_clips must exist) or
+        arrangement clips (arrange() must have run) - envelopes do NOT
+        survive duplicate_clip_to_arrangement, so arrangement mode is the
+        reliable path for the laid-out track."""
         c = self.c
-        written = skipped = 0
-        for ti, psub, arcs in AUTOMATION:
-            hit = self._resolve_param_all_devices(ti, psub)
+        written = skipped = failed = 0
+        pos = 0
+        offsets = []
+        for _sname, sbars in SCENES:
+            offsets.append(pos)
+            pos += sbars * 4.0
+        for ti, psub, dsub, arcs in AUTOMATION:
+            hit = self._resolve_param_all_devices(ti, psub, dsub)
             if hit is None:
-                print(f"    [warn] param '{psub}' not found on track {ti} "
-                      "- skipping lane")
+                print(f"    [warn] param '{psub}' ({dsub}) not found on "
+                      f"track {ti} - skipping lane")
                 continue
             dev_idx, p_idx, lo, hi = hit
             for si, (sname, sbars) in enumerate(SCENES):
@@ -838,20 +884,62 @@ class DubFiveMin:
                     skipped += 1
                     continue  # empty section, no clip
                 clen = sbars * 4.0
-                payload = []
-                for beat, vfrac in pts:
-                    t = min(float(beat), clen)
-                    val = round(lo + (hi - lo) * max(0.0, min(1.0, vfrac)), 3)
-                    payload.append([t, val, 0.5])
-                c.send("set_clip_automation",
-                       {"track_index": ti, "clip_index": si,
-                        "device_index": dev_idx, "parameter_index": p_idx,
-                        "points": payload,
-                        "read_times": [payload[0][0], payload[-1][0]]})
-                written += len(payload)
-            print(f"  automation lane t{ti} '{psub}' done")
-        print(f"[auto] {written} automation points written "
-              f"({skipped} empty sections skipped)")
+                segs = self._staircase(pts, clen, lo, hi)
+                payload = [[round(s, 4), round(l, 4), round(v, 4)]
+                           for s, l, v in segs]
+                params = {"track_index": ti, "device_index": dev_idx,
+                          "parameter_index": p_idx, "points": payload}
+                if arrangement:
+                    params["arrangement_start_time"] = offsets[si]
+                else:
+                    params["clip_index"] = si
+                r = self._send_retry("set_clip_automation", params)
+                if (r or {}).get("status") == "success":
+                    written += len(payload)
+                else:
+                    failed += len(payload)
+                    print(f"    [warn] t{ti} '{psub}' {sname}: "
+                          f"{(r or {}).get('message', '?')}")
+            print(f"  automation lane t{ti} '{psub}' ({dsub}) done")
+        print(f"[auto] {written} automation steps written "
+              f"({skipped} empty sections skipped, {failed} failed)")
+
+    def verify_automation(self):
+        """Spot-check envelopes in the ARRANGEMENT (they must survive
+        duplicate_clip_to_arrangement). Informational + [warn] on miss."""
+        checks = [
+            (2, "Frequency", "Auto Filter", 0.0,   (0.05, 0.09)),
+            (2, "Frequency", "Auto Filter", 112.0, (0.15, 0.85)),
+            (3, "Feedback",  "Delay",      240.0, (0.62, 0.90)),
+            (0, "Drive",     "Drum Buss",   112.0, (0.10, 0.60)),
+        ]
+        ok = 0
+        for ti, psub, dsub, start_beat, (fa, fb) in checks:
+            hit = self._resolve_param_all_devices(ti, psub, dsub)
+            if not hit:
+                continue
+            _d, p_idx, lo, hi = hit
+            r = self.c.send("get_clip_automation",
+                            {"track_index": ti, "device_index": hit[0],
+                             "parameter_index": p_idx,
+                             "arrangement_start_time": start_beat,
+                             "read_times": [start_beat + 2.0,
+                                            start_beat + 16.0]})
+            res = (r or {}).get("result") or {}
+            if not res.get("has_envelope"):
+                print(f"    [warn] t{ti} '{psub}' @{start_beat}beats: "
+                      "no envelope in arrangement copy")
+                continue
+            rb = res.get("readback") or []
+            va = rb[0] if rb else None
+            if va is None or not (lo - 1e-6 <= va <= hi + 1e-6):
+                print(f"    [warn] t{ti} '{psub}' @{start_beat}beats: "
+                      f"readback {va} outside [{lo}, {hi}]")
+                continue
+            ok += 1
+            print(f"    t{ti} '{psub}' @{start_beat}beats: envelope ok, "
+                  f"sample {round(va, 4)} in [{lo}, {hi}]")
+        print(f"[auto-verify] {ok}/{len(checks)} arrangement envelopes ok")
 
     def clear_clip_slots(self, max_track=7, max_slot=8):
         """Delete any clips in slot × track up to max so recreate works."""
@@ -1095,9 +1183,7 @@ def main():
     ap.add_argument("--no-auto", action="store_true",
                     help="skip writing clip automation arcs")
     ap.add_argument("--auto", action="store_true",
-                    help="EXPERIMENTAL: write clip automation via LOM "
-                         "AutomationEnvelope (values land wrong on Live "
-                         "12.4.3 - semantics unresolved, see AUTOMATION note)")
+                    help="(default on with --arrange; kept for compat)")
     args = ap.parse_args()
 
     c = AbletonClient()
@@ -1134,11 +1220,21 @@ def main():
     print("Fire scene 0 (INTRO) — follow actions chain all 7 sections.")
 
     if args.arrange:
+        dub.prune_extra_tracks()
         dub.clear_arrangement()
-        if args.auto:
-            print("\n[auto] EXPERIMENTAL clip automation arcs")
-            dub.automate()
-        dub.arrange()
+        if not args.no_auto:
+            print("\n[auto] writing clip automation arcs onto session "
+                  "clips (capture route needs them during playback)")
+            dub.automate(arrangement=False)
+        if not dub.capture_arrangement():
+            print("[arrange] capture route failed - falling back to "
+                  "duplicate-to-arrangement (notes only, no automation)")
+            dub.arrange()
+        if not args.no_auto:
+            dub.verify_automation()
+    elif not args.no_auto:
+        print("\n[auto] writing clip automation arcs onto session clips")
+        dub.automate(arrangement=False)
     if args.capture:
         print("\nRecording into Arrangement in real time (do not touch Live)")
         dub.capture()

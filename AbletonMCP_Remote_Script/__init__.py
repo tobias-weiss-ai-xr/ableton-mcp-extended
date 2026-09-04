@@ -579,7 +579,11 @@ class AbletonMCP(ControlSurface):
             "build_arrangement": lambda p: self._build_arrangement(p.get("sections", [])),
             "get_arrangement_clip_notes": lambda p: self._get_arrangement_clip_notes(p.get("track_index", 0), p.get("clip_index", 0)),
             "lom_probe": lambda p: self._lom_probe(p.get("target", ""), p.get("names", [])),
-            "set_clip_automation": lambda p: self._set_clip_automation(p.get("track_index", 0), p.get("clip_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("points", []), read_times=p.get("read_times")),
+            "set_clip_automation": lambda p: self._set_clip_automation(p.get("track_index", 0), p.get("clip_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("points", []), read_times=p.get("read_times"), arrangement_start_time=p.get("arrangement_start_time")),
+            "get_clip_automation": lambda p: self._get_clip_automation(p.get("track_index", 0), p.get("device_index", 0), p.get("parameter_index", 0), p.get("read_times", []), clip_index=p.get("clip_index"), arrangement_start_time=p.get("arrangement_start_time")),
+            "capture_arrangement_now": lambda p: self._capture_arrangement_now(p.get("song_time", 0.0)),
+            "capture_midi_arrangement": lambda p: self._capture_midi_arrangement(),
+            "get_song_time_beats": lambda p: {"beats": float(self._song.current_song_time)},
             "duplicate_arrangement_clip": lambda p: self._duplicate_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", None)),
             "move_arrangement_clip": lambda p: self._move_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", 0), p.get("new_track_index", None)),
             "delete_arrangement_clip": lambda p: self._delete_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0)),
@@ -5201,45 +5205,69 @@ class AbletonMCP(ControlSurface):
 
     def _set_clip_automation(self, track_index, clip_index, device_index,
                              parameter_index, points, **kwargs):
-        """Write automation breakpoints onto a session clip (Live 12
-        AutomationEnvelope API). points: [[time_beats, value, curve], ...]."""
+        """Write automation steps onto a session clip (Push2-canonical):
+        points: [[start_beat, length_beats, value_real], ...]. Values must
+        lie within the parameter's real min..max range. If
+        arrangement_start_time is given, the arrangement clip at that song
+        position is targeted instead of the session clip (envelopes do NOT
+        survive duplicate_clip_to_arrangement)."""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")
             track = self._song.tracks[track_index]
-            if clip_index < 0 or clip_index >= len(track.clip_slots):
-                raise IndexError("Clip index out of range")
-            slot = track.clip_slots[clip_index]
-            if not slot.has_clip:
-                raise Exception("No clip in slot")
-            clip = slot.clip
+            want = kwargs.get("arrangement_start_time")
+            if want is not None:
+                want = float(want)
+                clip = None
+                for ac in track.arrangement_clips:
+                    if abs(float(ac.start_time) - want) < 0.01:
+                        clip = ac
+                        break
+                if clip is None:
+                    raise Exception("No arrangement clip at start_time "
+                                    + str(want))
+            else:
+                if clip_index < 0 or clip_index >= len(track.clip_slots):
+                    raise IndexError("Clip index out of range")
+                slot = track.clip_slots[clip_index]
+                if not slot.has_clip:
+                    raise Exception("No clip in slot")
+                clip = slot.clip
             if device_index < 0 or device_index >= len(track.devices):
                 raise IndexError("Device index out of range")
             device = track.devices[device_index]
             if parameter_index < 0 or parameter_index >= len(device.parameters):
                 raise IndexError("Parameter index out of range")
             parameter = device.parameters[parameter_index]
-            try:
-                env = clip.create_automation_envelope(parameter)
-            except Exception:
+
+            def _get_env():
                 getter = getattr(clip, "automation_envelope", None)
-                env = None
                 if getter is not None:
-                    for mk in (lambda: getter(parameter), lambda: getter()):
-                        try:
-                            env = mk()
-                            if env is not None:
-                                break
-                        except Exception:
-                            env = None
-                if env is None:
-                    raise
+                    try:
+                        env = getter(parameter)
+                        if env is not None:
+                            return env
+                    except Exception:
+                        pass
+                return clip.create_automation_envelope(parameter)
+
+            replace = bool(kwargs.get("replace", True))
+            if replace:
+                clearer = getattr(clip, "clear_envelope", None)
+                if clearer is not None:
+                    try:
+                        clearer(parameter)
+                    except Exception:
+                        pass
+            env = _get_env()
             added = 0
+            lo = float(getattr(parameter, "min", 0.0))
+            hi = float(getattr(parameter, "max", 1.0))
             for pt in points:
-                t = float(pt[0])
-                v = float(pt[1])
-                cv = float(pt[2]) if len(pt) > 2 else 0.5
-                env.insert_step(t, v, cv)
+                start = float(pt[0])
+                length = float(pt[1])
+                value = min(hi, max(lo, float(pt[2])))
+                env.insert_step(start, max(length, 0.0), value)
                 added += 1
             read_times = [float(x) for x in
                           (kwargs.get("read_times") or [pt[0] for pt in points])]
@@ -5252,6 +5280,95 @@ class AbletonMCP(ControlSurface):
             return {"added": added, "readback": readback}
         except Exception as e:
             self.log_message("Error in set_clip_automation: " + str(e))
+            raise
+
+    def _get_clip_automation(self, track_index, device_index,
+                             parameter_index, read_times,
+                             clip_index=None, arrangement_start_time=None):
+        """Sample value_at_time on a session or arrangement clip envelope."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if device_index < 0 or device_index >= len(track.devices):
+                raise IndexError("Device index out of range")
+            parameter = track.devices[device_index].parameters[parameter_index]
+            clip = None
+            if arrangement_start_time is not None:
+                want = float(arrangement_start_time)
+                for ac in track.arrangement_clips:
+                    if abs(float(ac.start_time) - want) < 0.01:
+                        clip = ac
+                        break
+                if clip is None:
+                    raise Exception("No arrangement clip at start_time "
+                                    + str(want))
+            else:
+                ci = int(clip_index or 0)
+                if ci < 0 or ci >= len(track.clip_slots):
+                    raise IndexError("Clip index out of range")
+                if not track.clip_slots[ci].has_clip:
+                    raise Exception("No clip in slot")
+                clip = track.clip_slots[ci].clip
+            getter = getattr(clip, "automation_envelope", None)
+            env = None
+            if getter is not None:
+                try:
+                    env = getter(parameter)
+                except Exception:
+                    env = None
+            if env is None:
+                return {"has_envelope": False, "readback": []}
+            samples = []
+            for t in read_times or []:
+                try:
+                    samples.append(env.value_at_time(float(t)))
+                except Exception:
+                    samples.append(None)
+            return {"has_envelope": True, "readback": samples}
+        except Exception as e:
+            self.log_message("Error in get_clip_automation: " + str(e))
+            raise
+
+
+    def _capture_midi_arrangement(self):
+        """Song.capture_midi(Destination.arrangement): capture the recently
+        played material and insert it into the arrangement (the API behind
+        the GUI Capture button)."""
+        try:
+            song = self._song
+            fn = getattr(song, "capture_midi", None)
+            if fn is None:
+                raise Exception("capture_midi not available")
+            dest = None
+            CD = getattr(song, "CaptureDestination", None)
+            if CD is not None:
+                dest = getattr(CD, "arrangement", None)
+            try:
+                if dest is not None:
+                    fn(dest)
+                else:
+                    fn(2)  # enum fallback: auto=0, session=1, arrangement=2
+            except Exception:
+                fn()  # last resort: default destination
+            return {"captured": True}
+        except Exception as e:
+            self.log_message("capture_midi_arrangement: " + str(e))
+            raise
+
+    def _capture_arrangement_now(self, song_time):
+        """Live 12 Song.capture_to_arrangement(song_time): inserts the
+        currently playing session material (incl. played device automation)
+        into the arrangement at the given song time."""
+        try:
+            song = self._song
+            fn = getattr(song, "capture_to_arrangement", None)
+            if fn is None:
+                raise Exception("capture_to_arrangement not available")
+            fn(float(song_time))
+            return {"captured": True, "at": float(song_time)}
+        except Exception as e:
+            self.log_message("capture_arrangement_now: " + str(e))
             raise
 
     def _lom_probe(self, target, names):
