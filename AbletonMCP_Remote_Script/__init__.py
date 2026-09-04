@@ -577,6 +577,7 @@ class AbletonMCP(ControlSurface):
             "capture_and_insert_arrangement": lambda p: self._capture_and_insert_arrangement(p.get("start_bar", 0), p.get("length_bars", 64), p.get("quantize", True)),
             "get_arrangement_clips": lambda p: self._get_arrangement_clips(p.get("track_index", None)),
             "build_arrangement": lambda p: self._build_arrangement(p.get("sections", [])),
+            "get_arrangement_clip_notes": lambda p: self._get_arrangement_clip_notes(p.get("track_index", 0), p.get("clip_index", 0)),
             "duplicate_arrangement_clip": lambda p: self._duplicate_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", None)),
             "move_arrangement_clip": lambda p: self._move_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0), p.get("new_bar_position", 0), p.get("new_track_index", None)),
             "delete_arrangement_clip": lambda p: self._delete_arrangement_clip(p.get("track_index", 0), p.get("clip_index", 0)),
@@ -5129,18 +5130,64 @@ class AbletonMCP(ControlSurface):
                         entry.update(status="error", error="empty clip slot")
                     else:
                         time_beats = bar * 4.0
+                        dup = False
                         if hasattr(track, "duplicate_clip_to_arrangement"):
                             track.duplicate_clip_to_arrangement(slot.clip, time_beats)
                             entry.update(status="ok",
                                          method="track.duplicate_clip_to_arrangement")
+                            dup = True
                         elif hasattr(song, "duplicate_clip_to_arrangement"):
                             song.duplicate_clip_to_arrangement(track, slot.clip,
                                                                time_beats)
                             entry.update(status="ok",
                                          method="song.duplicate_clip_to_arrangement")
+                            dup = True
                         else:
                             entry.update(status="error",
                                          error="no duplicate_clip_to_arrangement API")
+                        if dup and item.get("notes"):
+                            target = None
+                            for c in track.arrangement_clips:
+                                if abs(float(c.start_time) - time_beats) < 0.01:
+                                    target = c
+                                    break
+                            if target is None:
+                                entry.update(status="error",
+                                             error="duplicated clip not found")
+                            else:
+                                spec = sorted(
+                                    item.get("notes") or [],
+                                    key=lambda n: float(n.get("start_time", 0.0)))
+                                live_notes = tuple(
+                                    (int(n.get("pitch", 60)),
+                                     float(n.get("start_time", 0.0)),
+                                     float(n.get("duration", 0.25)),
+                                     int(n.get("velocity", 100)),
+                                     bool(n.get("mute", False)))
+                                    for n in spec)
+                                # Arrangement clips may interpret set_notes
+                                # times as ABSOLUTE song time - try relative
+                                # first, fall back to start_time-shifted, and
+                                # report what a readback actually sees.
+                                target.set_notes(live_notes)
+                                mode = "relative"
+                                try:
+                                    rb = target.notes or ()
+                                except Exception:
+                                    rb = ()
+                                if len(rb) < len(live_notes):
+                                    target.set_notes(tuple(
+                                        (x[0], x[1] + target.start_time,
+                                         x[2], x[3], x[4])
+                                        for x in live_notes))
+                                    mode = "absolute"
+                                    try:
+                                        rb = target.notes or ()
+                                    except Exception:
+                                        rb = ()
+                                entry.update(notes_written=len(live_notes),
+                                             write_mode=mode,
+                                             readback_notes=len(rb))
                 except Exception as e:
                     entry.update(status="error", error=str(e))
                 results.append(entry)
@@ -5150,7 +5197,64 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error building arrangement: " + str(e))
             raise
 
-    def _duplicate_arrangement_clip(self, track_index, clip_index, new_bar_position=None):
+    def _get_arrangement_clip_notes(self, track_index, clip_index):
+        """Get notes from an arrangement clip (robust reader)."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            if clip_index < 0 or clip_index >= len(track.arrangement_clips):
+                raise IndexError("Arrangement clip index out of range")
+            clip = track.arrangement_clips[clip_index]
+            notes = []
+            if hasattr(clip, "notes") and clip.notes:
+                for note in clip.notes:
+                    notes.append({
+                        "pitch": note[0],
+                        "start_time": note[1],
+                        "duration": note[2],
+                        "velocity": note[3],
+                        "mute": note[4] if len(note) > 4 else False,
+                    })
+            if not notes and hasattr(clip, "get_notes_extended"):
+                try:
+                    for nd in clip.get_notes_extended(0, 0, 100000, 128):
+                        notes.append({
+                            "pitch": nd.get("pitch", 0),
+                            "start_time": nd.get("start_time",
+                                                 nd.get("start_beats", 0.0)),
+                            "duration": nd.get("duration",
+                                               nd.get("duration_beats", 0.0)),
+                            "velocity": nd.get("velocity", 100),
+                            "mute": nd.get("mute", False),
+                        })
+                except Exception:
+                    pass
+            if not notes and hasattr(clip, "get_notes"):
+                try:
+                    for note in clip.get_notes(0, 0, 100000, 128):
+                        notes.append({
+                            "pitch": note[0],
+                            "start_time": note[1],
+                            "duration": note[2],
+                            "velocity": note[3],
+                            "mute": note[4] if len(note) > 4 else False,
+                        })
+                except Exception:
+                    pass
+            return {
+                "track_index": track_index,
+                "clip_index": clip_index,
+                "start_time": clip.start_time if hasattr(clip, "start_time") else 0,
+                "note_count": len(notes),
+                "notes": notes,
+            }
+        except Exception as e:
+            self.log_message("Error getting arrangement clip notes: " + str(e))
+            raise
+
+    def _duplicate_arrangement_clip(self, track_index, clip_index,
+                                    new_bar_position=None):
         """Duplicate an arrangement clip."""
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
@@ -5232,7 +5336,24 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Arrangement clip index out of range")
             
             clip = track.arrangement_clips[clip_index]
-            track.arrangement_clips.delete_clip(clip)
+            deleted = False
+            # Live 11.1+: Track.delete_arrangement_clip(clip)
+            if hasattr(track, "delete_arrangement_clip"):
+                try:
+                    track.delete_arrangement_clip(clip)
+                    deleted = True
+                except Exception:
+                    deleted = False
+            # Alternative spelling on the song object
+            if not deleted and hasattr(self._song, "delete_arrangement_clip"):
+                try:
+                    self._song.delete_arrangement_clip(clip)
+                    deleted = True
+                except Exception:
+                    deleted = False
+            if not deleted:
+                raise Exception("no working delete_arrangement_clip API "
+                                "(Vector.delete_clip does not exist)")
             
             return {
                 "track_index": track_index,

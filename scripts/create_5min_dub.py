@@ -128,7 +128,7 @@ SCENES = [
 # ──────────────────────────── Helpers ──────────────────────────────────
 
 def note(pitch, start_beat, duration, velocity):
-    return {"pitch": int(pitch), "start": float(start_beat),
+    return {"pitch": int(pitch), "start_time": float(start_beat),
             "duration": float(duration), "velocity": int(velocity)}
 
 
@@ -179,11 +179,11 @@ def loop_clip(bar_pattern, bars, loop_beats=4.0):
     for L in range(n_loops):
         offset = L * loop_beats
         for n in bar_pattern:
-            s = n["start"] + offset
+            s = n["start_time"] + offset
             if s + n["duration"] > clip_end + 1e-6:
                 continue
             d = dict(n)
-            d["start"] = s
+            d["start_time"] = s
             out.append(d)
     return out
 
@@ -908,6 +908,8 @@ class DubFiveMin:
         offset = 0
         for si, (sname, sbars) in enumerate(SCENES):
             for ti in range(len(TRACKS)):
+                # No "notes" payload: duplicate_clip_to_arrangement copies
+                # the (already correct) session-clip notes natively.
                 sections.append({"track_index": ti, "clip_index": si,
                                  "position_bar": float(offset)})
             offset += sbars
