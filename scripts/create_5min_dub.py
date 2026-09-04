@@ -110,7 +110,7 @@ DEVICE_TWEAKS = {
     2: [(1, "Frequency", 0.06)],                # SUB Auto Filter: very dark
     3: [(1, "Feedback", 0.62), (1, "Dry/Wet", 0.35)],  # CHORDS Delay
     5: [(1, "Feedback", 0.55), (1, "Dry/Wet", 0.30)],  # MELODY Delay
-    6: [(1, "Feedback", 0.72), (1, "Dry/Wet", 0.45)],  # FX Filter Delay
+    6: [(1, "Feedback", 0.72), (1, "1 Filter Freq", 0.45)],  # FX Filter Delay
 }
 
 # ─── 5-minute dub structure: (name, bars) — 96 bars @ 75 BPM ≈ 5:07 ───── 
@@ -744,18 +744,28 @@ class DubFiveMin:
                              "value": value})
             print(f"  tweaks applied: track {track_idx}")
 
+    def clear_clip_slots(self, max_track=7, max_slot=8):
+        """Delete any clips in slot × track up to max so recreate works."""
+        removed = 0
+        for ti in range(max_track):
+            for ci in range(max_slot):
+                r = self.c.send("delete_clip", {"track_index": ti, "clip_index": ci})
+                if (r or {}).get("status") == "success":
+                    removed += 1
+        print(f"  cleared {removed} clip slots")
+
     def add_clip(self, track_idx, clip_idx, length_beats, notes):
         self.c.send_checked("create_clip",
                             {"track_index": track_idx, "clip_index": clip_idx,
                              "length": float(length_beats)},
                             f"create_clip t{track_idx} s{clip_idx}")
-        time.sleep(0.04)
+        time.sleep(0.03)
         if notes:
             self.c.send_checked("add_notes_to_clip",
                                 {"track_index": track_idx, "clip_index": clip_idx,
                                  "notes": notes},
                                 f"add_notes t{track_idx} s{clip_idx}")
-            time.sleep(0.04)
+            time.sleep(0.03)
 
     def detect_existing(self):
         """Return (True, [names]) if the 7 expected dub tracks exist with
@@ -792,6 +802,7 @@ class DubFiveMin:
         for i in range(self.n_scenes):
             if i >= n_have:
                 self.c.send_checked("create_scene", {"index": i}, f"create scene {i}")
+                time.sleep(0.05)
             self.c.send_checked("set_scene_name",
                                 {"scene_index": i, "name": SCENES[i][0]},
                                 f"name scene {i}")
@@ -801,6 +812,8 @@ class DubFiveMin:
         """Create all session clips with improved notes, mix, tweaks, follow."""
         c = self.c
         self.ensure_scenes()
+        print("[clips] clearing any pre-existing clip slots")
+        self.clear_clip_slots(max_slot=len(SCENES) + 2)
         total = 0
         for ti, builder in enumerate(BUILDERS):
             name = TRACKS[ti][0]
@@ -891,7 +904,7 @@ class DubFiveMin:
         c.send("stop_playback")
         c.send_checked("set_tempo", {"tempo": self.ARRANGE_BPM}, "set tempo 600")
         time.sleep(0.20)
-        c.send_checked("start_playback", what="start_playback")
+        c.send_checked("start_playback", descr="start_playback")
         time.sleep(0.15)
         beats_mode = True
         offset = 0
@@ -947,7 +960,7 @@ class DubFiveMin:
         c = self.c
         print("Building 5-minute dub tape version (fresh)")
         c.send("stop_playback")
-        c.send_checked("delete_all_tracks", what="delete_all_tracks")
+        c.send_checked("delete_all_tracks", descr="delete_all_tracks")
         time.sleep(0.60)
         print("[tempo] 75 BPM")
         c.send_checked("set_tempo", {"tempo": 75.0}, "set_tempo")

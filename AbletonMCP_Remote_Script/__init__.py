@@ -5066,6 +5066,7 @@ class AbletonMCP(ControlSurface):
             self.log_message("Error capturing arrangement: " + str(e))
             raise
 
+    def _get_arrangement_clips(self, track_index=None):
         """Get all arrangement clips."""
         try:
             arrangement_clips = []
