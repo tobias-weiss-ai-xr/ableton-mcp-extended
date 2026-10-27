@@ -61,17 +61,17 @@ def analyze_section_node(state: Dict[str, Any]) -> Dict[str, Any]:
             state["errors"].append(
                 f"analyze_section_node: invalid snapshot for section {section_idx}"
             )
-            if state["feedback"]["history"]:
-                last_valid = state["feedback"]["history"][-1][1]
+            if state.get("analysis_history"):
+                last_valid = state["analysis_history"][-1][1]
                 analysis_data = last_valid
             else:
                 analysis_data = AudioAnalysisData(**DEFAULT_ANALYSIS)  # type: ignore[arg-type]
 
         state["audio_snapshot"] = analysis_data
 
-        # Store in feedback history
-        state["feedback"]["history"].append((section_idx, analysis_data))
-        state["feedback"]["energy_trend"].append(analysis_data["rms"])
+        # Store structured analysis data in dedicated fields
+        state.setdefault("analysis_history", []).append((section_idx, analysis_data))
+        state.setdefault("energy_trend", []).append(analysis_data["rms"])
 
         # Analyze and adapt for NEXT section (if any)
         if section_idx < len(arrangement) - 1:
@@ -85,7 +85,7 @@ def analyze_section_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 apply_adaptations_to_section(adaptations, next_section)
 
                 for adapt in adaptations:
-                    state["feedback"]["adaptations"].append(adapt)
+                    state.setdefault("adaptations", []).append(adapt)
 
                 logger.info(
                     "Section %s \u2192 applied %s adaptations to section %s",
@@ -96,7 +96,7 @@ def analyze_section_node(state: Dict[str, Any]) -> Dict[str, Any]:
 
             except Exception as e:
                 logger.error("Adaptation logic failed for section %s: %s", section_idx, e)
-                state["feedback"]["adaptations"].append({  # type: ignore[typeddict-item]
+                state.setdefault("adaptations", []).append({
                     "type": "error",
                     "target_section": section_idx + 1,
                     "value": 0.0,

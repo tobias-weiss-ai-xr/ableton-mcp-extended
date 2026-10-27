@@ -30,7 +30,7 @@ MAX_PENDING_CONNECTIONS = 5
 SOCKET_TIMEOUT = 1.0
 UDP_BUFFER_SIZE = 1024
 TCP_BUFFER_SIZE = 8192
-COMMAND_TIMEOUT = 10.0
+COMMAND_TIMEOUT = 30.0  # Increased from 10.0 for browser item loading
 SERVER_SLEEP_TIME = 0.5
 UDP_SLEEP_TIME = 0.1
 
@@ -362,6 +362,10 @@ class AbletonMCP(ControlSurface):
         # Device CRUD
         "duplicate_device", "delete_device", "move_device",
         "toggle_device_bypass", "undo", "redo",
+        # Rack macros & drum pads
+        "get_rack_macros", "set_rack_macro", "set_rack_macro_by_name",
+        "get_drum_pads", "set_drum_pad_mute", "set_drum_pad_solo",
+        "set_drum_pad_name",
         # Clip operations (continued)
         "crop_clip", "resize_clip", "duplicate_clip_to",
         # Locators & loop
@@ -383,6 +387,10 @@ class AbletonMCP(ControlSurface):
         "set_note_velocity", "set_note_duration", "set_note_pitch",
         # Clip processing
         "mix_clip", "stretch_clip",
+        # Arrangement (must run on main thread: duplicate_clip_to_arrangement
+        # fails with "Changes cannot be triggered by notifications" when
+        # called directly from the socket notification handler)
+        "build_arrangement",
         "detect_clip_key", "snap_notes_to_scale",
         "create_scale_reference_clip", "create_chord_progression",
         # Track grouping
@@ -478,6 +486,14 @@ class AbletonMCP(ControlSurface):
             "delete_device": lambda p: self._delete_device(p.get("track_index", 0), p.get("device_index", 0)),
             "move_device": lambda p: self._move_device(p.get("track_index", 0), p.get("device_index", 0), p.get("new_position", 0)),
             "toggle_device_bypass": lambda p: self._toggle_device_bypass(p.get("track_index", 0), p.get("device_index", 0), p.get("enabled", True)),
+            # === Rack macros & drum pads ===
+            "get_rack_macros": lambda p: self._get_rack_macros(p.get("track_index", 0)),
+            "set_rack_macro": lambda p: self._set_rack_macro(p.get("track_index", 0), p.get("macro_index", 0), p.get("value", 0.0)),
+            "set_rack_macro_by_name": lambda p: self._set_rack_macro_by_name(p.get("track_index", 0), p.get("macro_name", ""), p.get("value", 0.0)),
+            "get_drum_pads": lambda p: self._get_drum_pads(p.get("track_index", 0)),
+            "set_drum_pad_mute": lambda p: self._set_drum_pad_mute(p.get("track_index", 0), p.get("pad_index", 0), p.get("muted", False)),
+            "set_drum_pad_solo": lambda p: self._set_drum_pad_solo(p.get("track_index", 0), p.get("pad_index", 0), p.get("soloed", False)),
+            "set_drum_pad_name": lambda p: self._set_drum_pad_name(p.get("track_index", 0), p.get("pad_index", 0), p.get("name", "")),
             "undo": lambda p: self._undo(),
             "redo": lambda p: self._redo(),
 
@@ -1259,32 +1275,14 @@ class AbletonMCP(ControlSurface):
 
             device = track.devices[device_index]
 
-            # Get all parameters from the device
+            # Get all parameters from the device.
+            # Check parameters FIRST: Drum Racks have both get_notes and
+            # parameters; the old get_notes-first branch returned pad notes
+            # instead of macro parameters for every device index.
             parameters = []
+            notes = []
 
-            # Check for alternative Ableton Live 11+ API
-            if hasattr(device, "get_notes"):
-                # Use get_notes() method for Live 11+ compatibility
-                try:
-                    notes_list = device.get_notes()
-                    if notes_list:
-                        for i, note in enumerate(notes_list):
-                            notes.append(
-                                {
-                                    "pitch": note.pitch,
-                                    "start_time": note.start_time,
-                                    "duration": note.duration,
-                                    "velocity": note.velocity,
-                                    "mute": note.mute
-                                    if hasattr(note, "mute")
-                                    else False,
-                                }
-                            )
-                except Exception as e:
-                    self.log_message(
-                        "Error reading notes from device: {}".format(str(e))
-                    )
-            elif hasattr(device, "parameters"):
+            if hasattr(device, "parameters"):
                 for i, param in enumerate(device.parameters):
                     if param.is_enabled:
                         try:
@@ -1305,9 +1303,27 @@ class AbletonMCP(ControlSurface):
                                 "Error reading parameter {}: {}".format(i, str(e))
                             )
                             continue
-            elif hasattr(device, "parameters") and not parameters:
-                # Device has parameters attribute but it's empty or inaccessible
-                self.log_message("Device has no accessible parameters")
+            elif hasattr(device, "get_notes"):
+                # Fallback: note-taking devices without parameters
+                try:
+                    notes_list = device.get_notes()
+                    if notes_list:
+                        for i, note in enumerate(notes_list):
+                            notes.append(
+                                {
+                                    "pitch": note.pitch,
+                                    "start_time": note.start_time,
+                                    "duration": note.duration,
+                                    "velocity": note.velocity,
+                                    "mute": note.mute
+                                    if hasattr(note, "mute")
+                                    else False,
+                                }
+                            )
+                except Exception as e:
+                    self.log_message(
+                        "Error reading notes from device: {}".format(str(e))
+                    )
 
             result = {
                 "device_name": device.name
@@ -1316,6 +1332,8 @@ class AbletonMCP(ControlSurface):
                 "device_index": device_index,
                 "parameters": parameters,
             }
+            if notes:
+                result["notes"] = notes
             return result
         except Exception as e:
             self.log_message("Error getting device parameters: " + str(e))
@@ -2329,7 +2347,16 @@ class AbletonMCP(ControlSurface):
                 f"[DELETE_DEVICE] Total devices before deletion: {len(track.devices)}"
             )
 
-            device.delete_device()
+            # Live 9+: track.delete_device(index) is the canonical API.
+            # The old device.delete_device() fallback was removed because it
+            # fails on RackDevice (Drum Rack, Instrument Rack) with
+            # 'RackDevice object has no attribute delete_device'.
+            if hasattr(track, 'delete_device'):
+                track.delete_device(device_index)
+            else:
+                raise RuntimeError(
+                    "track.delete_device not available (requires Live 9+)"
+                )
 
             # Log after deletion and verify
             self.log_message(
@@ -2489,6 +2516,186 @@ class AbletonMCP(ControlSurface):
             return result
         except Exception as e:
             self.log_message("Error performing redo: " + str(e))
+            raise
+
+    # -----------------------------------------------------------------
+    # Rack macros & drum pads (gap-rack, gap-pads)
+    # Source: RESEARCH_FINDINGS.md (jpoindexter/ableton-mcp)
+    # -----------------------------------------------------------------
+
+    def _find_first_device_with(self, track, attr):
+        """Return (device_index, device) for first device having attr, or (None, None)."""
+        for i, dev in enumerate(track.devices):
+            if hasattr(dev, attr):
+                return i, dev
+        return None, None
+
+    def _get_rack_macros(self, track_index):
+        """List macros of the first RackDevice on a track (index, name, value 0.0-1.0)."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            device_index, device = self._find_first_device_with(track, "macros")
+            if device is None:
+                raise IndexError("No RackDevice (with macros) on track {}".format(track_index))
+            macros = []
+            for i, macro in enumerate(device.macros):
+                try:
+                    macros.append({
+                        "index": i,
+                        "name": macro.name if hasattr(macro, "name") else "Macro {}".format(i),
+                        "value": float(macro.value),
+                    })
+                except Exception:
+                    continue
+            return {"track_index": track_index, "device_index": device_index,
+                    "macros": macros}
+        except Exception as e:
+            self.log_message("Error getting rack macros: " + str(e))
+            raise
+
+    def _set_rack_macro(self, track_index, macro_index, value):
+        """Set one rack macro by index. Value normalized 0.0-1.0 (clamped)."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            value = max(0.0, min(1.0, float(value)))
+            track = self._song.tracks[track_index]
+            device_index, device = self._find_first_device_with(track, "macros")
+            if device is None:
+                raise IndexError("No RackDevice (with macros) on track {}".format(track_index))
+            if macro_index < 0 or macro_index >= len(device.macros):
+                raise IndexError("Macro index out of range")
+            macro = device.macros[macro_index]
+            macro.value = value
+            name = macro.name if hasattr(macro, "name") else "Macro {}".format(macro_index)
+            self.log_message("Set rack macro {} ('{}') on track {} to {}".format(
+                macro_index, name, track_index, value))
+            return {"track_index": track_index, "device_index": device_index,
+                    "macro_index": macro_index, "name": name, "value": value}
+        except Exception as e:
+            self.log_message("Error setting rack macro: " + str(e))
+            raise
+
+    def _set_rack_macro_by_name(self, track_index, macro_name, value):
+        """Set one rack macro by its mapped name (case-insensitive)."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            value = max(0.0, min(1.0, float(value)))
+            track = self._song.tracks[track_index]
+            device_index, device = self._find_first_device_with(track, "macros")
+            if device is None:
+                raise IndexError("No RackDevice (with macros) on track {}".format(track_index))
+            wanted = str(macro_name).strip().lower()
+            for i, macro in enumerate(device.macros):
+                mname = macro.name if hasattr(macro, "name") else ""
+                if mname.strip().lower() == wanted:
+                    macro.value = value
+                    return {"track_index": track_index, "device_index": device_index,
+                            "macro_index": i, "macro_name": mname, "value": value}
+            available = [m.name if hasattr(m, "name") else "" for m in device.macros]
+            raise ValueError("No macro named '{}' on track {}. Available: {}".format(
+                macro_name, track_index, available))
+        except Exception as e:
+            self.log_message("Error setting rack macro by name: " + str(e))
+            raise
+
+    def _get_drum_pads(self, track_index):
+        """List loaded pads of the first Drum Rack on a track (index/note, name, mute, solo)."""
+        try:
+            if track_index < 0 or track_index >= len(self._song.tracks):
+                raise IndexError("Track index out of range")
+            track = self._song.tracks[track_index]
+            device_index, device = self._find_first_device_with(track, "drum_pads")
+            if device is None:
+                raise IndexError("No Drum Rack on track {}".format(track_index))
+            pads = []
+            for i, pad in enumerate(device.drum_pads):
+                try:
+                    if len(pad.chains) == 0:
+                        continue  # skip empty pads
+                    pads.append({
+                        "index": i,
+                        "note": i,
+                        "name": pad.name if hasattr(pad, "name") else "Pad {}".format(i),
+                        "muted": bool(pad.mute) if hasattr(pad, "mute") else False,
+                        "soloed": bool(pad.solo) if hasattr(pad, "solo") else False,
+                    })
+                except Exception:
+                    continue
+            return {"track_index": track_index, "device_index": device_index,
+                    "pads": pads}
+        except Exception as e:
+            self.log_message("Error getting drum pads: " + str(e))
+            raise
+
+    def _get_drum_pad(self, track_index, pad_index):
+        """Return (device_index, pad) after validating track and pad index."""
+        if track_index < 0 or track_index >= len(self._song.tracks):
+            raise IndexError("Track index out of range")
+        track = self._song.tracks[track_index]
+        device_index, device = self._find_first_device_with(track, "drum_pads")
+        if device is None:
+            raise IndexError("No Drum Rack on track {}".format(track_index))
+        if pad_index < 0 or pad_index >= len(device.drum_pads):
+            raise IndexError("Pad index out of range (0-{})".format(len(device.drum_pads) - 1))
+        return device_index, device.drum_pads[pad_index]
+
+    def _set_drum_pad_mute(self, track_index, pad_index, muted):
+        """Mute/unmute one drum rack pad."""
+        try:
+            device_index, pad = self._get_drum_pad(track_index, pad_index)
+            pad.mute = bool(muted)
+            name = pad.name if hasattr(pad, "name") else "Pad {}".format(pad_index)
+            return {"track_index": track_index, "device_index": device_index,
+                    "pad_index": pad_index, "name": name, "muted": bool(muted)}
+        except Exception as e:
+            self.log_message("Error setting drum pad mute: " + str(e))
+            raise
+
+    def _set_drum_pad_solo(self, track_index, pad_index, soloed):
+        """Solo/unsolo one drum rack pad."""
+        try:
+            device_index, pad = self._get_drum_pad(track_index, pad_index)
+            pad.solo = bool(soloed)
+            name = pad.name if hasattr(pad, "name") else "Pad {}".format(pad_index)
+            return {"track_index": track_index, "device_index": device_index,
+                    "pad_index": pad_index, "name": name, "soloed": bool(soloed)}
+        except Exception as e:
+            self.log_message("Error setting drum pad solo: " + str(e))
+            raise
+
+    def _set_drum_pad_name(self, track_index, pad_index, name):
+        """Rename one drum rack pad."""
+        try:
+            device_index, pad = self._get_drum_pad(track_index, pad_index)
+            pad.name = str(name)
+            return {"track_index": track_index, "device_index": device_index,
+                    "pad_index": pad_index, "name": str(name)}
+        except Exception as e:
+            self.log_message("Error setting drum pad name: " + str(e))
+            raise
+
+    def _reload_script(self):
+        """Hot-reload the Remote Script module and rebuild the handler map."""
+        try:
+            import importlib
+            import sys
+            mod_name = self.__class__.__module__
+            if mod_name not in sys.modules:
+                return {"reloaded": False, "message": "module not found: " + str(mod_name)}
+            importlib.reload(sys.modules[mod_name])
+            new_class = getattr(sys.modules[mod_name], self.__class__.__name__, None)
+            if new_class is None:
+                return {"reloaded": False, "message": "class not found after reload"}
+            self.__class__ = new_class
+            self._handlers = self._build_handlers()
+            self.log_message("Script reloaded: " + str(len(self._handlers)) + " handlers")
+            return {"reloaded": True, "handler_count": len(self._handlers)}
+        except Exception as e:
+            self.log_message("Error reloading script: " + str(e))
             raise
 
     def _get_playhead_position(self):

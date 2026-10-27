@@ -1,11 +1,15 @@
 """
 Setup session node - Create Ableton Live session with tracks and initial configuration.
 """
-from typing import List
+from typing import List, Tuple
 from agentic_mix.state import GraphState, SessionInfo
 from agentic_mix.tools import (
     delete_all_tracks, create_midi_track, set_track_name,
-    set_tempo, set_time_signature
+    set_tempo, set_time_signature,
+    load_instrument_or_effect,
+)
+from agentic_mix.sound_sets import (
+    track_names_for, chain_for_track, INSTRUMENT_URIS, FX_URIS
 )
 
 
@@ -31,20 +35,38 @@ def setup_session_node(state: GraphState) -> GraphState:
 
         # Create tracks
         track_indices = []
-        track_names = _get_track_names_for_genre(config.genre, config.track_count)
+        track_names = track_names_for(config["genre"], config["track_count"])
 
         for i, track_name in enumerate(track_names):
             result = create_midi_track(index=i)
             track_index = result.get("track_index", i)
 
             set_track_name(track_index, track_name)
-            track_indices.append(track_index)
 
-            feedback.append(f"Created track {track_index}: {track_name}")
+            # Load instrument + effect chain for this role
+            import time
+            inst_uri, fx_chain = chain_for_track(track_name)
+            load_instrument_or_effect(track_index, inst_uri)
+            for fx_key in fx_chain:
+                load_instrument_or_effect(track_index, FX_URIS[fx_key])
+                time.sleep(1.2)  # inter-FX delay (Live breathing room)
+            time.sleep(0.5)  # final yield
+
+            track_indices.append(track_index)
+            feedback.append(f"Created track {track_index}: {track_name} ({inst_uri} + {len(fx_chain)} FX)")
+
+        # delete_all_tracks keeps one survivor track (Live needs >=1); it
+        # drifts to the end - remove it now that it is no longer the last
+        from agentic_mix.tools import get_all_tracks, delete_track
+        extras = len(get_all_tracks()) - len(track_names)
+        for i in range(len(get_all_tracks()) - 1, len(track_names) - 1, -1):
+            delete_track(i)
+        if extras > 0:
+            feedback.append(f"Removed {extras} leftover track(s)")
 
         # Set tempo
-        set_tempo(config.tempo)
-        feedback.append(f"Set tempo to {config.tempo} BPM")
+        set_tempo(config["tempo"])
+        feedback.append(f"Set tempo to {config['tempo']} BPM")
 
         # Set time signature
         set_time_signature(4, 4)
@@ -60,7 +82,7 @@ def setup_session_node(state: GraphState) -> GraphState:
             track_indices=track_indices,
             scene_indices=[],
             return_track_indices=return_track_indices,
-            tempo=config.tempo,
+            tempo=config["tempo"],
             time_signature=(4, 4)
         )
 
@@ -68,20 +90,7 @@ def setup_session_node(state: GraphState) -> GraphState:
         feedback.append("Session setup complete")
 
     except Exception as e:
-        state["error"] = f"Session setup failed: {str(e)}"
-        feedback.append(f"ERROR: {state['error']}")
+        state["errors"].append(f"Session setup failed: {str(e)}")
+        feedback.append(f"ERROR: {state['errors'][-1]}")
 
     return state
-
-
-def _get_track_names_for_genre(genre: str, track_count: int) -> List[str]:
-    """Get appropriate track names for the genre."""
-    track_templates = {
-        "dub_techno": ["Drums 1", "Drums 2", "Bass", "Chords", "Pads", "FX", "Atmosphere", "Percussion"],
-        "house": ["Drums", "Bass", "Chords", "Pads", "Vocals", "FX", "Atmosphere", "Percussion"],
-        "techno": ["Drums", "Bass", "Synth 1", "Synth 2", "Atmosphere", "FX", "Pads", "Percussion"],
-        "ambient": ["Pads", "Bass", "Atmosphere", "FX", "Percussion", "Texture", "Drone", "Reverbed"],
-    }
-
-    templates = track_templates.get(genre, track_templates["dub_techno"])
-    return templates[:track_count] if len(templates) >= track_count else templates

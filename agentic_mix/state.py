@@ -200,7 +200,10 @@ class GraphState(TypedDict):
     arrangement: List[Section]
     track_states: List[TrackState]
     playback_metrics: PlaybackMetrics
-    feedback: FeedbackState
+    feedback: List[str]  # human-readable progress messages
+    analysis_history: List[Tuple[int, AudioAnalysisData]]  # [(section_idx, snapshot), ...]
+    energy_trend: List[float]  # RMS readings per section
+    adaptations: List[Adaptation]  # adaptations applied across sections
     errors: List[str]
     complete: bool
     current_section_index: int  # which section we're executing (0-based)

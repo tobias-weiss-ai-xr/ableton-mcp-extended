@@ -25,13 +25,13 @@ def construct_arrangement_node(state: GraphState) -> GraphState:
     5. Mixing techniques for transitions
     """
     config = state["config"]
-    track_indices = state["session_info"].track_indices
+    track_indices = state["session_info"]["track_indices"]
     feedback = state["feedback"]
 
     feedback.append("Building arrangement structure...")
 
     # Optional mix template override from recipe library
-    mix_template_id = config.get("mix_template_id")
+    mix_template_id = config.get("mix_template_id")  # TypedDict is a dict at runtime
     if mix_template_id and HAS_RECIPE_LIBRARY:
         try:
             recipe_db = get_recipe_db()
@@ -44,11 +44,11 @@ def construct_arrangement_node(state: GraphState) -> GraphState:
 
     try:
         # Calculate number of sections
-        beats_per_section = config.section_duration_beats
-        total_beats = config.duration_minutes * (config.tempo / 60)
+        beats_per_section = config["section_duration_beats"]
+        total_beats = config["duration_minutes"] * (config["tempo"] / 60)
         num_sections = int(total_beats / beats_per_section)
 
-        feedback.append(f"Planning {num_sections} sections ({config.duration_minutes} minutes)")
+        feedback.append(f"Planning {num_sections} sections ({config['duration_minutes']} minutes)")
 
         # Build sections
         arrangement = []
@@ -65,29 +65,37 @@ def construct_arrangement_node(state: GraphState) -> GraphState:
             arrangement.append(section)
             current_beat += beats_per_section
 
-            feedback.append(f"Section {section_idx + 1}: {section.name} (energy: {section.energy_level:.2f})")
+            feedback.append(f"Section {section_idx + 1}: {section['name']} (energy: {section['energy_level']:.2f})")
 
-        # Create scenes in Ableton
-        from agentic_mix.tools import create_scene, set_scene_name
+        # Create scenes in Ableton.
+        # NOTE: create_scene(index) INSERTS a row, shifting existing rows (and
+        # any clips already placed in them) down. Clip slots share the scene
+        # grid, so we REUSE existing rows and only append what is missing -
+        # never insert into or delete existing rows.
+        from agentic_mix.tools import create_scene, set_scene_name, get_all_scenes
 
+        existing_rows = len(get_all_scenes())
         scene_indices = []
         for section in arrangement:
-            result = create_scene(index=section.index)
-            scene_idx = result.get("scene_index", section.index)
-            set_scene_name(scene_idx, section.name)
-            section.scene_index = scene_idx
+            if section["index"] < existing_rows:
+                scene_idx = section["index"]  # reuse existing grid row
+            else:
+                result = create_scene(index=-1)  # append at end
+                scene_idx = result.get("scene_index", section["index"])
+            set_scene_name(scene_idx, section["name"])
+            section["scene_index"] = scene_idx
             scene_indices.append(scene_idx)
 
         # Update session info with scene indices
-        state["session_info"].scene_indices = scene_indices
+        state["session_info"]["scene_indices"] = scene_indices
         state["arrangement"] = arrangement
-        state["current_section"] = 0
+        state["current_section_index"] = 0
 
         feedback.append(f"Arrangement created with {len(arrangement)} sections")
 
     except Exception as e:
-        state["error"] = f"Arrangement construction failed: {str(e)}"
-        feedback.append(f"ERROR: {state['error']}")
+        state["errors"].append(f"Arrangement construction failed: {str(e)}")
+        feedback.append(f"ERROR: {state['errors'][-1]}")
 
     return state
 
@@ -98,8 +106,8 @@ def _create_section(section_idx: int, config: any, total_sections: int,
     # Section type based on position in arrangement
     section_type = _determine_section_type(section_idx, total_sections)
 
-    # Energy level based on config.energy_curve
-    energy_level = _calculate_energy_level(section_idx, total_sections, config.energy_curve)
+    # Energy level based on config["energy_curve"]
+    energy_level = _calculate_energy_level(section_idx, total_sections, config["energy_curve"])
 
     # Section name
     name = f"{section_type}_{section_idx + 1}"
@@ -108,13 +116,13 @@ def _create_section(section_idx: int, config: any, total_sections: int,
     active_tracks = _get_active_tracks_for_section(section_type, track_indices)
 
     # Mixing technique for transition to next section
-    mixing_technique = _select_mixing_technique(section_idx, total_sections, config.genre)
+    mixing_technique = _select_mixing_technique(section_idx, total_sections, config["genre"])
 
     return Section(
         index=section_idx,
         name=name,
         start_beat=current_beat,
-        end_beat=current_beat + config.section_duration_beats,
+        end_beat=current_beat + config["section_duration_beats"],
         energy_level=energy_level,
         tracks_active=active_tracks,
         mixing_technique=mixing_technique,

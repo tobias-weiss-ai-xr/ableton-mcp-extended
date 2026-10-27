@@ -6,8 +6,14 @@ All functions are compatible with LangGraph's tool calling mechanism.
 """
 import socket
 import json
+import threading
+import random
+import time
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+
+# Import sound catalog data for client-side instrument-pattern generation
+from agentic_mix.sound_sets import DRUM_PATTERNS, FX_URIS, MINOR_SCALE as _MINOR_SCALE_CATALOG
 
 
 HOST = "127.0.0.1"
@@ -17,36 +23,63 @@ UDP_PORT = 9788
 
 @dataclass
 class AbletonClient:
-    """Client for communicating with Ableton Remote Script."""
+    """Client for communicating with Ableton Remote Script.
+
+    Uses ONE persistent TCP connection for all commands. The remote script's
+    handler loops on a single connection, and reusing it skips the ~300ms
+    per-command overhead of socket setup + handler-thread spawn in Live.
+    Stale/broken connections trigger one reconnect + retry.
+    """
     host: str = HOST
     tcp_port: int = TCP_PORT
     udp_port: int = UDP_PORT
 
+    def __post_init__(self):
+        self._sock: Optional[socket.socket] = None
+        self._lock = threading.Lock()
+
+    def _connect(self) -> socket.socket:
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.settimeout(30.0)
+        self._sock.connect((self.host, self.tcp_port))
+        return self._sock
+
+    def _close(self):
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
+
     def tcp_command(self, cmd: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Send TCP command (for critical operations)."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(30.0)
-        try:
-            sock.connect((self.host, self.tcp_port))
-            msg = json.dumps({"type": cmd, "params": params or {}})
-            sock.sendall((msg + "\n").encode())
-
-            # Read response with timeout
-            data = b""
-            sock.settimeout(30.0)
-            while True:
+        msg = (json.dumps({"type": cmd, "params": params or {}}) + "\n").encode()
+        with self._lock:
+            last_err: Optional[Exception] = None
+            for _attempt in (1, 2):  # retry once on stale connection
                 try:
-                    chunk = sock.recv(262144)
-                except socket.timeout:
-                    break
-                if not chunk:
-                    break
-                data += chunk
-                sock.settimeout(0.5)  # Quick reads after first chunk
-
-            return json.loads(data.decode())
-        finally:
-            sock.close()
+                    sock = self._sock if self._sock is not None else self._connect()
+                    sock.sendall(msg)
+                    # Read until a complete JSON response parses. The remote
+                    # script sends exactly one JSON object per command.
+                    data = b""
+                    while True:
+                        try:
+                            chunk = sock.recv(262144)
+                        except socket.timeout:
+                            raise ConnectionError(f"timeout waiting for response to {cmd}")
+                        if not chunk:
+                            raise ConnectionError(f"connection closed during {cmd}")
+                        data += chunk
+                        try:
+                            return json.loads(data.decode())
+                        except (json.JSONDecodeError, UnicodeDecodeError):
+                            continue  # partial chunk - keep reading
+                except (ConnectionError, OSError, json.JSONDecodeError) as e:
+                    last_err = e
+                    self._close()  # force fresh connection on retry
+            raise last_err
 
     def udp_command(self, cmd: str, params: Dict[str, Any]) -> None:
         """Send UDP command (for low-latency parameter updates)."""
@@ -111,7 +144,7 @@ def stop_playback() -> Dict[str, Any]:
 def get_all_tracks() -> List[Dict[str, Any]]:
     """Get all track information."""
     resp = _client.tcp_command("get_all_tracks")
-    return resp.get("tracks", [])
+    return resp.get("result", resp).get("tracks", [])
 
 
 def delete_all_tracks() -> Dict[str, Any]:
@@ -181,7 +214,17 @@ def get_track_info(track_index: int) -> Dict[str, Any]:
 def get_all_scenes() -> List[Dict[str, Any]]:
     """Get all scene information."""
     resp = _client.tcp_command("get_all_scenes")
-    return resp.get("scenes", [])
+    return resp.get("result", resp).get("scenes", [])
+
+
+def delete_track(track_index: int) -> Dict[str, Any]:
+    """Delete a track by index."""
+    return _client.tcp_command("delete_track", {"track_index": track_index})
+
+
+def delete_scene(scene_index: int) -> Dict[str, Any]:
+    """Delete a scene by index."""
+    return _client.tcp_command("delete_scene", {"scene_index": scene_index})
 
 
 def create_scene(index: int = -1) -> Dict[str, Any]:
@@ -207,7 +250,14 @@ def trigger_scene(scene_index: int) -> Dict[str, Any]:
 # ============================================================================
 
 def create_clip(track_index: int, clip_index: int, length: float = 4.0) -> Dict[str, Any]:
-    """Create a MIDI clip."""
+    """Create a MIDI clip.
+
+    Clip slots live on the scene grid - a slot beyond the current scene
+    count raises "Clip index out of range", so append scene rows as needed.
+    """
+    scenes = get_all_scenes()
+    for _ in range(len(scenes), clip_index + 1):
+        create_scene(index=-1)
     return _client.tcp_command("create_clip", {
         "track_index": track_index,
         "clip_index": clip_index,
@@ -245,11 +295,18 @@ def stop_clip(track_index: int, clip_index: int) -> Dict[str, Any]:
 # ============================================================================
 
 def load_instrument_or_effect(track_index: int, uri: str) -> Dict[str, Any]:
-    """Load an instrument or effect from browser."""
-    return _client.tcp_command("load_instrument_or_effect", {
-        "track_index": track_index,
-        "uri": uri
-    })
+    """Load an instrument or effect from browser. Uses retry + delay to avoid Live main thread overload."""
+    for attempt in range(3):
+        resp = _client.tcp_command("load_instrument_or_effect", {
+            "track_index": track_index,
+            "uri": uri
+        })
+        if isinstance(resp, dict) and resp.get("status") == "success":
+            time.sleep(1.5)  # let Live finish loading before next
+            return resp
+        if attempt < 2:
+            time.sleep(2.0)
+    return resp
 
 
 def get_device_parameters(track_index: int, device_index: int) -> List[Dict[str, Any]]:
@@ -275,21 +332,35 @@ def set_device_parameter(track_index: int, device_index: int, parameter_index: i
 # DRUM PATTERNS
 # ============================================================================
 
+# Drum patterns and mappings are centralized in agentic_mix.sound_sets
+DRUM_NOTE = {"kick": 36, "snare": 40, "hat": 42, "clap": 39}
+
+
+
 def create_drum_pattern(track_index: int, clip_index: int, pattern_name: str,
                         length: float = 4.0, kick_note: int = 36,
                         snare_note: int = 40, hat_note: int = 42,
                         clap_note: int = 39) -> Dict[str, Any]:
-    """Create a drum pattern."""
-    return _client.tcp_command("create_drum_pattern", {
-        "track_index": track_index,
-        "clip_index": clip_index,
-        "pattern_name": pattern_name,
-        "length": length,
-        "kick_note": kick_note,
-        "snare_note": snare_note,
-        "hat_note": hat_note,
-        "clap_note": clap_note
-    })
+    """Create a drum pattern clip.
+
+    ponytail: notes are generated client-side and sent via create_clip +
+    add_notes_to_clip - the remote script has no create_drum_pattern command.
+    """
+    # allow per-call note overrides
+    notes_map = dict(DRUM_NOTE, kick=kick_note, snare=snare_note, hat=hat_note, clap=clap_note)
+    grid = DRUM_PATTERNS.get(pattern_name, DRUM_PATTERNS["dub_techno"])
+
+    create_clip(track_index, clip_index, length=length)
+    notes = []
+    bar = 0
+    while bar * 4.0 < length:
+        offset = bar * 4.0
+        for beat, drum, dur in grid:
+            if offset + beat < length:
+                notes.append({"pitch": notes_map[drum], "start_time": offset + beat,
+                              "duration": dur, "velocity": 100, "mute": False})
+        bar += 1
+    return add_notes_to_clip(track_index, clip_index, notes)
 
 
 # ============================================================================
@@ -299,7 +370,7 @@ def create_drum_pattern(track_index: int, clip_index: int, pattern_name: str,
 def get_return_tracks() -> List[Dict[str, Any]]:
     """Get all return tracks."""
     resp = _client.tcp_command("get_return_tracks")
-    return resp.get("return_tracks", [])
+    return resp.get("result", resp).get("return_tracks", [])
 
 
 def set_send_amount(track_index: int, send_index: int, amount: float) -> Dict[str, Any]:
@@ -491,28 +562,43 @@ def create_generative_chain(track_index: int, chain_type: str = "dub_techno",
 def generate_chord_progression_clip(track_index: int, clip_index: int, key: str,
                                    progression: List[str], duration_per_chord: float = 4.0,
                                    voicing: str = "close", pattern_type: str = "sustained") -> Dict[str, Any]:
-    """Generate a chord progression clip."""
-    return _client.tcp_command("generate_chord_progression_clip", {
+    """Generate a chord progression clip (server command: create_chord_progression)."""
+    return _client.tcp_command("create_chord_progression", {
         "track_index": track_index,
         "clip_index": clip_index,
         "key": key,
         "progression": progression,
         "duration_per_chord": duration_per_chord,
-        "voicing": voicing,
-        "pattern_type": pattern_type
     })
 
 
 def generate_melody_clip(track_index: int, clip_index: int, key: str, scale: str = "minor",
                         length_beats: float = 8.0, complexity: str = "medium",
                         range_notes: List[int] = [60, 84]) -> Dict[str, Any]:
-    """Generate a scale-constrained melody clip."""
-    return _client.tcp_command("generate_melody_clip", {
-        "track_index": track_index,
-        "clip_index": clip_index,
-        "key": key,
-        "scale": scale,
-        "length_beats": length_beats,
-        "complexity": complexity,
-        "range_notes": range_notes
-    })
+    """Generate a scale-constrained melody clip.
+
+    ponytail: notes generated client-side (random walk on the scale) and sent
+    via create_clip + add_notes_to_clip - no server-side melody command.
+    """
+    import random
+    root = {"F": 53, "Fm": 53, "C": 60, "Cm": 60, "A": 57, "Am": 57,
+            "D": 62, "Dm": 62, "G": 55, "Gm": 55, "E": 64, "Em": 64}.get(key, 60)
+    intervals = _MINOR_SCALE_CATALOG if "minor" in scale or scale in ("dorian", "phrygian") else [0, 2, 4, 5, 7, 9, 11]
+    step = 0
+    spacing = 1.0 if complexity == "simple" else 0.5
+
+    create_clip(track_index, clip_index, length=length_beats)
+    notes = []
+    beat = 0.0
+    while beat < length_beats:
+        if random.random() > 0.15:  # occasional rest
+            degree = intervals[step % len(intervals)]
+            octave = 12 * (step // len(intervals))
+            pitch = min(max(root + degree + octave, range_notes[0]), range_notes[1])
+            notes.append({"pitch": pitch, "start_time": beat,
+                          "duration": spacing * 0.9, "velocity": 90, "mute": False})
+            step += random.choice((1, 1, 2, -1))
+            if step < 0:
+                step = 0
+        beat += spacing
+    return add_notes_to_clip(track_index, clip_index, notes)

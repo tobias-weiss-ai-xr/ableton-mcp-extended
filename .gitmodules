@@ -1,3 +1,0 @@
-[submodule "orchestration/agentflow_bridge/node_modules/agentflow"]
-	path = orchestration/agentflow_bridge/node_modules/agentflow
-	url = ../TaskFleet

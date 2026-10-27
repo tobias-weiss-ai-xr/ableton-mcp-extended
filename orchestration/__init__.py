@@ -1,15 +1,14 @@
 """
 Orchestration layer for Ableton MCP Extended.
 
-Provides AgentFlow-based DAG orchestration with circuit breakers,
-checkpoint persistence, and event-driven coordination.
+Pure-Python in-process DAG orchestration with circuit breakers and
+retry (replaces the earlier Node.js AgentFlow bridge, which depended
+on a non-existent `agentflow` npm package).
 
 Architecture:
-    Python Agent Server (HTTP)
-        ↕
-    Node.js AgentFlow Bridge (DAG engine, circuit breakers, checkpoints)
-        ↕
-    Ableton Live (via MCP)
+    DAGExecutionEngine (orchestration/agentflow_runner.py, stdlib only)
+        ↕ per-task circuit breakers (orchestration/circuit_breaker.py)
+    agentic_mix nodes -> Ableton Live (via MCP)
 
 Usage:
     from orchestration.agentflow_runner import AgentFlowRunner
@@ -24,10 +23,14 @@ from .circuit_breaker import (
     CircuitOpenError,
     CircuitState,
 )
-from .agentflow_runner import AgentFlowRunner
+from .agentflow_runner import AgentFlowRunner, DAGExecutionEngine, MIX_WORKFLOW, Task, RetryPolicy
 
 __all__ = [
     "AgentFlowRunner",
+    "DAGExecutionEngine",
+    "MIX_WORKFLOW",
+    "Task",
+    "RetryPolicy",
     "AbletonCircuitBreaker",
     "AbletonCircuitBreakerRegistry",
     "CircuitOpenError",

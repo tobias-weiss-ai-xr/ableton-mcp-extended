@@ -12,7 +12,6 @@ Or programmatically:
 """
 import argparse
 import sys
-from .graph import run_pipeline
 from .state import Config
 
 # ── Lazy imports for AgentFlow mode ────────────────────────────────────────
@@ -22,6 +21,13 @@ try:
     _has_agentflow = True
 except ImportError:
     _has_agentflow = False
+
+# LangGraph is optional — import lazily so the CLI works without it
+_run_pipeline = None
+try:
+    from .graph import run_pipeline as _run_pipeline
+except ImportError:
+    pass
 
 
 def parse_args() -> Config:
@@ -71,7 +77,7 @@ def parse_args() -> Config:
         variation_level=args.variation
     )
 
-    return config
+    return config, args
 
 
 def print_feedback(feedback: list):
@@ -110,7 +116,7 @@ def print_metrics(metrics: dict):
 def main():
     """Main entry point."""
     try:
-        config = parse_args()
+        config, args = parse_args()
 
         print("=" * 60)
         print("AGENTIC ABLETON MIX GENERATOR")
@@ -153,9 +159,9 @@ def main():
             return
 
         if args.orchestrator == "agentflow" and not _has_agentflow:
-            print("\n[WARN] AgentFlow not available (npm install in orchestration/agentflow_bridge/), falling back to LangGraph")
+            print("\n[WARN] AgentFlow not available, falling back to LangGraph")
 
-        result = run_pipeline(config)
+        result = _run_pipeline(config)
 
         print_feedback(result["feedback"])
         print_metrics(result["metrics"])

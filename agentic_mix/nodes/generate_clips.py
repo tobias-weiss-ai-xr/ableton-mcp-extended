@@ -1,12 +1,17 @@
 """
 Generate clips node - Create MIDI clips with music content.
 """
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import random
 from agentic_mix.state import GraphState
 from agentic_mix.tools import (
     create_clip, add_notes_to_clip, create_drum_pattern,
     generate_chord_progression_clip, generate_melody_clip
+)
+from agentic_mix.sound_sets import (
+    track_name_by_index, GENRE_PATTERNS, PROGRESSIONS,
+    DRUM_PATTERNS as _DRUM_PATTERNS_RAW,
+    MINOR_SCALE as _MINOR_SCALE_CATALOG,
 )
 
 
@@ -21,125 +26,109 @@ def generate_clips_node(state: GraphState) -> GraphState:
     """
     config = state["config"]
     session_info = state["session_info"]
-    track_indices = session_info.track_indices
+    track_indices = session_info["track_indices"]
     feedback = state["feedback"]
 
     feedback.append("Generating clips...")
 
     try:
         clips_per_track = 8  # Number of clip variations per track
-        clip_length = config.section_duration_beats  # Beats per clip
+        clip_length = config["section_duration_beats"]  # Beats per clip
 
         for track_idx, track_index in enumerate(track_indices):
-            track_name = _get_track_name_by_index(track_idx, config.genre, len(track_indices))
+            track_name = _get_track_name_by_index(track_idx, config["genre"], len(track_indices))
 
             # Generate clips for this track
             for clip_idx in range(clips_per_track):
                 feedback.append(f"Generating clip {clip_idx + 1}/{clips_per_track} for {track_name}")
 
+                def _check(resp, what):
+                    """Surface command failures instead of silently dropping clips."""
+                    if isinstance(resp, dict) and resp.get("status") == "error":
+                        feedback.append(f"ERROR: {what} on {track_name} clip {clip_idx}: {resp.get('message', resp.get('error', '?'))}")
+
                 if track_idx == 0 and "1" in track_name:
                     # Primary drums - use pattern templates with variation
-                    pattern = _select_drums_pattern(config.genre, clip_idx)
-                    create_drum_pattern(track_index, clip_idx,
+                    pattern = _select_drums_pattern(config["genre"], clip_idx)
+                    _check(create_drum_pattern(track_index, clip_idx,
                                      pattern_name=pattern,
-                                     length=clip_length)
+                                     length=clip_length), "drum pattern")
 
                 elif "Drums" in track_name and "1" not in track_name:
                     # Secondary drums/percussion
-                    pattern = _select_drums_pattern(config.genre, clip_idx)
-                    create_drum_pattern(track_index, clip_idx,
+                    pattern = _select_drums_pattern(config["genre"], clip_idx)
+                    _check(create_drum_pattern(track_index, clip_idx,
                                      pattern_name=pattern,
-                                     length=clip_length)
+                                     length=clip_length), "drum pattern")
 
                 elif "Bass" in track_name:
                     # Bass - simple root notes
-                    notes = _generate_bass_pattern(config.key, clip_idx, clip_length)
-                    create_clip(track_index, clip_idx, length=clip_length)
-                    add_notes_to_clip(track_index, clip_idx, notes)
+                    notes = _generate_bass_pattern(config["key"], clip_idx, clip_length)
+                    _check(create_clip(track_index, clip_idx, length=clip_length), "create clip")
+                    _check(add_notes_to_clip(track_index, clip_idx, notes), "bass notes")
 
                 elif "Chords" in track_name or "Synth" in track_name:
                     # Chords - use progression generator
-                    progression = _select_progression(config.genre, clip_idx)
-                    generate_chord_progression_clip(
+                    progression = _select_progression(config["genre"], clip_idx)
+                    _check(generate_chord_progression_clip(
                         track_index, clip_idx,
-                        key=config.key,
+                        key=config["key"],
                         progression=progression,
                         duration_per_chord=clip_length / len(progression),
                         pattern_type="sustained"
-                    )
+                    ), "chord progression")
 
                 elif "Pads" in track_name or "Atmosphere" in track_name:
                     # Pads/atmosphere - slow, sustained notes
-                    notes = _generate_pad_notes(config.key, clip_idx, clip_length)
-                    create_clip(track_index, clip_idx, length=clip_length)
-                    add_notes_to_clip(track_index, clip_idx, notes)
+                    notes = _generate_pad_notes(config["key"], clip_idx, clip_length)
+                    _check(create_clip(track_index, clip_idx, length=clip_length), "create clip")
+                    _check(add_notes_to_clip(track_index, clip_idx, notes), "pad notes")
 
                 elif "FX" in track_name:
                     # FX - sporadic, rhythmic hits
                     notes = _generate_fx_pattern(clip_idx, clip_length)
-                    create_clip(track_index, clip_idx, length=clip_length)
-                    add_notes_to_clip(track_index, clip_idx, notes)
+                    _check(create_clip(track_index, clip_idx, length=clip_length), "create clip")
+                    _check(add_notes_to_clip(track_index, clip_idx, notes), "fx notes")
 
                 else:
                     # Melody/pads/etc
-                    scale, complexity = _get_scale_settings(config.genre, clip_idx)
-                    generate_melody_clip(
+                    scale, complexity = _get_scale_settings(config["genre"], clip_idx)
+                    _check(generate_melody_clip(
                         track_index, clip_idx,
-                        key=config.key,
+                        key=config["key"],
                         scale=scale,
                         length_beats=clip_length,
                         complexity=complexity
-                    )
+                    ), "melody")
 
         feedback.append(f"Generated {clips_per_track * len(track_indices)} clips")
 
     except Exception as e:
-        state["error"] = f"Clip generation failed: {str(e)}"
-        feedback.append(f"ERROR: {state['error']}")
+        state["errors"].append(f"Clip generation failed: {str(e)}")
+        feedback.append(f"ERROR: {state['errors'][-1]}")
 
     return state
 
 
 def _get_track_name_by_index(idx: int, genre: str, total_tracks: int) -> str:
-    """Helper to get track name."""
-    track_templates = {
-        "dub_techno": ["Drums 1", "Drums 2", "Bass", "Chords", "Pads", "FX", "Atmosphere", "Percussion"],
-        "house": ["Drums", "Bass", "Chords", "Pads", "Vocals", "FX", "Atmosphere", "Percussion"],
-        "techno": ["Drums", "Bass", "Synth 1", "Synth 2", "Atmosphere", "FX", "Pads", "Percussion"],
-        "ambient": ["Pads", "Bass", "Atmosphere", "FX", "Percussion", "Texture", "Drone", "Reverbed"],
-    }
-    templates = track_templates.get(genre, track_templates["dub_techno"])
-    return templates[idx] if idx < len(templates) else f"Track {idx + 1}"
+    """Helper to get track name from centralized sets."""
+    return track_name_by_index(genre, idx, total_tracks)
 
 
 def _select_drums_pattern(genre: str, clip_idx: int) -> str:
-    """Select drum pattern with variation."""
-    dub_patterns = ["one_drop", "rockers", "steppers", "dub_techno"]
-    house_patterns = ["house_basic", "techno_4x4"]
-    techno_patterns = ["techno_4x4"]
-    ambient_patterns = ["one_drop"]
-
-    if genre == "dub_techno":
-        return dub_patterns[clip_idx % len(dub_patterns)]
-    elif genre == "house":
-        return house_patterns[clip_idx % len(house_patterns)]
-    elif genre == "techno":
-        return techno_patterns[clip_idx % len(techno_patterns)]
-    else:
-        return ambient_patterns[clip_idx % len(ambient_patterns)]
+    """Select drum pattern with variation from central catalog."""
+    patterns = GENRE_PATTERNS.get(genre, GENRE_PATTERNS["dub_techno"])
+    return patterns[clip_idx % len(patterns)]
 
 
 def _select_progression(genre: str, clip_idx: int) -> List[str]:
-    """Select chord progression."""
-    progressions = [
-        ["i", "vii", "VI", "vii"],  # Classic dub
-        ["i", "VII", "VI", "VII"],  # Minor progression
-        ["i", "iv", "VII", "i"],    # Modal
-        ["i", "VI", "VII", "v"],    # Tension
-        ["i", "v", "VI", "VII"],    # Movement
-        ["I", "V", "vi", "IV"],     # Major
-    ]
-    return progressions[clip_idx % len(progressions)]
+    """Select chord progression from central catalog."""
+    idx = clip_idx % len(PROGRESSIONS)
+    p = PROGRESSIONS[idx]
+    # Convert uppercase major to lowercase minor notation (e.g. "I" -> "i")
+    if genre in ("dub_techno", "ambient"):
+        return [c.lower() for c in p]  # use minor notation for dub
+    return p
 
 
 def _generate_bass_pattern(key: str, clip_idx: int, length_beats: float) -> List[Dict[str, Any]]:

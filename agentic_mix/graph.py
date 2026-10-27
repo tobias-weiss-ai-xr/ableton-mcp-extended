@@ -104,7 +104,10 @@ def run_pipeline(config: Config) -> Dict[str, Any]:
         "arrangement": [],
         "track_states": [create_track_state() for _ in range(config["track_count"])],
         "playback_metrics": create_playback_metrics(),
-        "feedback": {"history": [], "adaptations": [], "energy_trend": []},
+        "feedback": [],  # List[str] — human-readable progress messages
+        "analysis_history": [],  # List[Tuple[int, AudioAnalysisData]]
+        "energy_trend": [],  # List[float]
+        "adaptations": [],  # List[Adaptation]
         "errors": [],
         "complete": False,
         "current_section_index": 0,

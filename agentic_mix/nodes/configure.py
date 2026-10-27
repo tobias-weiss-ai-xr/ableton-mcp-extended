@@ -24,9 +24,13 @@ def configure_node(state: GraphState) -> GraphState:
     # TypedDict can't use isinstance(), so check for key presence
     if not _has_config_keys(config):
         if isinstance(config, dict):
-            config = Config(**config)
+            from agentic_mix.state import create_config
+            defaults = create_config()
+            defaults.update(config)  # merge in provided keys
+            config = defaults
         else:
-            config = Config()  # type: ignore[call-arg]
+            from agentic_mix.state import create_config
+            config = create_config()
 
     # Validation (use dict access since Config is a TypedDict)
     if not (60 <= config["tempo"] <= 180):  # type: ignore[index]

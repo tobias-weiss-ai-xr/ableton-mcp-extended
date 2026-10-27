@@ -73,6 +73,8 @@ Source: [music-research](https://github.com/tobias-weiss-ai-xr/music-research)
 - CLI: `--orchestrator agentflow` (default: langgraph for backward compat)
 **Note:** AgentFlow is TypeScript; agentic_mix is Python. Integration via HTTP subprocess invoker (Node.js bridge calls Python agent server on localhost).
 
+**Update (2026-10):** The Node.js bridge depended on a non-existent `agentflow` npm package (TaskFleet symlink, no JS exports). Replaced with a pure-Python in-process DAG runner (`orchestration/agentflow_runner.py`) — no npm, no HTTP, no subprocess. The `agentflow_bridge/` directory has been deleted. Circuit breakers (`orchestration/circuit_breaker.py`) are reused as-is.
+
 ### 🔲 Option 5 — WeaveMuse Multi-Agent Architecture
 **Paper:** WeaveMuse (Karystinaios, 2025) — arXiv:2509.11183
 **What:** Specialist agents (one per concern) + manager agent coordinates
