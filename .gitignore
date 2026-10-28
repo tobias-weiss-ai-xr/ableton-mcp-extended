@@ -7,6 +7,7 @@ wheels/
 *.egg-info/
 .ruff_cache/
 .sisyphus/
+.omo/
 .pytest_cache/
 .mypy_cache/
 .coverage
@@ -50,6 +51,8 @@ Thumbs.db
 *.adg
 *.adv
 *.asd
+# Keep test fixtures tracked despite *.als ignore
+!tests/fixtures/*.als
 !AbletonMCP_Remote_Script/*
 
 # Runtime state
