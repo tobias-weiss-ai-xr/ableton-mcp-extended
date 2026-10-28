@@ -766,7 +766,6 @@ class AbletonMCP(ControlSurface):
     # command_type == "get_clip_warp_markers"
     # command_type == "add_warp_marker"
     # command_type == "delete_warp_marker"
-    # command_type == "reload_script"
     # command_type == "get_global_quantization"
     # command_type == "set_global_quantization"
     # command_type == "get_link_status"
@@ -2277,7 +2276,16 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Parameter index out of range")
             parameter = device.parameters[parameter_index]
 
-            clip.create_automation_event(parameter, time_val, value)
+            # Live 11+ removed create_automation_event; use envelope API
+            envelope = None
+            if hasattr(clip, "get_automation_envelope"):
+                envelope = clip.get_automation_envelope(parameter)
+                if envelope is None and hasattr(clip, "create_automation_envelope"):
+                    envelope = clip.create_automation_envelope(parameter)
+            if envelope is not None:
+                envelope.insert_point((time_val, value))
+            else:  # Live 10 legacy fallback
+                clip.create_automation_event(parameter, time_val, value)
             result = {"added": True, "time": time_val, "value": value}
             return result
         except Exception as e:
@@ -2305,6 +2313,13 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Parameter index out of range")
             parameter = device.parameters[parameter_index]
 
+            # Live 11+ uses envelope API; keep legacy call as fallback
+            if hasattr(clip, "get_automation_envelope"):
+                envelope = clip.get_automation_envelope(parameter)
+                if envelope is not None:
+                    envelope.clear_all_points()
+                result = {"cleared": True}
+                return result
             clip.clear_automation_envelope(parameter)
             result = {"cleared": True}
             return result
@@ -3526,7 +3541,16 @@ class AbletonMCP(ControlSurface):
                 raise IndexError("Parameter index out of range")
             parameter = device.parameters[parameter_index]
 
-            clip.create_automation_event(parameter, time_val, value)
+            # Live 11+ removed create_automation_event; use envelope API
+            envelope = None
+            if hasattr(clip, "get_automation_envelope"):
+                envelope = clip.get_automation_envelope(parameter)
+                if envelope is None and hasattr(clip, "create_automation_envelope"):
+                    envelope = clip.create_automation_envelope(parameter)
+            if envelope is not None:
+                envelope.insert_point((time_val, value))
+            else:  # Live 10 legacy fallback
+                clip.create_automation_event(parameter, time_val, value)
             return {"added": True, "time": time_val, "value": value}
         except Exception as e:
             self.log_message("Error setting clip envelope point: " + str(e))
