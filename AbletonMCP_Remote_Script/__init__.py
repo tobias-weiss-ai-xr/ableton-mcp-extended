@@ -2073,6 +2073,25 @@ class AbletonMCP(ControlSurface):
             if not clip_slot.has_clip:
                 raise Exception("No clip in slot")
             clip = clip_slot.clip
+            # Live 11+ uses get_notes/set_notes; the bare `notes` property is
+            # gone (raises AttributeError on Live 12).
+            if hasattr(clip, "get_notes"):
+                raw = clip.get_notes(0.0, 0, float(clip.length) + 1.0, 128)
+                transposed_notes = []
+                for note in raw:
+                    transposed_notes.append(
+                        (note[0] + semitones, note[1], note[2], note[3], note[4])
+                    )
+                clip.set_notes(tuple(transposed_notes))
+                result = {
+                    "transposed": True,
+                    "track_index": track_index,
+                    "clip_index": clip_index,
+                    "semitones": semitones,
+                    "note_count": len(transposed_notes),
+                }
+                return result
+            # Live <= 10 legacy path
             notes = list(clip.notes)
             transposed_notes = []
             for note in notes:
