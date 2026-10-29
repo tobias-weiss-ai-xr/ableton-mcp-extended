@@ -1085,7 +1085,8 @@ class AbletonMCP(ControlSurface):
 
                 live_notes.append((pitch, start_time, duration, velocity, mute))
 
-            # Add the notes
+            # Replace (not merge): bare set_notes() appends on Live 12.
+            clip.remove_notes(0, 0, 999999, 128)
             clip.set_notes(tuple(live_notes))
 
             result = {"note_count": len(notes)}
@@ -2082,6 +2083,8 @@ class AbletonMCP(ControlSurface):
                     transposed_notes.append(
                         (note[0] + semitones, note[1], note[2], note[3], note[4])
                     )
+                # Replace (not merge): bare set_notes() appends on Live 12.
+                clip.remove_notes(0, 0, 999999, 128)
                 clip.set_notes(tuple(transposed_notes))
                 result = {
                     "transposed": True,
