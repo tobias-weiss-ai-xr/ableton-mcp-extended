@@ -106,9 +106,21 @@ class MCPClientTCP:
                 # Send message
                 sock.sendall(message.encode())
 
-                # Receive response (large buffer for big responses)
-                response_data = sock.recv(65536).decode()
+                # Read until the JSON payload parses: one recv() truncates large
+                # responses (e.g. get_clip_notes), which looked like decode errors.
+                chunks = []
+                while True:
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    try:
+                        json.loads(b"".join(chunks).decode())
+                        break
+                    except json.JSONDecodeError:
+                        continue
                 sock.close()
+                response_data = b"".join(chunks).decode()
 
                 # Parse response
                 result = json.loads(response_data)
