@@ -19,6 +19,7 @@ Control Ableton Live via AI assistants using Model Context Protocol. Dual TCP/UD
 | Legacy one-offs | `scripts/legacy/` | Historical root scripts, not packaged/tested — see its README for replacements |
 | Docs index | `docs/README.md` | Entry point for arc42, scripts catalog, guides |
 | Archived notes | `docs/archive/` | Historical session write-ups, not maintained |
+| Pad-kit introspection | `scripts/inspect_pad_kit.py` | Reads note→sample map from a `.adg` preset; pad racks are sample grids, not chromatic instruments |
 | MIDI effects | `MCP_Server/midi_effects.py` | Arpeggiator, chord, scale, etc. |
 | Browser cache | `MCP_Server/browser_cache.py` | SQLite persistent cache for instruments/effects |
 | Entry point | `MCP_Server/__init__.py` → `ableton-mcp-extended` | `pip install -e .` |
@@ -59,6 +60,7 @@ All critical operations - `get_*`, `delete_*`, `create_*`, `quantize`, `undo/red
 - **NEVER** use UDP for `get_*`, `delete_*`, `quantize`, `undo/redo`, recording
 - **NEVER** create MIDI clips on audio tracks (must use `create_midi_track()` first)
 - **NEVER** load empty Drum Rack - must load a kit preset with specific FileId
+- **NEVER** assume a GM drum map (`36=kick`, `42=hat`) on a *64 Pads* / Drum-Rack rack - those racks are grids of one-shot samples addressed by MIDI note (root key 60, no transposition), so the same note plays a chord chop in one kit and a cymbal in another. Read the map first: `python scripts/inspect_pad_kit.py --kit <preset>.adg`
 - **NEVER** attempt direct audio export (impossible via Remote Script API)
 - **NEVER** modify LSP server configuration
 

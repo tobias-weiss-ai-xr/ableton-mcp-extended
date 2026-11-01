@@ -20,7 +20,9 @@ readback. Use them as the pattern for new work.
 |--------|------|
 | `build_dub_techno_bass.py` | Builds the dub-techno bass channel: instrument + FX chain (Sub Bass Drone → Saturator → Auto Filter → Echo → Reverb), sets 43 parameter values, writes 4 × 16-bar Bb-minor basslines (root-pulse / steppers / dub-wash / rolling). `--track N`, `--skip-chain`. |
 | `fill_808_reggae_bass.py` | 10 × 16-bar reggae bassline clips from 8 one-bar cells (foundation, skank, dub_sparse, octave_pop, walk, steppers, fill, deep_drop) with dropout variants. |
-| `fill_64pad_percussion.py` | 10 × 16-bar percussion grooves for the 64-Pad-Kit racks, 4 density styles, tom fills and a dub dropout bar. |
+| `inspect_pad_kit.py` | **Read a pad kit's real note→sample map** from its `.adg` preset. Pad racks are grids of one-shot samples addressed by MIDI note (every chain root key 60, no transposition), so `36 = kick` is a myth: the same note is a chord chop in one kit and a cymbal in another. `--list`, `--kit PATH`, `--search kick,clap`, `--python`. Run this before writing MIDI for any *64 Pads* / Drum-Rack rack. |
+| `fill_64pad_percussion.py` | 10 × 16-bar percussion grooves for the 64-Pad-Kit racks, 4 density styles, tom fills and a dub dropout bar. Its note map is **not** read from a kit — check it against `inspect_pad_kit.py` before trusting it. |
+| `fill_dub_techno_percussion.py` | 3 × 16-bar dub techno percussion clips using the verified *64 Pads Dub Techno Kit* palette (kick 92, 606 snare 91, clap 90, hats 84/86, shaker 63, toms 72/74). `--set full` (with kick) or `--set tops` (hat/perc layer, no kick, for a second kit track), `--track`, `--start-slot`. Asserts every pitch is a real pad of that kit. |
 | `create_bass_clips.py`, `create_drum_clips.py`, `create_pad_clips.py`, `create_percussion_clips.py`, `create_dub_fx_clips.py` | Section-specific clip generators built on the same pattern. |
 | `create_base_session.py` | Sets up a clean session skeleton. |
 | `check_repo_hygiene.py` | Verifies nothing stray landed in the repo root. Run before committing. |

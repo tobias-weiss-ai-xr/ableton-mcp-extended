@@ -2,8 +2,17 @@
 """Fill 10 x 16-bar reggae/dub PERCUSSION clips on a 64-Pad-Kit track.
 
 The 64-Pad-Kit racks are percussion instruments (macros: Kick/Snare/HH/Cym/
-Toms/Percussion Vol) - not chord instruments. Note map below was read off the
-factory sibling clips of the same kit family.
+Toms/Percussion Vol) - not chord instruments.
+
+WARNING: the note map below is NOT read from a kit. Pad racks are grids of
+one-shot samples addressed by MIDI note, so a note means whatever that kit puts
+there - on the Dub Techno kit these numbers are chord chops (36 = "Chord Dub
+Chop 4"), and on 64 Pad Kit Special they are cymbals. Verify before trusting:
+
+    python scripts/inspect_pad_kit.py --kit <preset>.adg
+
+See scripts/fill_dub_techno_percussion.py for a map that is verified, and
+skills/ableton-pad-instruments for the full explanation.
 
     python scripts/fill_64pad_percussion.py            # track named *Pad Kit*
     python scripts/fill_64pad_percussion.py --track 2
@@ -93,6 +102,8 @@ def main():
     client = MCPClientTCP()
     track = resolve_track(client, args.track, "Pad Kit")
     print("filling 10 percussion clips on track {}".format(track))
+    print("WARNING: note map is generic, not read from this kit - verify with "
+          "scripts/inspect_pad_kit.py (see module docstring)")
 
     for slot, style in enumerate(STYLES):
         notes = build_clip(style)
