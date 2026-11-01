@@ -23,7 +23,7 @@
 |----|---------|--------|-------|-------|
 | P0-1 | Fix `capture_and_insert_arrangement` in Live 12 | ✅ **DONE** | `AbletonMCP_Remote_Script/__init__.py` | Three-tier fallback implemented |
 | P0-2 | Fix `get_arrangement_clips` crashing | ✅ **DONE** | `AbletonMCP_Remote_Script/__init__.py` | Returns empty array instead of crash |
-| P0-3 | Fix command format in `run_basic_demo.py` | ✅ **DONE** | `run_basic_demo.py` | `{"type": cmd}` instead of `{"command": cmd}` |
+| P0-3 | Fix command format in `scripts/legacy/run_basic_demo.py` | ✅ **DONE** | `scripts/legacy/run_basic_demo.py` | `{"type": cmd}` instead of `{"command": cmd}` |
 
 ---
 

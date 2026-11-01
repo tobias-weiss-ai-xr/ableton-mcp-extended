@@ -24,15 +24,15 @@ Successfully created a **complete, production-ready pipeline** that automates th
 | `PIPELINEREADME.md` | 19KB | Complete workflow guide |
 | `QUICK_REFERENCE.md` | 8KB | Quick command reference |
 | `PRODUCTION_PIPELINE.md` | 21KB | Technical feature documentation |
-| `PIPELINE_SUMMARY.md` | 14KB | Executive summary |
+| `docs/archive/PIPELINE_SUMMARY.md` | 14KB | Executive summary |
 | `scripts/create_dub_techno_mix.py` | 22KB | Dub Techno specific script |
 
 ### **Updates**
 | File | Changes |
 |------|---------|
-| `INDEX.md` | Added Pipeline references |
+| `docs/archive/INDEX.md` | Added Pipeline references |
 | `AGENTS.md` | Added Production Pipeline to key files |
-| `FINAL_SUMMARY.md` | Added Production Pipeline reference |
+| `docs/archive/FINAL_SUMMARY.md` | Added Production Pipeline reference |
 
 ---
 
@@ -198,7 +198,7 @@ python scripts/production_pipeline.py custom --genre hiphop --bpm 90 --mp3
 ### **For Users**
 - **PIPELINEREADME.md** - Complete workflow guide with examples
 - **QUICK_REFERENCE.md** - Command cheat sheet
-- **PIPELINE_SUMMARY.md** - High-level overview
+- **docs/archive/PIPELINE_SUMMARY.md** - High-level overview
 
 ### **For Developers**
 - **PRODUCTION_PIPELINE.md** - Technical documentation
@@ -207,9 +207,9 @@ python scripts/production_pipeline.py custom --genre hiphop --bpm 90 --mp3
 - Extensibility guide
 
 ### **For Integration**
-- Updated INDEX.md with Pipeline references
+- Updated docs/archive/INDEX.md with Pipeline references
 - Updated AGENTS.md with Pipeline info
-- Updated FINAL_SUMMARY.md
+- Updated docs/archive/FINAL_SUMMARY.md
 
 ---
 

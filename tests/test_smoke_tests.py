@@ -51,11 +51,11 @@ def test_file_existence():
 
     critical_files = [
         'mcp_client.py',
-        'session_setup.py',
+        'scripts/legacy/session_setup.py',
         'automation_patterns.py',
         'pattern_orchestration.py',
         'error_handling.py',
-        'session_auto-save.py',
+        'scripts/legacy/session_auto-save.py',
         'clip_patterns.py',
         'follow_actions.py',
         'parameter_sweeps.py',

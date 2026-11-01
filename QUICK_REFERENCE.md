@@ -243,8 +243,8 @@ This is **normal**! The pipeline guides you through exporting from Ableton.
 |----------|-------------|
 | `[PIPELINEREADME.md](PIPELINEREADME.md)` | Complete workflow guide |
 | `[MASTER_CONTROL.md](MASTER_CONTROL.md)` | Full system control |
-| `[COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md)` | System overview |
-| `[FINAL_SUMMARY.md](FINAL_SUMMARY.md)` | Quick reference |
+| `[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md)` | System overview |
+| `[docs/archive/FINAL_SUMMARY.md](docs/archive/FINAL_SUMMARY.md)` | Quick reference |
 
 ---
 

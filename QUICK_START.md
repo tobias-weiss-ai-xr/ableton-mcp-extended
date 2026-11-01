@@ -26,7 +26,7 @@ Server should start on ports 9877 (TCP) and 9878 (UDP).
 ### 2. Run Session Setup
 
 ```bash
-python session_setup.py
+python scripts/legacy/session_setup.py
 ```
 
 Creates:
@@ -62,11 +62,11 @@ Session outputs:
 ```
 ableton-mcp-extended/
 ├── MCP_Server/              # MCP server (ports 9877/9878)
-├── session_setup.py         # Initial session setup
+├── scripts/legacy/session_setup.py         # Initial session setup
 ├── automation_patterns.py   # Automation pattern library
 ├── pattern_orchestration.py # Wave structure and scheduling
 ├── error_handling.py        # Error detection and recovery
-├── session_auto-save.py     # Session auto-save and recovery
+├── scripts/legacy/session_auto-save.py     # Session auto-save and recovery
 ├── mcp_client.py            # MCP client (TCP/UDP)
 ├── clip_patterns.py         # Clip generation utilities
 ├── follow_actions.py        # Follow action configuration

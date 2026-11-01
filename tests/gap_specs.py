@@ -4,7 +4,7 @@ Each spec defines the TCP contract: command name, params, expected response
 shape. The contract layer checks the Remote Script source against these specs;
 the e2e layer round-trips them against a running Live.
 
-Sources: RESEARCH_FINDINGS.md (jpoindexter, Ziforge, phantom, isobar, LivePilot).
+Sources: docs/archive/RESEARCH_FINDINGS.md (jpoindexter, Ziforge, phantom, isobar, LivePilot).
 """
 from __future__ import annotations
 

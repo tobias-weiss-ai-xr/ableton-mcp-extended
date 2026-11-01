@@ -2557,7 +2557,7 @@ class AbletonMCP(ControlSurface):
 
     # -----------------------------------------------------------------
     # Rack macros & drum pads (gap-rack, gap-pads)
-    # Source: RESEARCH_FINDINGS.md (jpoindexter/ableton-mcp)
+    # Source: docs/archive/RESEARCH_FINDINGS.md (jpoindexter/ableton-mcp)
     # -----------------------------------------------------------------
 
     def _find_first_device_with(self, track, attr):

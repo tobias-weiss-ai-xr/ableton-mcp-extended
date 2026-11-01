@@ -867,8 +867,8 @@ You now have access to a **complete, professional-grade production system** that
 | Document | Purpose | Location |
 |----------|---------|----------|
 | This Document | Complete workflow guide | `MASTER_CONTROL.md` |
-| 10-Minute Mix Guide | Step-by-step 10-min mix | `10MIN_MIX_COMPLETE.md` |
-| Tweaks Summary | All enhancements | `TWEAKS_SUMMARY.md` |
+| 10-Minute Mix Guide | Step-by-step 10-min mix | `docs/archive/10MIN_MIX_COMPLETE.md` |
+| Tweaks Summary | All enhancements | `docs/archive/TWEAKS_SUMMARY.md` |
 | Dub Features | Dub-specific features | `DUB_FEATURES.md` |
 | Fat Beatz | Bass enhancement suite | `FAT_BEATZ.md` |
 | Arrangement Integration | Arrangement view features | `ARRANGEMENT_INTEGRATION.md` |

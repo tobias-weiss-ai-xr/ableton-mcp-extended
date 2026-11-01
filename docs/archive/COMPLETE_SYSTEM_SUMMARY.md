@@ -346,10 +346,10 @@ python scripts/polish_suite.py full dub
 2. **ARRANGEMENT_INTEGRATION.md** - Arrangement view features
 3. **DUB_FEATURES.md** - Dub-specific capabilities
 4. **FAT_BEATZ.md** - Fat Beatz suite documentation
-5. **10MIN_MIX_COMPLETE.md** - Complete user guide
-6. **TWEAKS_SUMMARY.md** - Enhancement summary
+5. **docs/archive/10MIN_MIX_COMPLETE.md** - Complete user guide
+6. **docs/archive/TWEAKS_SUMMARY.md** - Enhancement summary
 7. **MASTER_CONTROL.md** - Complete workflow guide (THIS FILE)
-8. **COMPLETE_SYSTEM_SUMMARY.md** - This file
+8. **docs/archive/COMPLETE_SYSTEM_SUMMARY.md** - This file
 
 ---
 
@@ -951,10 +951,10 @@ The **Ableton MCP Extended** is now a **complete, professional-grade production 
 
 | Document | Location | Purpose |
 |----------|----------|---------|
-| This File | `COMPLETE_SYSTEM_SUMMARY.md` | Complete system overview |
+| This File | `docs/archive/COMPLETE_SYSTEM_SUMMARY.md` | Complete system overview |
 | Master Control | `MASTER_CONTROL.md` | Workflow guide |
-| Tweaks Summary | `TWEAKS_SUMMARY.md` | Enhancement details |
-| 10-Minute Mix | `10MIN_MIX_COMPLETE.md` | Complete user guide |
+| Tweaks Summary | `docs/archive/TWEAKS_SUMMARY.md` | Enhancement details |
+| 10-Minute Mix | `docs/archive/10MIN_MIX_COMPLETE.md` | Complete user guide |
 | AGENTS.md | `AGENTS.md` | System key files |
 | Arrangement | `ARRANGEMENT_INTEGRATION.md` | Arrangement features |
 | Dub Features | `DUB_FEATURES.md` | Dub-specific features |

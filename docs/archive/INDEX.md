@@ -20,15 +20,15 @@
 | Document | Purpose | Size | Priority |
 |----------|---------|------|----------|
 | **[MASTER_CONTROL.md](MASTER_CONTROL.md)** | **Start Here** - Complete workflow, all commands | 24KB | ⭐⭐⭐⭐⭐ |
-| **[COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md)** | **Big Picture** - Full system overview, statistics | 30KB | ⭐⭐⭐⭐⭐ |
+| **[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md)** | **Big Picture** - Full system overview, statistics | 30KB | ⭐⭐⭐⭐⭐ |
 | **[AGENTS.md](AGENTS.md)** | **Reference** - All files, architecture, commands | 12KB | ⭐⭐⭐⭐ |
 
 ### **Feature Documentation**
 
 | Document | Purpose | Features Covered |
 |----------|---------|------------------|
-| **[10MIN_MIX_COMPLETE.md](10MIN_MIX_COMPLETE.md)** | Complete 10-min mix guide | All generators, workflow, tips |
-| **[TWEAKS_SUMMARY.md](TWEAKS_SUMMARY.md)** | Enhancement summary | All tweaks, comparisons, use cases |
+| **[docs/archive/10MIN_MIX_COMPLETE.md](docs/archive/10MIN_MIX_COMPLETE.md)** | Complete 10-min mix guide | All generators, workflow, tips |
+| **[docs/archive/TWEAKS_SUMMARY.md](docs/archive/TWEAKS_SUMMARY.md)** | Enhancement summary | All tweaks, comparisons, use cases |
 | **[DUB_FEATURES.md](DUB_FEATURES.md)** | Dub-specific features | Filter sweeps, echo, reverb, bass |
 | **[FAT_BEATZ.md](FAT_BEATZ.md)** | Fat Beatz suite | Bass enhancement, drum thickening |
 | **[ARRANGEMENT_INTEGRATION.md](ARRANGEMENT_INTEGRATION.md)** | Arrangement view | Session to arrangement, editing |
@@ -436,12 +436,12 @@ python scripts/polish_suite.py full techno
    - [MASTER_CONTROL.md](MASTER_CONTROL.md) - Complete workflow
 
 2. **Deep Dive**
-   - [COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md) - Full overview
+   - [docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md) - Full overview
    - [AGENTS.md](AGENTS.md) - Reference guide
 
 3. **Feature Guides**
-   - [10MIN_MIX_COMPLETE.md](10MIN_MIX_COMPLETE.md) - 10-min mix guide
-   - [TWEAKS_SUMMARY.md](TWEAKS_SUMMARY.md) - Enhancement details
+   - [docs/archive/10MIN_MIX_COMPLETE.md](docs/archive/10MIN_MIX_COMPLETE.md) - 10-min mix guide
+   - [docs/archive/TWEAKS_SUMMARY.md](docs/archive/TWEAKS_SUMMARY.md) - Enhancement details
 
 4. **Specialized Topics**
    - [DUB_FEATURES.md](DUB_FEATURES.md) - Dub production
@@ -546,9 +546,9 @@ python scripts/polish_suite.py full dub
 ## 📄 **FILE LIST**
 
 ### **Essential Files (Start Here)**
-1. [INDEX.md](INDEX.md) - This file
+1. [docs/archive/INDEX.md](docs/archive/INDEX.md) - This file
 2. [MASTER_CONTROL.md](MASTER_CONTROL.md) - Complete workflow guide
-3. [COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md) - Full system overview
+3. [docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md) - Full system overview
 4. [AGENTS.md](AGENTS.md) - Reference guide
 
 ### **Script Files**
@@ -594,7 +594,7 @@ All components are:
 ## 📞 **NEED HELP?**
 
 1. **Read**: [MASTER_CONTROL.md](MASTER_CONTROL.md)
-2. **Check**: This INDEX.md file
+2. **Check**: This docs/archive/INDEX.md file
 3. **Explore**: Run `python scripts/mix_master.py help`
 4. **Experiment**: Try different commands
 5. **Learn**: All documentation is in this directory

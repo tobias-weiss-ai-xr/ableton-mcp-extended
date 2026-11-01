@@ -128,9 +128,9 @@ Use the 10 scenes to navigate through:
 ## 📁 **FILES CREATED**
 
 1. **`Fine_Dub_Reggae_Complete.als`** - Main Ableton project file
-2. **`fine_dub_generator.py`** - Generative script
-3. **`FINE_DUB_REAGAE_TRACK.md`** - Complete specifications
-4. **`DUB_TRACK_SUMMARY.txt`** - Quick reference
+2. **`scripts/legacy/fine_dub_generator.py`** - Generative script
+3. **`docs/archive/FINE_DUB_REAGAE_TRACK.md`** - Complete specifications
+4. **`docs/archive/DUB_TRACK_SUMMARY.txt`** - Quick reference
 
 ---
 

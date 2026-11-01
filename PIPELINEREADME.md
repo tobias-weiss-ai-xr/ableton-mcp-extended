@@ -608,9 +608,9 @@ python scripts/production_pipeline.py techno --capture
 ## 📚 **RELATED DOCUMENTATION**
 
 - **[MASTER_CONTROL.md](MASTER_CONTROL.md)** - Complete workflow guide
-- **[COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md)** - Full system overview
-- **[FINAL_SUMMARY.md](FINAL_SUMMARY.md)** - Quick reference
-- **[INDEX.md](INDEX.md)** - Navigation to all docs
+- **[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md)** - Full system overview
+- **[docs/archive/FINAL_SUMMARY.md](docs/archive/FINAL_SUMMARY.md)** - Quick reference
+- **[docs/archive/INDEX.md](docs/archive/INDEX.md)** - Navigation to all docs
 
 ---
 

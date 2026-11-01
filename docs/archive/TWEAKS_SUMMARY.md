@@ -428,8 +428,8 @@ python scripts/mix_master.py techno
 
 | File | Size | Purpose |
 |------|------|---------|
-| `10MIN_MIX_COMPLETE.md` | ~28KB | Complete user guide |
-| `TWEAKS_SUMMARY.md` | This file | Enhancement summary |
+| `docs/archive/10MIN_MIX_COMPLETE.md` | ~28KB | Complete user guide |
+| `docs/archive/TWEAKS_SUMMARY.md` | This file | Enhancement summary |
 | **Total** | **~28KB+** | Documentation |
 
 ### **New Features Count**
@@ -593,9 +593,9 @@ python scripts/mix_master.py ambient
 
 | Document | Purpose | Size |
 |----------|---------|------|
-| `10MIN_MIX_COMPLETE.md` | Complete user guide | ~28KB |
+| `docs/archive/10MIN_MIX_COMPLETE.md` | Complete user guide | ~28KB |
 | `10MIN_MIX_GUIDE.md` | Short guide | ~2KB |
-| `TWEAKS_SUMMARY.md` | This file - Enhancement summary | ~ |
+| `docs/archive/TWEAKS_SUMMARY.md` | This file - Enhancement summary | ~ |
 | `DUB_FEATURES.md` | Dub-specific features | ~ |
 | `FAT_BEATZ.md` | Fat Beatz suite documentation | ~ |
 | `ARRANGEMENT_INTEGRATION.md` | Arrangement view features | ~ |

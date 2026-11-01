@@ -430,8 +430,8 @@ python scripts/production_pipeline.py dub_techno --mp3 --video --youtube \
 | **[PIPELINEREADME.md](PIPELINEREADME.md)** | Complete workflow guide (21KB) |
 | **[PRODUCTION_PIPELINE.md](PRODUCTION_PIPELINE.md)** | Technical feature documentation (22KB) |
 | **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** | Quick command reference (8KB) |
-| **[PIPELINE_SUMMARY.md](PIPELINE_SUMMARY.md)** | This document |
-| **[INDEX.md](INDEX.md)** | Navigation to all docs |
+| **[docs/archive/PIPELINE_SUMMARY.md](docs/archive/PIPELINE_SUMMARY.md)** | This document |
+| **[docs/archive/INDEX.md](docs/archive/INDEX.md)** | Navigation to all docs |
 | **[MASTER_CONTROL.md](MASTER_CONTROL.md)** | System overview |
 
 ---

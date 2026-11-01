@@ -22,7 +22,7 @@ When master track or return tracks had no arrangement clips, the method crashed.
 **Fix**: Only iterate over actual MIDI/audio tracks (`song.tracks`), skip group/return/master tracks which don't support arrangement_clips. Return empty array instead of raising exception.
 
 ### 3. Command Format Inconsistency
-`run_basic_demo.py` was sending `{"command": cmd, ...}` but Remote Script expects `{"type": cmd, ...}`.
+`scripts/legacy/run_basic_demo.py` was sending `{"command": cmd, ...}` but Remote Script expects `{"type": cmd, ...}`.
 **Fix**: Updated demo to use correct format `{"type": cmd, "params": {...}}`.
 
 ### 4. Real-time Recording Not Actually Recording
@@ -53,7 +53,7 @@ The fallback method was:
 
 ## Test Results
 
-### run_basic_demo.py ✅
+### scripts/legacy/run_basic_demo.py ✅
 ```
 [1/6] Deleting all tracks... Done
 [2/6] Creating 4 MIDI tracks... Done
@@ -80,7 +80,7 @@ DEMO COMPLETE!
    - Fixed `_capture_and_insert_arrangement` to use working fallback with proper method calls
    - Added logging for debugging
 
-2. **run_basic_demo.py**
+2. **scripts/legacy/run_basic_demo.py**
    - Fixed command format from `{"command": ...}` to `{"type": ...}`
 
 3. **MCP_Server/server.py**

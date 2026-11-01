@@ -3,7 +3,7 @@ setlocal
 
 :: Ableton Live Restart Script
 :: This script kills Ableton Live, waits, and restarts it
-:: Usage: restart_ableton.bat [wait_seconds]
+:: Usage: scripts/legacy/restart_ableton.bat [wait_seconds]
 
 set WAIT_TIME=15
 if not "%1"=="" set WAIT_TIME=%1%

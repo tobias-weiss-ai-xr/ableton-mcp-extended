@@ -104,8 +104,8 @@ As of July 27 2026:
 - ✅**Arrangement View**: Full capture, clip manipulation, automation
 - ✅**Real-time Recording**: Session-to-arrangement via fallback
 - ✅**MCP Tools**: 20+ arrangement tools + 15+ optimization tools registered
-- ✅**Demo Scripts**: `run_basic_demo.py` completes successfully with 4 arrangement clips
-- ✅**Command Format**: Fixed `run_basic_demo.py` to use `{"type": cmd}` instead of `{"command": cmd}`
+- ✅**Demo Scripts**: `scripts/legacy/run_basic_demo.py` completes successfully with 4 arrangement clips
+- ✅**Command Format**: Fixed `scripts/legacy/run_basic_demo.py` to use `{"type": cmd}` instead of `{"command": cmd}`
 
 ## WHERE TO LOOK
 | Task | Location |

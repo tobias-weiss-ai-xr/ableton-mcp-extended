@@ -3,10 +3,10 @@
 Automated Ableton Live restart with Remote Script verification.
 
 Usage:
-    python restart_ableton.py [wait_seconds]
+    python scripts/legacy/restart_ableton.py [wait_seconds]
 
 Example:
-    python restart_ableton.py 20  # Wait 20 seconds after launch
+    python scripts/legacy/restart_ableton.py 20  # Wait 20 seconds after launch
 """
 
 import subprocess

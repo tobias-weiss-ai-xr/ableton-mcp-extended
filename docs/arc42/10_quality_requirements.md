@@ -36,7 +36,7 @@
 | UDP update latency | ≤ 5 ms | `scripts/test/test_performance_udp.py` |
 | Reconnect success | ≥ 99 % within 3 retries | `connection_health.py` counters |
 | Test coverage (new code) | Ruff-clean + pytest pass | CI `lint` + `test` jobs |
-| Capture fallback | Works on Live 10/11/12 | `run_basic_demo.py` |
+| Capture fallback | Works on Live 10/11/12 | `scripts/legacy/run_basic_demo.py` |
 | Mix generation | Completes 10-min mix end-to-end | `scripts/create_10min_mix*.py` |
 
 ## 10.4 Non-functional Constraints

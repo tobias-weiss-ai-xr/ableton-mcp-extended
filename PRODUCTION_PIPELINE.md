@@ -798,7 +798,7 @@ ProductionPipeline.run(
 - **[PIPELINEREADME.md](PIPELINEREADME.md)** - Complete workflow guide
 - **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Quick command reference
 - **[MASTER_CONTROL.md](MASTER_CONTROL.md)** - Ableton MCP system overview
-- **[FINAL_SUMMARY.md](FINAL_SUMMARY.md)** - Complete system cheatsheet
+- **[docs/archive/FINAL_SUMMARY.md](docs/archive/FINAL_SUMMARY.md)** - Complete system cheatsheet
 
 ### **External References**
 

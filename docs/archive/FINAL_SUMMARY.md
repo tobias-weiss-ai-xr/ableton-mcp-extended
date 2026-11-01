@@ -27,11 +27,11 @@ The goal was to **hone and polish** the 10-minute mix generator into a **profess
 
 ### **Documentation (8 Comprehensive Files)**
 
-1. **`INDEX.md`** - Navigation guide to all documentation
+1. **`docs/archive/INDEX.md`** - Navigation guide to all documentation
 2. **`MASTER_CONTROL.md`** - Complete workflow guide (24KB)
-3. **`COMPLETE_SYSTEM_SUMMARY.md`** - Full system overview (30KB)
-4. **`10MIN_MIX_COMPLETE.md`** - Complete user guide for 10-min mixes
-5. **`TWEAKS_SUMMARY.md`** - All enhancements and comparisons
+3. **`docs/archive/COMPLETE_SYSTEM_SUMMARY.md`** - Full system overview (30KB)
+4. **`docs/archive/10MIN_MIX_COMPLETE.md`** - Complete user guide for 10-min mixes
+5. **`docs/archive/TWEAKS_SUMMARY.md`** - All enhancements and comparisons
 6. **`AGENTS.md`** - Reference guide for all files and architecture
 7. **`DUB_FEATURES.md`** - Dub-specific features documentation
 8. **`FAT_BEATZ.md`** - Fat Beatz suite documentation
@@ -248,14 +248,14 @@ python scripts/polish_suite.py full dub
 ## 📚 **DOCUMENTATION ROADMAP**
 
 ### **Start Here (Essential)**
-1. **[INDEX.md](INDEX.md)** - Navigation to all documentation
+1. **[docs/archive/INDEX.md](docs/archive/INDEX.md)** - Navigation to all documentation
 2. **[MASTER_CONTROL.md](MASTER_CONTROL.md)** - Complete workflow guide
-3. **[COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md)** - Full system overview
+3. **[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md)** - Full system overview
 4. **[AGENTS.md](AGENTS.md)** - Reference for all files
 
 ### **Deep Dive (Recommended)**
-1. **[10MIN_MIX_COMPLETE.md](10MIN_MIX_COMPLETE.md)** - 10-min mix comprehensive guide
-2. **[TWEAKS_SUMMARY.md](TWEAKS_SUMMARY.md)** - All enhancements and features
+1. **[docs/archive/10MIN_MIX_COMPLETE.md](docs/archive/10MIN_MIX_COMPLETE.md)** - 10-min mix comprehensive guide
+2. **[docs/archive/TWEAKS_SUMMARY.md](docs/archive/TWEAKS_SUMMARY.md)** - All enhancements and features
 
 ### **Specialized Topics**
 1. **[DUB_FEATURES.md](DUB_FEATURES.md)** - Dub-specific automation and effects

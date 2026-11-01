@@ -344,7 +344,7 @@ With the **Fat Beatz Suite**, you can now:
 
 - **`FAT_BEATZ.md`** (~500 lines) - Complete user guide with examples
 - **`DUB_FEATURES.md`** (~11KB) - Dub-specific features
-- **`IMPLEMENTATION_SUMMARY.md`** - Technical implementation details
+- **`docs/archive/IMPLEMENTATION_SUMMARY.md`** - Technical implementation details
 
 ---
 
