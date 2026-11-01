@@ -40,12 +40,15 @@ ARRANGE_SLOTS = 4
 ARCHIVE_FROM = 5          # stray clips are parked from this slot upwards
 
 # (track, first slot, set name, pattern names in scene order, None = rest)
+# Clip labels are "<role> <scene>", e.g. "Hats Break" - short enough to read in
+# Live's clip slots, specific enough to know what fires.
 ROLES = [
     (DRUMS, 0, "drums", ["01 four-on-floor", "02 half-time", "03 dub dropout", "04 peak"]),
     (TOPS, 0, "tops", ["01 hats-stick", "02 shaker-swerve", "03 hats-swerve", "04 full"]),
     (CHOPS, 1, "chops", ["01 skank", "02 dub-stabs", "03 chop-swerve"]),
 ]
-SCENE_NAMES = ["01 Intro", "02 Build", "03 Break", "04 Drop"]
+SCENE_NAMES = ["Intro", "Build", "Break", "Drop"]
+ROLE_LABEL = {"drums": "Drums", "tops": "Hats", "chops": "Chops"}
 
 # Clips that ship inside these racks (or leftover experiments) sitting in the
 # arrangement window. Each entry is (track, slot, expected name) - the expected
@@ -121,7 +124,7 @@ def archive_strays(client, dry_run):
         call(client, "add_notes_to_clip", track_index=track, clip_index=parked,
              notes=notes)
         call(client, "set_clip_name", track_index=track, clip_index=parked,
-             name="archived (was slot {})".format(slot))
+             name="Stray {}bar".format(max(1, round(clip["length"] / 4))))
         back = call(client, "get_clip_notes", track_index=track,
                     clip_index=parked)["notes"]
         assert len(back) == len(notes), "archive lost notes on track {}: {} != {}".format(
@@ -147,7 +150,7 @@ def write_role(client, track, first_slot, set_name, names, dry_run):
         call(client, "add_notes_to_clip", track_index=track, clip_index=slot,
              notes=notes)
         call(client, "set_clip_name", track_index=track, clip_index=slot,
-             name="Dub Techno {} {} {}".format(set_name, SCENE_NAMES[slot][3:], name))
+             name="{} {}".format(ROLE_LABEL[set_name], SCENE_NAMES[slot]))
         got = call(client, "get_clip_notes", track_index=track,
                    clip_index=slot)["notes"]
         assert len(got) == len(notes), "track {} slot {}: {} != {}".format(
@@ -186,7 +189,18 @@ def main():
         print("3. scenes + automation (skipped, dry run)")
         return
 
-    print("3. naming scenes")
+    print("3. labels + scenes")
+    # bass clips come from build_dub_techno_bass.py - relabel, don't rewrite them
+    for slot, scene in enumerate(SCENE_NAMES):
+        if slot in clips_on(client, BASS_TRACK):
+            call(client, "set_clip_name", track_index=BASS_TRACK, clip_index=slot,
+                 name="Bass " + scene)
+    # tidier stale archive labels from earlier runs of this script
+    for track, _first, _set, _names in ROLES:
+        for slot, c in clips_on(client, track).items():
+            if (c.get("name") or "").startswith("archived"):
+                call(client, "set_clip_name", track_index=track, clip_index=slot,
+                     name="Stray {}bar".format(max(1, round(c["length"] / 4))))
     for i, name in enumerate(SCENE_NAMES):
         call(client, "set_scene_name", scene_index=i, name=name)
 
@@ -212,6 +226,21 @@ def main():
             "envelope on track {} clip {} is flat".format(track, clip)
 
     print("\nverifying")
+    # Live applies renames asynchronously: a name written moments ago can still
+    # read back as the old one. Settle, then repair whatever did not land.
+    time.sleep(1.0)
+    for track, first_slot, set_name, names in ROLES:
+        have = clips_on(client, track)
+        for offset in range(len(names)):
+            slot = first_slot + offset
+            want = "{} {}".format(ROLE_LABEL[set_name], SCENE_NAMES[slot])
+            got = have.get(slot, {}).get("name")
+            if got and got != want:
+                call(client, "set_clip_name", track_index=track, clip_index=slot,
+                     name=want)
+                print("  relabelled track {} slot {}: {!r} -> {!r}".format(
+                    track, slot, got, want))
+
     ok = True
     for track, first_slot, set_name, names in ROLES:
         have = clips_on(client, track)
@@ -225,6 +254,11 @@ def main():
             n = client.send_command("get_clip_notes", {
                 "track_index": track, "clip_index": slot})["result"]["notes"]
             bars = len({int(x["start_time"] // 4) for x in n})
+            want = "{} {}".format(ROLE_LABEL[set_name], SCENE_NAMES[slot])
+            if c.get("name") != want:
+                print("  LABEL track {} slot {}: {!r} != {!r}".format(
+                    track, slot, c.get("name"), want))
+                ok = False
             if bars != kit.BARS or c["length"] != kit.CLIP_LEN:
                 print("  BAD track {} slot {}: {} bars, {} beats".format(
                     track, slot, bars, c["length"]))
