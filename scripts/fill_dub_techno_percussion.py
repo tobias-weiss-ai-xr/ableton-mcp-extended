@@ -5,8 +5,12 @@ Slow dub techno at session tempo: 4-on-the-floor kick, offbeat hats, sparse
 rim/clap, dub dropouts. Patterns evolve every 4 bars so a 16-bar clip has an
 arc instead of 16 identical bars.
 
+Two sets: ``full`` (with kick) for the main kit track, ``tops`` (hats/perc, no
+kick) for a second kit track playing alongside it.
+
     python scripts/fill_dub_techno_percussion.py                 # autodetect *Pad Kit*
     python scripts/fill_dub_techno_percussion.py --track 1 --start-slot 1
+    python scripts/fill_dub_techno_percussion.py --track 2 --set tops
 """
 
 import argparse
@@ -39,27 +43,52 @@ def _sixteenths():
 
 # Each pattern: 4 sections (bars 0-3, 4-7, 8-11, 12-15).
 # Positions are beats within the bar (0.0-3.75).
-PATTERNS = {
-    "01 four-on-floor": [
-        {KICK: [0, 1, 2, 3], CH: _offbeats()},
-        {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [1.5, 3.5]},
-        {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [1.5, 3.5], CLAP: [2.0]},
-        {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [1.5, 3.5], CLAP: [2.0],
-         SHK: _sixteenths()},
-    ],
-    "02 half-time": [
-        {KICK: [0, 2.5], CH: _offbeats()},
-        {KICK: [0, 2.5], CH: _offbeats(), RIM: [2.0]},
-        {KICK: [0, 2.5], CH: _offbeats(), RIM: [2.0], OH: [3.5]},
-        {KICK: [0, 2.5], CH: _offbeats(), RIM: [2.0], OH: [3.5], SNARE: [2.0],
-         SHK: [b / 2.0 for b in range(8)]},
-    ],
-    "03 dub dropout": [
-        {KICK: [0, 1, 2, 3], CH: _offbeats()},
-        {KICK: [0, 1, 2, 3], CH: _offbeats(), SHK: _sixteenths()},
-        {KICK: [0, 1, 2, 3], CH: _offbeats(), SHK: _sixteenths(), CLAP: [2.0]},
-        {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [3.5], CLAP: [2.0]},
-    ],
+# "full" carries the kick; "tops" is the complementary hat/perc layer for a second
+# kit track playing at the same time (no kick, so the low end is not doubled).
+PATTERN_SETS = {
+    "full": {
+        "01 four-on-floor": [
+            {KICK: [0, 1, 2, 3], CH: _offbeats()},
+            {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [1.5, 3.5]},
+            {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [1.5, 3.5], CLAP: [2.0]},
+            {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [1.5, 3.5], CLAP: [2.0],
+             SHK: _sixteenths()},
+        ],
+        "02 half-time": [
+            {KICK: [0, 2.5], CH: _offbeats()},
+            {KICK: [0, 2.5], CH: _offbeats(), RIM: [2.0]},
+            {KICK: [0, 2.5], CH: _offbeats(), RIM: [2.0], OH: [3.5]},
+            {KICK: [0, 2.5], CH: _offbeats(), RIM: [2.0], OH: [3.5], SNARE: [2.0],
+             SHK: [b / 2.0 for b in range(8)]},
+        ],
+        "03 dub dropout": [
+            {KICK: [0, 1, 2, 3], CH: _offbeats()},
+            {KICK: [0, 1, 2, 3], CH: _offbeats(), SHK: _sixteenths()},
+            {KICK: [0, 1, 2, 3], CH: _offbeats(), SHK: _sixteenths(), CLAP: [2.0]},
+            {KICK: [0, 1, 2, 3], CH: _offbeats(), RIM: [3.5], CLAP: [2.0]},
+        ],
+    },
+    "tops": {
+        "01 hats-rim": [
+            {CH: _offbeats()},
+            {CH: _offbeats(), RIM: [1.5, 3.5]},
+            {CH: _offbeats(), RIM: [1.5, 3.5], OH: [1.5]},
+            {CH: _offbeats(), RIM: [1.5, 3.5], OH: [1.5, 3.5], SHK: _sixteenths()},
+        ],
+        "02 shaker-swerve": [
+            {SHK: _sixteenths()},
+            {SHK: _sixteenths(), CH: _offbeats()},
+            {SHK: _sixteenths(), CH: _offbeats(), RIM: [3.5]},
+            {SHK: _sixteenths(), CH: _offbeats(), RIM: [3.5], CLAP: [2.0]},
+        ],
+        "03 perc-accents": [
+            {CH: _offbeats(), RIM: [1.5]},
+            {CH: _offbeats(), RIM: [1.5, 3.5], OH: [3.5]},
+            {CH: _offbeats(), RIM: [1.5, 3.5], OH: [3.5], CLAP: [2.0]},
+            {CH: _offbeats(), RIM: [1.5, 3.5], OH: [3.5], CLAP: [2.0],
+             SHK: _sixteenths()},
+        ],
+    },
 }
 
 # Bars that thin out or fill, applied on top of the section layer.
@@ -71,14 +100,16 @@ def bar_layers(bar, sections):
     """Pitch -> beat positions for one bar, including drops and the closing fill."""
     beat_map = sections[min(bar // 4, 3)]
     layers = {p: list(pos) for p, pos in beat_map.items() if pos}
+    has_kick = KICK in layers
 
-    if bar in DROP_BARS and KICK in layers:
+    if bar in DROP_BARS and has_kick:
         layers[KICK] = DROP_BARS[bar]
         for p in (RIM, CLAP, SHK, SNARE):
             layers.pop(p, None)
 
     if bar == FILL_BAR:
-        layers[KICK] = [0, 1, 2]
+        if has_kick:
+            layers[KICK] = [0, 1, 2]
         layers[CH] = _offbeats()[:3]
         layers[TOM1] = [3.0, 3.5]
         layers[TOM2] = [3.25]
@@ -121,18 +152,23 @@ def main():
                     help="track index (default: first track named *Pad Kit*)")
     ap.add_argument("--start-slot", type=int, default=1,
                     help="first clip slot to write (default 1, leaves slot 0 alone)")
+    ap.add_argument("--set", choices=sorted(PATTERN_SETS), default="full",
+                    help="full = with kick; tops = hat/perc layer for a second kit track")
     args = ap.parse_args()
 
+    patterns = PATTERN_SETS[args.set]
     client = MCPClientTCP()
     track = resolve_track(client, args.track, "Pad Kit")
-    print("writing {} dub techno clips on track {}".format(len(PATTERNS), track))
+    print("writing {} dub techno clips (set: {}) on track {}".format(
+        len(patterns), args.set, track))
 
     existing = {c["index"] for c in client.send_command(
         "get_all_clips_in_track", {"track_index": track})["result"]["clips"]}
 
-    for offset, (name, sections) in enumerate(PATTERNS.items()):
+    for offset, (name, sections) in enumerate(patterns.items()):
         slot = args.start_slot + offset
         notes = build_clip(sections)
+        expects_kick = any(KICK in layer for layer in sections)
         if slot in existing:
             client.send_command("delete_clip",
                                 {"track_index": track, "clip_index": slot})
@@ -156,12 +192,16 @@ def main():
             per_bar[int(n["start_time"] // 4)].add(n["pitch"])
         assert len(per_bar) == BARS, "slot {}: {} bars of {}".format(
             slot, len(per_bar), BARS)
-        assert all(KICK in v for v in per_bar.values()), \
-            "slot {}: a bar has no kick".format(slot)
+        if expects_kick:
+            assert all(KICK in v for v in per_bar.values()), \
+                "slot {}: a bar has no kick".format(slot)
+        else:
+            assert KICK not in {n["pitch"] for n in got}, \
+                "slot {}: tops set must not contain a kick".format(slot)
         print("  slot {} [{}] {:3d} hits, {} bars, pitches {}".format(
             slot, name, len(got), len(per_bar), sorted({n["pitch"] for n in got})))
 
-    print("\nOK - {} clips on track {}".format(len(PATTERNS), track))
+    print("\nOK - {} clips on track {}".format(len(patterns), track))
 
 
 if __name__ == "__main__":
