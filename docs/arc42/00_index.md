@@ -8,6 +8,9 @@ generation, and ElevenLabs voice integration.
 
 ## Contents
 
+For the docs map (guides, generated reference, archives), see [`../README.md`](../README.md).
+For what the 100+ scripts do, see [`../SCRIPTS.md`](../SCRIPTS.md).
+
 | § | Section | File |
 |---|---------|------|
 | 1 | Introduction and Goals | [01_introduction_and_goals.md](01_introduction_and_goals.md) |
@@ -36,8 +39,8 @@ generation, and ElevenLabs voice integration.
 The documentation reflects the codebase as of the current `main` branch. Key
 source locations:
 
-- `MCP_Server/server.py` — core MCP server (~120 tools, FastMCP host)
-- `MCP_Server/*_tools.py` — 14 tool-domain modules (250+ tools total)
+- `MCP_Server/server.py` — core MCP server (120 `@mcp.tool` tools, FastMCP host)
+- `MCP_Server/*_tools.py` — 8 tool-domain modules (266 `@mcp.tool` registrations in `MCP_Server/` total)
 - `MCP_Server/command_registry.py` — command contract registry
 - `MCP_Server/connection_health.py` — connection state machine
 - `AbletonMCP_Remote_Script/__init__.py` — Live-embedded Remote Script

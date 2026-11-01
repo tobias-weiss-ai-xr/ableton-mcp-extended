@@ -35,7 +35,7 @@ These commands use UDP transport for low-latency, fire-and-forget operations.
 |------|----------|-------------|------|
 | `fire_clip` | udp | Start playing a clip. | `server.py` |
 | `set_clip_launch_mode` | udp | Set clip launch mode. | `server.py` |
-| `set_device_parameter` | udp | Set a device parameter value (normalized 0.0-1.0). | `server.py` |
+| `set_device_parameter` | udp | Set a device parameter value, in the parameter's NATIVE range. | `server.py` |
 | `set_master_volume` | udp | Set master track volume (normalized 0.0-1.0). | `advanced_tools.py` |
 | `set_send_amount` | udp | Set send amount to a return track. | `server.py` |
 | `set_track_arm` | udp | Arm or unarm a track for recording. | `server.py` |
@@ -5893,15 +5893,20 @@ These commands use TCP transport for reliable, request/response operations.
 
 - **Transport**: `udp`
 - **File**: `server.py`
-- **Description**: Set a device parameter value (normalized 0.0-1.0).
+- **Description**: Set a device parameter value, in the parameter's NATIVE range.
 
 **Full Documentation**:
 
+> Values are passed through to Live's `parameter.value` unchanged, so use the
+> units reported by `get_device_parameters` (Hz, dB, %, ms, beats) — e.g.
+> Cutoff `30.0`, Drive `0.28`. Passing 0.0–1.0 clamps and will not do what you
+> expect. Track volume/pan (`set_track_volume`, `set_track_pan`) are natively
+> 0.0–1.0 and stay normalized.
 > Parameters:
 > - track_index: The index of the track
 > - device_index: The index of the device on the track
 > - parameter_index: The index of the parameter to set
-> - value: The normalized value to set (0.0 to 1.0)
+> - value: The value in the parameter's native range (NOT 0.0–1.0)
 
 **Parameters**:
 

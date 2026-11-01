@@ -1340,7 +1340,12 @@ class AbletonMCP(ControlSurface):
             raise
 
     def _set_device_parameter(self, track_index, device_index, parameter_index, value):
-        """Set a device parameter value (normalized 0.0-1.0)"""
+        """Set a device parameter value in the parameter's NATIVE range.
+
+        There is no normalization layer: the value is assigned to parameter.value
+        directly (Live clamps to min/max), so pass Hz/dB/%/ms/beats as shown by
+        get_device_parameters - not 0.0-1.0.
+        """
         try:
             if track_index < 0 or track_index >= len(self._song.tracks):
                 raise IndexError("Track index out of range")

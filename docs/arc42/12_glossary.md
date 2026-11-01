@@ -26,10 +26,10 @@
 | **MCP** | Model Context Protocol — JSON-RPC over stdio between an AI client and a server exposing `@tool`-decorated functions. |
 | **FastMCP** | The Python MCP SDK class (`mcp.server.fastmcp.FastMCP`) used to build the server. |
 | **TCP channel** | Port 9877, length-prefixed JSON, request/response — reliable commands. |
-| **UDP channel** | Port 9878, fire-and-forget JSON datagrams — 10-command whitelist for low-latency updates. |
-| **UDP whitelist** | The 10 commands allowed over UDP: `set_device_parameter`, `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `set_track_arm`, `set_master_volume`, `set_send_amount`, `fire_clip`, `set_clip_launch_mode`. |
+| **UDP channel** | Port 9878, fire-and-forget JSON datagrams — 11-command whitelist for low-latency updates. |
+| **UDP whitelist** | The 11 commands allowed over UDP: `set_device_parameter`, `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `set_track_arm`, `set_master_volume`, `set_crossfader`, `set_send_amount`, `fire_clip`, `set_clip_launch_mode`. |
 | **Command contract** | `CommandSpec`/`ParamSpec` in `command_registry.py` defining name, params, transport, and normalized ranges. |
-| **Normalized parameter** | A float in 0.0–1.0 representing a device/track value, independent of Live's raw range. |
+| **Normalized parameter** | A float in 0.0–1.0. Genuinely native for track volume/pan/send amounts; device parameters take their own native units instead (Hz, dB, %, ms, beats). |
 | **Main-thread scheduling** | Deferring Live API mutations off the notification thread (Live disallows mutations from notifications). |
 | **Handler map** | `dict[str, callable]` built once at init in the Remote Script, replacing a giant `if/elif` chain. |
 | **Watchdog** | `server_watchdog.py` — monitors connection health and restarts the MCP server after 30 s disconnected. |

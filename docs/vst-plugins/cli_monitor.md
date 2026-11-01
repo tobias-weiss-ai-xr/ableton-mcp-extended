@@ -835,4 +835,4 @@ monitor = CLIMonitor(
 
 - [API Reference - CLIMonitor](api_reference.md#module-cli_monitor)
 - [User Guide - Quick Start](user_guide.md#quick-start)
-- [Control Loop Guide](control_loop.md)
+- MCP_Server/audio_analysis/control_loop.py

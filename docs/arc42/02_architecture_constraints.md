@@ -25,9 +25,14 @@
 
 ## 2.3 Conventions
 
-- **Parameter normalization:** All device/track parameters use **0.0–1.0** floats,
-  never raw API values. Violations are an anti-pattern (see AGENTS.md).
-- **UDP whitelist:** Exactly 10 commands may use UDP; everything else is TCP.
+- **Parameter values:** device parameters are set in each device's **native range**
+  (`parameter.value`: Hz, dB, %, ms, beats — e.g. Cutoff `30.0`, Drive `0.28`).
+  There is no normalization layer: `_set_device_parameter` assigns the value
+  directly and Live clamps it to the parameter's min/max. Track volume, pan and
+  send amounts *are* 0.0–1.0 natively. Passing 0.0–1.0 to a device parameter is
+  the anti-pattern (see AGENTS.md).
+- **UDP whitelist:** Exactly 11 commands may use UDP (`_build_udp_handlers()`);
+  everything else is TCP.
 - **Instrument loading:** Never load an empty Drum Rack — always a kit preset with
   a specific `FileId` (e.g. `query:Drums#FileId_58622`).
 - **Command contract registry:** `MCP_Server/command_registry.py` is the single

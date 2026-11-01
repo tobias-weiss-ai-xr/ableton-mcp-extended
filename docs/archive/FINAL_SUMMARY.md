@@ -248,19 +248,19 @@ python scripts/polish_suite.py full dub
 ## 📚 **DOCUMENTATION ROADMAP**
 
 ### **Start Here (Essential)**
-1. **[docs/archive/INDEX.md](docs/archive/INDEX.md)** - Navigation to all documentation
-2. **[MASTER_CONTROL.md](MASTER_CONTROL.md)** - Complete workflow guide
-3. **[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md)** - Full system overview
-4. **[AGENTS.md](AGENTS.md)** - Reference for all files
+1. **[docs/archive/INDEX.md](INDEX.md)** - Navigation to all documentation
+2. **[MASTER_CONTROL.md](../../MASTER_CONTROL.md)** - Complete workflow guide
+3. **[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md)** - Full system overview
+4. **[AGENTS.md](../../AGENTS.md)** - Reference for all files
 
 ### **Deep Dive (Recommended)**
-1. **[docs/archive/10MIN_MIX_COMPLETE.md](docs/archive/10MIN_MIX_COMPLETE.md)** - 10-min mix comprehensive guide
-2. **[docs/archive/TWEAKS_SUMMARY.md](docs/archive/TWEAKS_SUMMARY.md)** - All enhancements and features
+1. **[docs/archive/10MIN_MIX_COMPLETE.md](10MIN_MIX_COMPLETE.md)** - 10-min mix comprehensive guide
+2. **[docs/archive/TWEAKS_SUMMARY.md](TWEAKS_SUMMARY.md)** - All enhancements and features
 
 ### **Specialized Topics**
-1. **[DUB_FEATURES.md](DUB_FEATURES.md)** - Dub-specific automation and effects
-2. **[FAT_BEATZ.md](FAT_BEATZ.md)** - Bass and drum enhancement suite
-3. **[ARRANGEMENT_INTEGRATION.md](ARRANGEMENT_INTEGRATION.md)** - Arrangement view features
+1. **[DUB_FEATURES.md](../../DUB_FEATURES.md)** - Dub-specific automation and effects
+2. **[FAT_BEATZ.md](../../FAT_BEATZ.md)** - Bass and drum enhancement suite
+3. **[ARRANGEMENT_INTEGRATION.md](../../ARRANGEMENT_INTEGRATION.md)** - Arrangement view features
 
 ---
 

@@ -131,7 +131,7 @@ The VST Audio Analysis system enables real-time audio analysis and automated con
    python -c "import ableton_mcp_extended.audio_analysis; print('✓ Installation successful')"
    ```
 
-4. **Install a VST plugin** (see [Plugin Installation](docs/vst-plugins/installation_guide.md))
+4. **Install a VST plugin** (see [Plugin Installation](installation_guide.md))
 
 ### Verification
 
@@ -588,7 +588,7 @@ except KeyboardInterrupt:
 - [API Reference](api_reference.md) - Detailed API documentation
 - [Rule Configuration Guide](rule_configuration.md) - Advanced rule examples
 - [CLI Monitor Guide](cli_monitor.md) - Monitoring features and options
-- [Benchmark Guide](benchmark_guide.md) - Running and interpreting benchmarks
+- `benchmark_execution.md` / `benchmark_interpretation.md` - Running and interpreting benchmarks
 - [Troubleshooting](troubleshooting.md) - Common issues and solutions
 
 ---

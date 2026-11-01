@@ -5,8 +5,8 @@ Control Ableton Live via AI assistants using Model Context Protocol. Dual TCP/UD
 ## KEY FILES
 | Task | Location | Notes |
 |------|----------|-------|
-| MCP server (6411 lines) | `MCP_Server/server.py` | 152 `@server.tool` decorators, 239 command functions |
-| Remote Script (5867 lines) | `AbletonMCP_Remote_Script/__init__.py` | Socket server + Ableton API bridge, **now with full Arrangement View API (15+ new methods)** |
+| MCP server (5,734 lines, 120 tools) | `MCP_Server/server.py` | `@mcp.tool` decorators over FastMCP, one tool per command |
+| Remote Script (6,288 lines) | `AbletonMCP_Remote_Script/__init__.py` | Socket server + Ableton API bridge — `_build_handlers()` map (~220 commands), 180 methods |
 | Arrangement View (NEW) | `MCP_Server/arrangement_tools.py` (**~70KB**) | **30+ arrangement tools** - session-to-arrangement, clip editing, automation, **DUB-SPECIFIC FEATURES (filter sweeps, echo/delay, reverb, sub-bass EQ)** |
 | Performance Optimized | `MCP_Server/arrangement_performance.py` (**~38KB**) | **5 optimized tools** - batch processing, caching, adaptive timing, benchmarking |
 | Fat Beatz Suite (NEW) | `MCP_Server/fat_beatz_tools.py` (**~53KB**) | **15+ tools** - bass enhancement, drum fattening, stereo widening, sidechain, mastering, one-shot beat creation |
@@ -15,6 +15,10 @@ Control Ableton Live via AI assistants using Model Context Protocol. Dual TCP/UD
 | Smart Mix Gen (NEW) | `scripts/create_smart_mix.py` | **Adaptive** mix generator that intelligently configures based on available Ableton scenes and tracks |
 | Genre Mix Gen (NEW) | `scripts/genre_mix_generator_fixed.py` | **Genre-specific** mix templates (dub, hip-hop, techno, house, DnB, ambient) with authentic structure and processing |
 | Polish Suite (NEW) | `scripts/polish_suite.py` | **Professional-grade** finalization: analyze, balance, stereo imaging, automation, export preparation with **genre presets** and **polish scoring** (0-100) |
+| Reproducible session builds | `scripts/build_dub_techno_bass.py`, `scripts/fill_808_reggae_bass.py`, `scripts/fill_64pad_percussion.py` | Re-runnable, idempotent generators (chain + clips); resolve track by name |
+| Legacy one-offs | `scripts/legacy/` | Historical root scripts, not packaged/tested — see its README for replacements |
+| Docs index | `docs/README.md` | Entry point for arc42, scripts catalog, guides |
+| Archived notes | `docs/archive/` | Historical session write-ups, not maintained |
 | MIDI effects | `MCP_Server/midi_effects.py` | Arpeggiator, chord, scale, etc. |
 | Browser cache | `MCP_Server/browser_cache.py` | SQLite persistent cache for instruments/effects |
 | Entry point | `MCP_Server/__init__.py` → `ableton-mcp-extended` | `pip install -e .` |
@@ -42,13 +46,16 @@ The fallback uses a **10-second maximum wait time** to prevent timeouts, which c
 ### TCP Commands (port 9877)
 All critical operations - `get_*`, `delete_*`, `create_*`, `quantize`, `undo/redo`, recording, transport.
 
-### UDP Commands (port 9878) - ONLY these 10:
-`set_device_parameter`, `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `set_track_arm`, `set_master_volume`, `set_send_amount`, `fire_clip`, `set_clip_launch_mode`
+### UDP Commands (port 9878) - ONLY these 11 (`_build_udp_handlers()`):
+`set_device_parameter`, `set_track_volume`, `set_track_pan`, `set_track_mute`, `set_track_solo`, `set_track_arm`, `set_master_volume`, `set_crossfader`, `set_send_amount`, `fire_clip`, `set_clip_launch_mode`
 
 ## CRITICAL RULES
 
 ### ANTI-PATTERNS (violations cause hard failures)
-- **NEVER** use absolute parameter values - always normalize to 0.0-1.0
+- **NEVER** feed normalized 0.0-1.0 values to `set_device_parameter` — it writes
+  straight to `parameter.value`, so values are in each device's **native range**
+  (Hz, dB, %, ms, beats; e.g. Cutoff `30.0`, Drive `0.28`). 0.0-1.0 just clamps.
+  Track/master volume and pan ARE 0.0-1.0 natively — those two stay normalized.
 - **NEVER** use UDP for `get_*`, `delete_*`, `quantize`, `undo/redo`, recording
 - **NEVER** create MIDI clips on audio tracks (must use `create_midi_track()` first)
 - **NEVER** load empty Drum Rack - must load a kit preset with specific FileId

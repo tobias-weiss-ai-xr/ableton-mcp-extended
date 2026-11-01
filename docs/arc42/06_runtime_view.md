@@ -66,10 +66,10 @@ Remote Script _udp_server_loop() → _udp_handlers[cmd]
 Live API call (must be fast & reversible)
 ```
 
-**Only 10 commands** are UDP-eligible (see §3 / `config/system.yaml`):
+**Only 11 commands** are UDP-eligible (`_build_udp_handlers()`):
 `set_device_parameter`, `set_track_volume`, `set_track_pan`, `set_track_mute`,
-`set_track_solo`, `set_track_arm`, `set_master_volume`, `set_send_amount`,
-`fire_clip`, `set_clip_launch_mode`.
+`set_track_solo`, `set_track_arm`, `set_master_volume`, `set_crossfader`,
+`set_send_amount`, `fire_clip`, `set_clip_launch_mode`.
 
 ## 6.4 Agentic Mix Generation Runtime
 

@@ -137,7 +137,7 @@ python auto_play_2h_dub_techno.py
 
 ## ❌ Important: Audio Export Limitations
 
-**Please read [EXPORT_LIMITATIONS.md](EXPORT_LIMITATIONS.md) before attempting to export audio.**
+**Please read [EXPORT_LIMITATIONS.md](#-important-audio-export-limitations) before attempting to export audio.**
 
 ### What is NOT Supported
 Due to Ableton Live's Remote Script API design, the following are **fundamentally impossible**:
@@ -163,7 +163,7 @@ After recording with MCP tools, you must **manually export** in Ableton:
 3. Choose format (MP3/WAV) and settings
 4. Save to desired location
 
-**See [EXPORT_LIMITATIONS.md](EXPORT_LIMITATIONS.md) for complete details, workarounds, and explanations.**
+**See [EXPORT_LIMITATIONS.md](#-important-audio-export-limitations) for complete details, workarounds, and explanations.**
 
 ### 🎛️ Max for Live Audio Export Device
 
@@ -197,45 +197,41 @@ We've included a Max for Live device (`max_devices/audio_export_device.maxpat`) 
 
 ```
 ableton-mcp-extended/
-├── MCP_Server/                      # Core MCP server implementation
-│   └── server.py                   # FastMCP server with tools
+├── MCP_Server/                      # MCP server: server.py exposes 120 @mcp.tool tools
+│   ├── *_tools.py                  # 8 tool domains (arrangement, mixer, automation, ...)
+│   ├── audio_analysis/             # analysis engine (rules, polling, control loop)
+│   ├── knowledge/                  # device knowledge base (JSON)
+│   └── recipe_library/             # recipe presets
 │
-├── AbletonMCP_Remote_Script/       # Ableton Live Remote Script
-│   └── __init__.py                 # Socket server & command handler
+├── AbletonMCP_Remote_Script/
+│   └── __init__.py                 # Live-embedded script: TCP 9877 + UDP 9878, ~220 commands
 │
-├── dub_techno_2h/                  # 2-hour dub techno automation scripts
-│   ├── create_2h_dub_techno_fixed.py  # Creates tracks and clips
-│   ├── load_instruments_and_effects.py # Loads instruments and effects
-│   ├── auto_play_2h_dub_techno.py     # Full 2-hour automation
-│   ├── automate_all_setup.py          # All-in-one setup script
-│   ├── archive/                       # Older versions and deprecated scripts
-│   └── DUB_TECHNO_2H_*.md            # Documentation files
+├── agentic_mix/                     # LangGraph mix-generation pipeline
+├── music_theory/                    # chords, voicings, arpeggiator, grid layouts
+├── orchestration/                   # AgentFlow DAG runner
+├── elevenlabs_mcp/                  # ElevenLabs voice MCP server
+├── max_devices/                     # Max for Live audio-export device
 │
-├── scripts/                         # Utility and test scripts
-│   ├── test/                        # Test scripts
-│   │   ├── test_connection.py
-│   │   ├── test_clip_firing.py
-│   │   └── test_playback_1min.py
-│   └── util/                        # Utility scripts
-│       ├── check_session_state.py
-│       ├── check_tracks.py
-│       ├── create_percussion.py
-│       ├── get_effects.py
-│       ├── new_device_methods.py
-│       ├── record_dub_song_automated.py
-│       ├── record_dub_song_now.py
-│       └── section_switcher.py
+├── scripts/                         # 60+ generators/helpers
+│   ├── build_dub_techno_bass.py    # maintained: chain + 4x 16-bar basslines
+│   ├── fill_808_reggae_bass.py     # maintained: 10x 16-bar reggae bass clips
+│   ├── fill_64pad_percussion.py    # maintained: 10x 16-bar perc grooves
+│   ├── test/ util/ analysis/ drum_tools/   # diagnostics, session inspection
+│   └── legacy/                     # former root one-offs (see its README)
 │
-├── elevenlabs_mcp/                   # ElevenLabs integration
-│   └── server.py                    # ElevenLabs MCP server
+├── docs/                            # start at docs/README.md
+│   ├── arc42/                      # architecture docs, one file per section 01-12
+│   ├── SCRIPTS.md  TOOLS.md        # script catalog, generated tool reference
+│   └── archive/                    # historical session write-ups (not maintained)
 │
-└── experimental_tools/                  # Examples and experimental tools
-    └── xy_mouse_controller/
-        ├── mouse_parameter_controller_udp.py  # XY mouse controller
-        └── README.md
+├── tests/                           # pytest suite
+├── configs/  config/                # analysis rules (YAML), system.yaml
+├── examples/  skills/  projects/  exports/
+│
+└── repo-root helpers: mcp_client.py (TCP/UDP client), clip_patterns.py,
+    automation_patterns.py, parameter_sweeps.py, pattern_orchestration.py,
+    follow_actions.py, audio_analysis.py, error_handling.py
 ```
-
----
 
 ## 🚀 Dual-Server Architecture
 

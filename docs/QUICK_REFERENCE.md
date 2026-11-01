@@ -53,7 +53,7 @@ Generated from MCP tool decorators and command registry.
 
 - `fire_clip` [UDP] — Start playing a clip.
 - `set_clip_launch_mode` [UDP] — Set clip launch mode.
-- `set_device_parameter` [UDP] — Set a device parameter value (normalized 0.0-1.0).
+- `set_device_parameter` [UDP] — Set a device parameter value, in the parameter's NATIVE range.
 - `set_master_volume` [UDP] — Set master track volume (normalized 0.0-1.0).
 - `set_send_amount` [UDP] — Set send amount to a return track.
 - `set_track_arm` [UDP] — Arm or unarm a track for recording.

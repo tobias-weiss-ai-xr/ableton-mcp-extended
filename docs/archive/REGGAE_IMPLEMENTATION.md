@@ -160,14 +160,14 @@ python scripts/production_pipeline.py reggae --mp3 --video --youtube \
 ## 📚 **DOCUMENTATION PROVIDED**
 
 ### **For Producers**
-- **[REGGAE_UNECK_GUIDE.md](REGGAE_UIMECK_GUIDE.md)** - Complete production guide
+- **REGGAE_QUICK_START.md** - Complete production guide
   - Ableton setup
   - Clip content suggestions
   - Production tips
   - Mixing recommendations
   - Authentic characteristics
 
-- **[REGGAE_QUICK_START.md](REGGAE_QUICK_START.md)** - Quick command reference
+- **[REGGAE_QUICK_START.md](../../REGGAE_QUICK_START.md)** - Quick command reference
   - One-command setup
   - Mix specs
   - Key characteristics

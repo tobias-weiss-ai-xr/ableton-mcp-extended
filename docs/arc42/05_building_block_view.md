@@ -79,11 +79,11 @@ and register themselves at import time via `register_*(mcp, get_ableton_connecti
 AbletonMCP
 ├── start_server()              # TCP server on 9877 (threaded, request/response)
 ├── start_udp_server()          # UDP server on 9878 (fire-and-forget)
-├── _handlers: dict             # ~200 TCP command → callable lambdas
-├── _udp_handlers: dict         # 10 UDP command → callable lambdas
-├── _allowed_commands: set      # TCP command whitelist (~150)
-├── _udp_allowed_commands: set  # UDP whitelist (10)
-├── _main_thread_scheduler      # Defers Live mutations off the notify thread
+├── _handlers: dict             # ~220 TCP command → callable(params) -> result
+├── _udp_handlers: dict         # 11 UDP command → callable(params) -> None
+├── MAIN_THREAD_COMMANDS: set   # commands that mutate Live state; deferred via schedule_message
+├── _execute_on_main_thread()   # runs a handler on Live's main thread, returns its result
+├── _execute_udp_command()      # UDP: lookup in _udp_handlers, log+drop on unknown
 ├── _song                       # Cached Live Song object
 └── Live API bridge methods     # _get_session_info, _create_track, _fire_clip, ...
 ```
@@ -95,6 +95,10 @@ TCP packet ──▶ _handle_client() ──▶ _dispatch_command()
                                      │
                                      ├─ _handlers[name](params)   # TCP
                                      └─ _udp_handlers[name](params)  # UDP
+                                              │
+                                              ▼
+                       name in MAIN_THREAD_COMMANDS ?
+                          └─ yes ──▶ _execute_on_main_thread(handler, params)
                                               │
                                               ▼
                                      Live API call (song.tracks[i].clip_slots[j]...)

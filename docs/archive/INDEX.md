@@ -19,20 +19,20 @@
 
 | Document | Purpose | Size | Priority |
 |----------|---------|------|----------|
-| **[MASTER_CONTROL.md](MASTER_CONTROL.md)** | **Start Here** - Complete workflow, all commands | 24KB | ⭐⭐⭐⭐⭐ |
-| **[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md)** | **Big Picture** - Full system overview, statistics | 30KB | ⭐⭐⭐⭐⭐ |
-| **[AGENTS.md](AGENTS.md)** | **Reference** - All files, architecture, commands | 12KB | ⭐⭐⭐⭐ |
+| **[MASTER_CONTROL.md](../../MASTER_CONTROL.md)** | **Start Here** - Complete workflow, all commands | 24KB | ⭐⭐⭐⭐⭐ |
+| **[docs/archive/COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md)** | **Big Picture** - Full system overview, statistics | 30KB | ⭐⭐⭐⭐⭐ |
+| **[AGENTS.md](../../AGENTS.md)** | **Reference** - All files, architecture, commands | 12KB | ⭐⭐⭐⭐ |
 
 ### **Feature Documentation**
 
 | Document | Purpose | Features Covered |
 |----------|---------|------------------|
-| **[docs/archive/10MIN_MIX_COMPLETE.md](docs/archive/10MIN_MIX_COMPLETE.md)** | Complete 10-min mix guide | All generators, workflow, tips |
-| **[docs/archive/TWEAKS_SUMMARY.md](docs/archive/TWEAKS_SUMMARY.md)** | Enhancement summary | All tweaks, comparisons, use cases |
-| **[DUB_FEATURES.md](DUB_FEATURES.md)** | Dub-specific features | Filter sweeps, echo, reverb, bass |
-| **[FAT_BEATZ.md](FAT_BEATZ.md)** | Fat Beatz suite | Bass enhancement, drum thickening |
-| **[ARRANGEMENT_INTEGRATION.md](ARRANGEMENT_INTEGRATION.md)** | Arrangement view | Session to arrangement, editing |
-| **[IMPROVED_ARRANGEMENT_FEATURES.md](IMPROVED_ARRANGEMENT_FEATURES.md)** | Advanced features | Crossfade, automation, arming |
+| **[docs/archive/10MIN_MIX_COMPLETE.md](10MIN_MIX_COMPLETE.md)** | Complete 10-min mix guide | All generators, workflow, tips |
+| **[docs/archive/TWEAKS_SUMMARY.md](TWEAKS_SUMMARY.md)** | Enhancement summary | All tweaks, comparisons, use cases |
+| **[DUB_FEATURES.md](../../DUB_FEATURES.md)** | Dub-specific features | Filter sweeps, echo, reverb, bass |
+| **[FAT_BEATZ.md](../../FAT_BEATZ.md)** | Fat Beatz suite | Bass enhancement, drum thickening |
+| **[ARRANGEMENT_INTEGRATION.md](../../ARRANGEMENT_INTEGRATION.md)** | Arrangement view | Session to arrangement, editing |
+| **[IMPROVED_ARRANGEMENT_FEATURES.md](../../IMPROVED_ARRANGEMENT_FEATURES.md)** | Advanced features | Crossfade, automation, arming |
 
 ---
 
@@ -433,20 +433,20 @@ python scripts/polish_suite.py full techno
 ### **Documentation Order (Recommended)**
 
 1. **Start Here**
-   - [MASTER_CONTROL.md](MASTER_CONTROL.md) - Complete workflow
+   - [MASTER_CONTROL.md](../../MASTER_CONTROL.md) - Complete workflow
 
 2. **Deep Dive**
-   - [docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md) - Full overview
-   - [AGENTS.md](AGENTS.md) - Reference guide
+   - [docs/archive/COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md) - Full overview
+   - [AGENTS.md](../../AGENTS.md) - Reference guide
 
 3. **Feature Guides**
-   - [docs/archive/10MIN_MIX_COMPLETE.md](docs/archive/10MIN_MIX_COMPLETE.md) - 10-min mix guide
-   - [docs/archive/TWEAKS_SUMMARY.md](docs/archive/TWEAKS_SUMMARY.md) - Enhancement details
+   - [docs/archive/10MIN_MIX_COMPLETE.md](10MIN_MIX_COMPLETE.md) - 10-min mix guide
+   - [docs/archive/TWEAKS_SUMMARY.md](TWEAKS_SUMMARY.md) - Enhancement details
 
 4. **Specialized Topics**
-   - [DUB_FEATURES.md](DUB_FEATURES.md) - Dub production
-   - [FAT_BEATZ.md](FAT_BEATZ.md) - Bass enhancement
-   - [ARRANGEMENT_INTEGRATION.md](ARRANGEMENT_INTEGRATION.md) - Arrangement view
+   - [DUB_FEATURES.md](../../DUB_FEATURES.md) - Dub production
+   - [FAT_BEATZ.md](../../FAT_BEATZ.md) - Bass enhancement
+   - [ARRANGEMENT_INTEGRATION.md](../../ARRANGEMENT_INTEGRATION.md) - Arrangement view
 
 ### **Examples Directory**
 
@@ -546,25 +546,25 @@ python scripts/polish_suite.py full dub
 ## 📄 **FILE LIST**
 
 ### **Essential Files (Start Here)**
-1. [docs/archive/INDEX.md](docs/archive/INDEX.md) - This file
-2. [MASTER_CONTROL.md](MASTER_CONTROL.md) - Complete workflow guide
-3. [docs/archive/COMPLETE_SYSTEM_SUMMARY.md](docs/archive/COMPLETE_SYSTEM_SUMMARY.md) - Full system overview
-4. [AGENTS.md](AGENTS.md) - Reference guide
+1. [docs/archive/INDEX.md](INDEX.md) - This file
+2. [MASTER_CONTROL.md](../../MASTER_CONTROL.md) - Complete workflow guide
+3. [docs/archive/COMPLETE_SYSTEM_SUMMARY.md](COMPLETE_SYSTEM_SUMMARY.md) - Full system overview
+4. [AGENTS.md](../../AGENTS.md) - Reference guide
 
 ### **Script Files**
-1. [scripts/mix_master.py](scripts/mix_master.py) - Unified control
-2. [scripts/polish_suite.py](scripts/polish_suite.py) - Professional polish
-3. [scripts/create_10min_mix.py](scripts/create_10min_mix.py) - Basic 10-min mix
-4. [scripts/create_10min_mix_advanced.py](scripts/create_10min_mix_advanced.py) - Advanced 10-min mix
-5. [scripts/create_10min_mix_windows.py](scripts/create_10min_mix_windows.py) - Windows-compatible
-6. [scripts/create_10min_mix_simple.py](scripts/create_10min_mix_simple.py) - Simple version
-7. [scripts/create_smart_mix.py](scripts/create_smart_mix.py) - Adaptive generator
-8. [scripts/genre_mix_generator_fixed.py](scripts/genre_mix_generator_fixed.py) - Genre templates
-9. [scripts/test_10min_setup.py](scripts/test_10min_setup.py) - Quick setup
+1. [scripts/mix_master.py](../../scripts/mix_master.py) - Unified control
+2. [scripts/polish_suite.py](../../scripts/polish_suite.py) - Professional polish
+3. [scripts/create_10min_mix.py](../../scripts/create_10min_mix.py) - Basic 10-min mix
+4. [scripts/create_10min_mix_advanced.py](../../scripts/create_10min_mix_advanced.py) - Advanced 10-min mix
+5. [scripts/create_10min_mix_windows.py](../../scripts/create_10min_mix_windows.py) - Windows-compatible
+6. [scripts/create_10min_mix_simple.py](../../scripts/create_10min_mix_simple.py) - Simple version
+7. [scripts/create_smart_mix.py](../../scripts/create_smart_mix.py) - Adaptive generator
+8. [scripts/genre_mix_generator_fixed.py](../../scripts/genre_mix_generator_fixed.py) - Genre templates
+9. [scripts/test_10min_setup.py](../../scripts/test_10min_setup.py) - Quick setup
 
 ### **Server Files**
-- All files in [MCP_Server/](MCP_Server/) directory
-- All files in [AbletonMCP_Remote_Script/](AbletonMCP_Remote_Script/) directory
+- All files in [MCP_Server/](../../MCP_Server/) directory
+- All files in [AbletonMCP_Remote_Script/](../../AbletonMCP_Remote_Script/) directory
 
 ### **Documentation Files**
 - All files matching `*.md` in root directory
@@ -593,7 +593,7 @@ All components are:
 
 ## 📞 **NEED HELP?**
 
-1. **Read**: [MASTER_CONTROL.md](MASTER_CONTROL.md)
+1. **Read**: [MASTER_CONTROL.md](../../MASTER_CONTROL.md)
 2. **Check**: This docs/archive/INDEX.md file
 3. **Explore**: Run `python scripts/mix_master.py help`
 4. **Experiment**: Try different commands

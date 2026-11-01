@@ -3295,13 +3295,19 @@ def set_device_parameter(
     value: float,
 ) -> str:
     """
-    Set a device parameter value (normalized 0.0-1.0).
+    Set a device parameter value, in the parameter's NATIVE range.
+
+    Values are passed through to Live's `parameter.value` unchanged, so use the
+    units reported by `get_device_parameters` (Hz, dB, %, ms, beats) — e.g.
+    Cutoff `30.0`, Drive `0.28`. Passing 0.0–1.0 clamps and will not do what you
+    expect. Track volume/pan (`set_track_volume`, `set_track_pan`) are natively
+    0.0–1.0 and stay normalized.
 
     Parameters:
     - track_index: The index of the track
     - device_index: The index of the device on the track
     - parameter_index: The index of the parameter to set
-    - value: The normalized value to set (0.0 to 1.0)
+    - value: The value in the parameter's native range (NOT 0.0–1.0)
     """
     # SAFEGUARD: Never disable instruments
     is_valid, error_msg = validate_parameter_change(
