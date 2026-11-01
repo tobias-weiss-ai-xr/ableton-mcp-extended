@@ -15,12 +15,25 @@ Usage:
     udp_client.send_command_udp("set_master_volume", {"volume": 0.8})  # No return
 """
 
+import os
 import socket
 import json
 import logging
+import sys
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _live_blocked() -> bool:
+    """Refuse to drive a real Ableton set from inside a test run.
+
+    The test suite is not isolated: several modules connect to the session on
+    port 9877 and fire scenes, create tracks or delete them. Running pytest
+    while the user had a set open once deleted every track in it. Opt in
+    deliberately with ABLETON_LIVE_TESTS=1.
+    """
+    return "pytest" in sys.modules and os.environ.get("ABLETON_LIVE_TESTS") != "1"
 
 
 class MCPClientTCP:
@@ -91,6 +104,11 @@ class MCPClientTCP:
             - recv() with large buffer (65536)
             - json.loads() for response
         """
+        if _live_blocked():
+            raise RuntimeError(
+                "Refusing to send {!r} to a live Ableton session from a test run. "
+                "Set ABLETON_LIVE_TESTS=1 if that is really intended.".format(command_type))
+
         retry_count = 0
         last_error = None
 
@@ -222,6 +240,11 @@ class MCPClientUDP:
             - No recv() (immediate return)
             - close() immediately
         """
+        if _live_blocked():
+            raise RuntimeError(
+                "Refusing to send {!r} to a live Ableton session from a test run. "
+                "Set ABLETON_LIVE_TESTS=1 if that is really intended.".format(command_type))
+
         try:
             # Create UDP socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

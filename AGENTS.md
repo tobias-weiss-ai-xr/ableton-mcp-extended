@@ -136,6 +136,13 @@ As of July 27 2026:
 | Config files | `configs/analysis/*.yml` |
 
 ## RUNNING TESTS
+
+**`pytest` is not safe against a live session.** Several test modules connect to port
+9877 and fire scenes, create tracks or delete them - one run deleted every track in the
+set the user had open. `mcp_client` now refuses to send anything from a pytest run
+unless `ABLETON_LIVE_TESTS=1` is set, so the suite fails loudly instead of editing Live.
+Ask before running the suite while a set is open.
+
 No pytest.ini or test discovery. Tests are standalone scripts:
 ```bash
 python scripts/test/test_connection.py          # Basic connectivity
