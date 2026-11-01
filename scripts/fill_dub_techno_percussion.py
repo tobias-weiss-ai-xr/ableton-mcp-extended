@@ -110,6 +110,12 @@ PATTERN_SETS = {
             {KICK: [0, 1, 2, 3], CLAP: [2.0]},
             {KICK: [0, 1, 2, 3], CLAP: [2.0], PERC: [1.5]},
         ],
+        "04 peak": [
+            {KICK: [0, 1, 2, 3], CLAP: [2.0]},
+            {KICK: [0, 1, 2, 3], CLAP: [2.0], PERC: [1.5]},
+            {KICK: [0, 1, 2, 3], CLAP: [2.0], PERC: [1.5], SNAP: [3.75]},
+            {KICK: [0, 1, 2, 3], CLAP: [2.0], PERC: [1.5, 3.5], SNAP: [3.75]},
+        ],
     },
     "tops": {
         "01 hats-stick": [
@@ -132,6 +138,14 @@ PATTERN_SETS = {
             {CH: _offbeats(), CH2: _offbeats(), STICK: [3.5]},
             {CH: _offbeats(), CH2: _offbeats(), STICK: [1.5, 3.5],
              SHAKER: _sixteenths()},
+        ],
+        "04 full": [
+            {CH: _offbeats(), SHAKER: _sixteenths()},
+            {CH: _offbeats(), SHAKER: _sixteenths(), STICK: [1.5, 3.5]},
+            {CH: _offbeats(), CH2: [1.5, 3.5], SHAKER: _sixteenths(),
+             STICK: [1.5, 3.5]},
+            {CH: _offbeats(), CH2: _offbeats(), SHAKER: _sixteenths(),
+             STICK: [1.5, 3.5], SHAKER2: [0.0, 2.0]},
         ],
     },
     "chops": {
