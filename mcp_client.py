@@ -113,6 +113,7 @@ class MCPClientTCP:
         last_error = None
 
         while retry_count < self.max_retries:
+            sent = False
             try:
                 # Create connection with timeout
                 sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
@@ -123,6 +124,7 @@ class MCPClientTCP:
 
                 # Send message
                 sock.sendall(message.encode())
+                sent = True
 
                 # Read until the JSON payload parses: one recv() truncates large
                 # responses (e.g. get_clip_notes), which looked like decode errors.
@@ -146,6 +148,14 @@ class MCPClientTCP:
                 return result
 
             except socket.timeout as e:
+                if sent:
+                    # The command reached Live but the answer did not come back.
+                    # Retrying would apply a mutation (undo, create_clip, ...) twice.
+                    sock.close()
+                    raise socket.timeout(
+                        "{} timed out after being sent - it may already have been "
+                        "applied, so check the session instead of retrying".format(
+                            command_type))
                 retry_count += 1
                 last_error = e
                 logger.warning(f"TCP timeout on attempt {retry_count}/{self.max_retries}: {e}")
